@@ -31,7 +31,7 @@ PHYSICS_DT = 1 / 240
 MAX_FRAME_DT = 0.05  # clamp one render frame's time so a stall cannot spiral
 MAX_STEP_FRAC = 0.25  # a sub-step moves a ball at most BALL_R * this (no tunnelling)
 REST_SPEED = 0.01  # m/s; slower than this after friction = stopped
-MIN_EVENT_SPEED = 0.05  # m/s; softer impacts emit no event (no sound spam)
+MIN_EVENT_SPEED = 0.001  # m/s; the rules must see even the gentlest touch of two balls
 
 
 @dataclass(frozen=True)
@@ -78,6 +78,7 @@ SHAKE_S = 0.30
 SAMPLE_RATE = 44100
 SFX_MAX_PER_FRAME = 6  # cap sounds started per frame so a break is not a wall of noise
 SFX_REF_SPEED = 6.0  # m/s that maps to full volume
+SFX_MIN_SPEED = 0.05  # m/s; softer impacts make no sound (no ticking at the end of a roll)
 
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---

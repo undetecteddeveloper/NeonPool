@@ -113,6 +113,19 @@ class World:
                 return x, y
         raise RuntimeError("no free spot for the cue ball")
 
+    def can_place_cue(self, x: float, y: float) -> bool:
+        """Ball in hand: on the cloth, not touching another ball, not inside a pocket mouth."""
+        if not self._free(x, y):
+            return False
+        return all((x - px) ** 2 + (y - py) ** 2 >= (pr + BALL_R) ** 2 for px, py, pr in POCKETS)
+
+    def place_cue(self, x: float, y: float) -> bool:
+        """Put the (stopped) cue ball at (x, y) if that is allowed; False leaves it where it is."""
+        if not self.can_place_cue(x, y):
+            return False
+        self.place(CUE, x, y)
+        return True
+
     def _free(self, x: float, y: float) -> bool:
         if not (BALL_R <= x <= TABLE_L - BALL_R and BALL_R <= y <= TABLE_W - BALL_R):
             return False

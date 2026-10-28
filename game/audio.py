@@ -8,7 +8,7 @@ from collections.abc import Iterable
 import numpy as np
 import pygame as pg
 
-from game.config import SAMPLE_RATE, SFX_MAX_PER_FRAME, SFX_REF_SPEED
+from game.config import SAMPLE_RATE, SFX_MAX_PER_FRAME, SFX_MIN_SPEED, SFX_REF_SPEED
 from game.physics import BallHitBall, BallHitCushion, BallPocketed, Event
 
 log = logging.getLogger("mathofpool")
@@ -133,7 +133,11 @@ class Audio:
     def on_events(self, events: Iterable[Event]) -> int:
         """Play the loudest few impacts of one frame; returns how many sounds were started."""
         hits = sorted(
-            (e for e in events if isinstance(e, BallHitBall | BallHitCushion)),
+            (
+                e
+                for e in events
+                if isinstance(e, BallHitBall | BallHitCushion) and e.speed >= SFX_MIN_SPEED
+            ),
             key=lambda e: e.speed,
             reverse=True,
         )
