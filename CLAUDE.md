@@ -1,0 +1,62 @@
+# MathofPool — luật làm việc
+
+> Luật riêng của dự án này. Luật dùng chung mọi project (tiếng Việt, ĐỦ BƯỚC/THIẾU, không hoàn tác, commit rồi dừng) nằm ở `~/.claude/CLAUDE.md` — không chép lại ở đây.
+> Luật theo loại việc: `.claude/workflow/`. Thiết kế đã chốt: `docs/GAME_DESIGN.md`. Kiến trúc: `docs/ARCHITECTURE.md`. Tiến độ: `PROGRESS.md`.
+> Sửa luật = sửa TẠI CHỖ nó thuộc về (§7), không tạo file mới.
+
+## 1. Bất biến của dự án (vi phạm = lỗi, kể cả khi test xanh)
+1. `game/physics/` và `game/rules/` KHÔNG import pygame: chỉ toán thuần, để test không cần cửa sổ.
+2. Mọi cách nhập (kéo thả hôm nay, công thức toán sau này) chỉ tạo ra MỘT thứ: `Shot(angle, power, spin)`. Vật lý không biết cú đánh đến từ đâu.
+3. Vật lý chạy bước thời gian CỐ ĐỊNH (`PHYSICS_DT`), đơn vị mét–giây; đổi sang pixel CHỈ ở lớp vẽ (`PX_PER_M`).
+4. Mọi hằng số vật lý và cảm giác (ma sát, độ nảy, lực đánh) nằm trong `game/config.py` hoặc bộ thông số có tên — không số "ma thuật" trong code.
+5. Mọi chữ hiện lên màn hình đi qua `i18n.t("khoa")` (vi + en). Khoá hay chuỗi cứng lộ ra màn hình là lỗi.
+6. Cùng `Shot` + cùng `seed` → cùng kết quả từng bước (xác định). Không `random` ngoài `World.rng`.
+
+## 1b. Cách hỏi người dùng
+Người dùng không chuyên kỹ thuật. Mọi câu hỏi (AskUserQuestion) là câu ĐỊNH HƯỚNG: hỏi về thứ người chơi nhìn thấy/cảm thấy (luật, cảm giác bi, bố cục, độ khó, thứ tự làm), mỗi lựa chọn viết bằng KẾT QUẢ ("bi trắng lùi sau khi va chạm"), có một lựa chọn khuyến nghị ghi rõ và ví dụ cụ thể khi được. KHÔNG hỏi thư viện, cấu trúc code, tên hàm, kiểu dữ liệu — tự quyết rồi nói một dòng lý do. Không có hướng nào khác biệt rõ ràng thì không hỏi.
+
+## 2. Đầu phiên (hook SessionStart đã in sẵn; Claude PHẢI làm)
+1. Báo MỘT dòng `Công cụ: đủ` hoặc `THIẾU: <tên> — <cách khắc phục>` dựa trên dữ liệu hook (venv, pygame-ce, pytest, ruff, nhánh git).
+2. Báo ≤3 dòng việc dang dở từ "Đang mở" của PROGRESS.md, hỏi có tiếp không. Không tự nối việc cũ.
+
+## 3. Phân loại — mọi yêu cầu bắt đầu ở đây
+Nói MỘT dòng: "Tôi coi đây là <loại>: <việc>". Chắc chắn thì làm; không chắc thì hỏi một câu. Rồi ĐỌC file đường TRƯỚC khi làm:
+
+| Loại | Dấu hiệu | File |
+|---|---|---|
+| Việc vặt | sửa nhỏ, hỏi đáp, đọc code, git, sửa tài liệu | `workflow/small.md` |
+| Bug | báo lỗi, "sai", "kẹt", "xuyên bi", "crash" | `workflow/bug.md` |
+| Tính năng | thêm chức năng, đổi hành vi, thêm luật | `workflow/feature.md` |
+| Giao diện | menu, HUD, bố cục, hoạt ảnh, màu, chữ | `workflow/ui.md` |
+| Vật lý & cảm giác | va chạm, ma sát, xoáy, độ nảy, lực đánh, "bi chạy lạ" | `workflow/physics.md` |
+| Dọn code / hiệu năng | refactor, FPS, tách module, viết thêm test | `workflow/refactor.md` |
+
+Shell, git, Windows, venv, lỗi môi trường → `workflow/ops-env.md`. (Thư mục `workflow/` nằm trong `.claude/`.)
+
+## 4. Công cụ thiếu hoặc lỗi
+Theo luật chung (thử lại 1 lần → báo ngay → CHƯA LÀM). Riêng dự án này:
+- Python CHỈ dùng `.venv\Scripts\python.exe` (3.13 + pygame-ce). `python` toàn máy là 3.15 beta, KHÔNG có pygame — dùng nó là sai (hook chặn `pip install` ngoài venv).
+- Cổng kiểm tra không chạy được → DỪNG phần liên quan, không commit như thể cổng đã qua. Một cổng đỏ: chạy lại trên bản sạch (`git worktree add` ra thư mục tạm) để biết do mình hay đỏ sẵn.
+- Cấm viết "xong / ổn" cho bước chưa chạy thật. "Giao diện ổn" chỉ khi đã chụp ảnh và nhìn ảnh (ui.md). "Cảm giác ổn" không bao giờ do Claude tuyên bố — chỉ người dùng (physics.md).
+
+## 5. Điểm dừng bắt buộc
+- Hướng sản phẩm/thiết kế có ≥2 phương án (luật chơi, cảm giác, bố cục người chơi thấy) → AskUserQuestion (≤4 câu/vòng).
+- Việc không hoàn tác (xoá file/thư mục, `reset --hard`, `clean`, bỏ thay đổi chưa commit, ghi đè save của người chơi): nói hệ quả bằng lời thường rồi hỏi có/không. Chạy `git status` trước (hook chặn các lệnh này).
+- Ngoài hai loại trên Claude tự quyết, kể cả thêm thư viện hay đổi kiến trúc (thêm thư viện: vào `requirements.txt` cùng commit).
+
+## 6. Kết thúc việc
+1. Cổng, xác nhận bằng exit code thật: `.venv\Scripts\python.exe tools\gate.py`
+   - Việc vặt: `gate.py --quick` (ruff check + format + pytest).
+   - Bug / tính năng / giao diện / vật lý / refactor chạm code: `gate.py` đầy đủ (thêm smoke headless: bật game 300 khung hình, báo ms/khung). Chỉ sửa tài liệu hoặc luật: bỏ cổng.
+2. Commit trên nhánh làm việc (không bao giờ commit thẳng `main`/`master`), message tiếng Việt `type(scope): ...`, rồi DỪNG. Mỗi commit một việc.
+3. Dự án này CHỈ dùng git cục bộ: không GitHub, không remote, không push (hook chặn `git push` và `git remote add`). "Đưa lên main" = gộp nhánh làm việc vào `main` cục bộ, chỉ khi người dùng nói "gộp"/"merge"/"đưa vào main" (hook chặn mọi `commit`/`merge` đang đứng trên main nếu lượt nhắn gần nhất không có ý đó).
+4. Cập nhật PROGRESS.md: số đo và LÝ DO, không chỉ liệt kê việc.
+5. Đối chiếu §4–§5 một lượt, rồi viết dòng đầu `ĐỦ BƯỚC` / `THIẾU …`.
+
+## 7. Tự học
+Người dùng sửa cùng một lỗi lần thứ hai → Claude sửa luật có sẵn ở đúng file (file này hoặc một file đường): thay luật cũ cùng chủ đề, không thêm file. Báo một dòng "Đã ghi luật: …". KHÔNG ghi luật hay nhật ký sự kiện vào auto-memory. Sự cố môi trường mới → thêm một dòng có ngày vào `ops-env.md`.
+
+## 8. Bản đồ
+- Chạy game: `.venv\Scripts\python.exe main.py` · Test: `.venv\Scripts\python.exe -m pytest` · Chụp khung hình: `.venv\Scripts\python.exe tools\shot.py --frames 60 --out tools\_out\a.png` rồi Read ảnh.
+- Tiến độ: `PROGRESS.md` (chỉ việc đang mở và vừa xong, ≤60 dòng, tự cắt mục cũ — lịch sử đã có trong git log).
+- Mã nguồn game: `game/` · chuỗi giao diện: `lang/vi.json`, `lang/en.json` · công cụ: `tools/`.

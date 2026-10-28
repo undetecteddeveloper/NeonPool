@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(.venv/Scripts/python.exe *)",
+      "Bash(.venv/Scripts/ruff.exe *)",
+      "PowerShell(git status*)",
+      "PowerShell(git diff*)",
+      "PowerShell(git log*)",
+      "PowerShell(git show*)",
+      "PowerShell(git branch*)",
+      "PowerShell(git add *)",
+      "PowerShell(git commit *)",
+      "PowerShell(git switch *)",
+      "PowerShell(.\\.venv\\Scripts\\python.exe *)",
+      "PowerShell(.\\.venv\\Scripts\\ruff.exe *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require((process.env.CLAUDE_PROJECT_DIR||process.cwd())+'/.claude/hooks/session-start.js')\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require((process.env.CLAUDE_PROJECT_DIR||process.cwd())+'/.claude/hooks/prompt-reminder.js')\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require((process.env.CLAUDE_PROJECT_DIR||process.cwd())+'/.claude/hooks/guard.js')\""
+          }
+        ]
+      }
+    ]
+  }
+}
