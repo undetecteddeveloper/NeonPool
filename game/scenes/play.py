@@ -1,0 +1,108 @@
+"""The table: free play. Mouse drag-back to shoot; R restarts; 1/2/3 change the feel; G grid."""
+
+from __future__ import annotations
+
+import math
+
+import pygame as pg
+
+from game.config import (
+    DEFAULT_FEEL,
+    FEEL_ORDER,
+    FEEL_SETS,
+    GRAB_RADIUS_M,
+    MAX_FRAME_DT,
+    PHYSICS_DT,
+    PX_PER_M,
+)
+from game.input.drag import DragAim
+from game.physics import World, first_contact
+from game.render import draw
+from game.render.layout import to_px
+from game.rules.free_play import FreePlay
+
+
+class PlayScene:
+    def __init__(self, app) -> None:
+        self.app = app
+        self.feel_key = DEFAULT_FEEL
+        self.world = World(seed=0, feel=FEEL_SETS[self.feel_key])
+        self.rules = FreePlay()
+        self.drag = DragAim()
+        self.sprites = draw.BallSprites()
+        self.table = draw.build_table()
+        self.grid = draw.build_grid()
+        self.show_grid = False
+        self._acc = 0.0
+
+    # --- game flow -------------------------------------------------------------------
+    def new_game(self) -> None:
+        self.world.rack()
+        self.rules.reset()
+        self.drag.cancel()
+        self._acc = 0.0
+
+    def set_feel(self, key: str) -> None:
+        self.feel_key = key
+        self.world.feel = FEEL_SETS[key]
+
+    def _can_aim(self) -> bool:
+        return self.world.balls[0].in_play and self.world.at_rest()
+
+    # --- events ----------------------------------------------------------------------
+    def handle_event(self, e: pg.event.Event) -> None:
+        if e.type == pg.KEYDOWN:
+            self._key(e.key)
+        elif e.type == pg.MOUSEBUTTONDOWN:
+            if e.button == 1 and self._can_aim():
+                cue = self.world.balls[0]
+                cx, cy = to_px(cue.x, cue.y)
+                if math.hypot(e.pos[0] - cx, e.pos[1] - cy) <= GRAB_RADIUS_M * PX_PER_M:
+                    self.drag.begin((cx, cy), e.pos)
+            elif e.button == 3:
+                self.drag.cancel()
+        elif e.type == pg.MOUSEMOTION:
+            self.drag.move(e.pos)
+        elif e.type == pg.MOUSEBUTTONUP and e.button == 1 and self.drag.active:
+            self.drag.move(e.pos)
+            shot = self.drag.end()
+            if shot is not None:
+                self.world.apply(shot)
+                self.rules.on_shot()
+
+    def _key(self, key: int) -> None:
+        if key == pg.K_r:
+            self.new_game()
+        elif key == pg.K_g:
+            self.show_grid = not self.show_grid
+        elif key == pg.K_ESCAPE:
+            self.drag.cancel()
+        elif key in (pg.K_1, pg.K_2, pg.K_3):
+            self.set_feel(FEEL_ORDER[key - pg.K_1])
+
+    # --- update / draw ------------------------------------------------------------------
+    def update(self, dt: float) -> None:
+        self._acc += min(dt, MAX_FRAME_DT)
+        while self._acc >= PHYSICS_DT:
+            self._acc -= PHYSICS_DT
+            events = self.world.step()
+            if events:
+                self.rules.on_events(events)
+        if (
+            not self.world.balls[0].in_play
+            and self.world.at_rest()
+            and self.rules.take_cue_respawn()
+        ):
+            self.world.respawn_cue()
+
+    def draw(self, canvas: pg.Surface) -> None:
+        canvas.blit(self.table, (0, 0))
+        if self.show_grid:
+            canvas.blit(self.grid, (0, 0))
+        draw.draw_balls(canvas, self.world.balls, self.sprites)
+        cue = self.world.balls[0]
+        if self.drag.has_direction and cue.in_play:
+            a = self.drag.angle
+            contact = first_contact(self.world.balls, (cue.x, cue.y), (math.cos(a), math.sin(a)))
+            draw.draw_aim(canvas, cue, contact, self.drag.pointer)
+        draw.draw_power_bar(canvas, self.drag.power)

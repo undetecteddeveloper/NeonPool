@@ -56,6 +56,15 @@ FEEL_SETS: dict[str, FeelSet] = {
 FEEL_ORDER = ("TRON", "VUA", "CHAM")  # keys 1 / 2 / 3
 DEFAULT_FEEL = "VUA"
 
+# --- Screen / input (logical canvas is drawn once, then scaled to the window) ---
+LOGICAL_SIZE = (1280, 720)
+PX_PER_M = 350  # render only (invariant 3): metres -> logical pixels
+RAIL_PX = 40  # visual rail thickness around the cloth
+MAX_DRAG_PX = 220  # pull-back distance (logical px) that means full power
+MIN_POWER = 0.04  # releasing with less than this cancels the shot
+GRAB_RADIUS_M = BALL_R * 2.6  # how close to the cue ball a press must be to start aiming
+AIM_MIN_PX = 4  # pointer closer than this to the cue ball: no direction yet
+
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---
 RACK_ORDER = (1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 6, 13, 14, 7, 15)
