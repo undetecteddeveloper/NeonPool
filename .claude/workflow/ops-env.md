@@ -17,3 +17,6 @@
 
 ## Sự cố đã biết
 (Thêm dòng có ngày khi gặp: `YYYY-MM-DD — hiện tượng — nguyên nhân — cách xử lý`.)
+- 2026-10-28 — hình mờ, lỗ có răng cưa trên laptop HD — vẽ lên canvas cố định 1280×720 rồi phóng/thu, `pg.draw` không khử răng cưa; Windows có thể còn tự kéo giãn cửa sổ khi màn hình bật tỉ lệ 125%/150% — vẽ ở độ phân giải thật (`View`), gọi `SetProcessDpiAwareness` trước `pg.init()`, cỡ cửa sổ mở đầu tự vừa màn hình (`_start_size`).
+- 2026-10-28 — `smoothscale` trên ảnh có alpha làm viền đen quanh bi — nó trộn màu của pixel trong suốt (đen) — nhân trước alpha (`premul_alpha`) rồi blit bằng `BLEND_PREMULTIPLIED`.
+- 2026-10-28 — "Invalid font (font module quit since font created)" khi pygame tắt/bật lại (test) — phông đã cache chết theo `pg.quit()`; `register_quit` chỉ chạy một lần nên không đủ — `fonts.get` kiểm tra phông còn sống rồi tạo lại.

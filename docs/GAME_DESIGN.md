@@ -8,8 +8,8 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Thể loại | Bida pool 2D nhìn từ trên xuống, pygame-ce, một người chơi |
 | Luật | 8-ball (15 bi + bi trắng; bi nguyên 1–7, bi sọc 9–15, bi 8 đánh cuối) |
 | Chế độ | Tập một mình: không đối thủ, không lượt; đếm số cú, lỗi chỉ bị phạt nhẹ |
-| Nhập liệu bản đầu | Kéo thả ngắm + lực (hướng kéo = hướng đánh, độ dài kéo = lực) |
-| Nhập liệu bản sau | Người chơi nhập công thức toán → sinh ra cùng `Shot` (ARCHITECTURE.md) |
+| Chế độ chơi | HAI chế độ (người dùng đổi định hướng 2026-10-28, trước đó là "bản đầu kéo thả, bản sau công thức"): (1) kéo thả kiểu truyền thống; (2) nhập công thức toán để đánh. Cả hai cùng sinh ra `Shot` (ARCHITECTURE.md). Chi tiết chế độ công thức: xem mục "Chế độ công thức" bên dưới |
+| Kéo thả | Hướng kéo ngược = hướng đánh; độ dài thanh kéo = lực, CÓ GIỚI HẠN (kéo quá mức tối đa thì thanh không dài thêm) |
 | Vật lý | Có xoáy cơ bản: đánh cao/thấp (bi trắng chạy tới/lùi sau va chạm). CHƯA có xoáy ngang |
 | Ngôn ngữ | Tiếng Việt + tiếng Anh, đổi được; mặc định tiếng Việt |
 | Chỉnh cảm giác | Claude đề xuất 2–3 bộ thông số CÓ TÊN, người dùng chơi thử và chọn |
@@ -29,6 +29,11 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Hiệu ứng | Vừa đủ, tinh tế: bi co nhỏ biến mất khi vào lỗ, vòng gợn nhẹ khi va chạm mạnh, rung rất nhẹ khi phá bi |
 | Cửa sổ | Mở ~1280×720, kéo to/nhỏ được, F11 toàn màn hình; hình co theo, giữ đúng tỉ lệ bàn |
 | MVP | Menu mở đầu (Chơi / Ngôn ngữ / Thoát) + bàn chơi tự do (15 bi tam giác, kéo thả, va chạm, nảy băng, vào lỗ, bi trắng rơi lỗ thì đặt lại) + bảng bên (số cú, bi còn lại) + phím R chơi lại, M tắt tiếng, G lưới. CHƯA có luật thắng thua, xoáy, công thức |
+
+## Phản hồi sau khi người dùng chơi thử MVP (2026-10-28)
+- Đồ họa: phải là vector thật, mịn ở mọi cỡ cửa sổ (laptop HD 1280×720 của người dùng; cửa sổ mở đầu tự vừa màn hình). Đã chuyển sang vẽ ở độ phân giải thật.
+- Thanh kéo: dài theo lực, DỪNG ở lực tối đa (không dài vô tận), đổi màu vàng → cam. Thanh lực bên trái vẫn giữ, chờ người dùng quyết (xem câu hỏi).
+- Lực tối đa giảm ~28%: `TRON` 8,0 → 5,8 · `VUA` 7,0 → 5,0 · `CHAM` 6,0 → 4,3 m/s. Âm thanh và kéo to/nhỏ cửa sổ: người dùng hài lòng.
 
 ## Luật tập một mình (đề xuất theo WPA 8-ball, rút gọn — người dùng duyệt khi làm tính năng luật)
 - Bàn "mở" sau cú phá. Bi đầu tiên vào lỗ hợp lệ (nguyên hoặc sọc) quyết định nhóm của người chơi.

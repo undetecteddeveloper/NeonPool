@@ -64,10 +64,16 @@ def main() -> int:
 
     idle = measure(app, 60)
 
-    # full-power break: press the cue ball, pull MAX_DRAG_PX to the left, release
+    # aiming: the glow line, pull bar and ghost ball are redrawn smoothly every frame
     cx, cy = (round(v) for v in to_px(*config.HEAD_SPOT))
-    pull = (cx - config.MAX_DRAG_PX, cy)
     app.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(cx, cy), button=1))
+    app.handle_event(
+        pg.event.Event(pg.MOUSEMOTION, pos=(cx - 120, cy + 8), rel=(0, 0), buttons=(1, 0, 0))
+    )
+    aiming = measure(app, 60)
+
+    # full-power break: pull MAX_DRAG_PX to the left of the (still pressed) cue ball, release
+    pull = (cx - config.MAX_DRAG_PX, cy)
     app.handle_event(pg.event.Event(pg.MOUSEMOTION, pos=pull, rel=(0, 0), buttons=(1, 0, 0)))
     app.handle_event(pg.event.Event(pg.MOUSEBUTTONUP, pos=pull, button=1))
     if app.scene.rules.shots != 1:  # never report OK for a break that did not happen
@@ -76,7 +82,7 @@ def main() -> int:
     breaking = measure(app, args.frames)
     pg.quit()
 
-    ok = report("đứng yên", idle) & report("cú phá", breaking)
+    ok = report("đứng yên", idle) & report("đang ngắm", aiming) & report("cú phá", breaking)
     return 0 if ok else 1
 
 

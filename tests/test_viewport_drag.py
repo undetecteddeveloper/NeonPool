@@ -79,3 +79,16 @@ def test_cancel_and_idle_state():
     d.move((60, 10))
     d.cancel()
     assert not d.active and d.end() is None
+
+
+# --- feedback 2026-10-28: the pull bar must not grow forever ---------------------------------
+def test_bar_length_grows_with_the_pull_then_stops_at_full_power():
+    d = DragAim()
+    assert d.bar_length == 0.0
+    d.begin((0, 0), (0, 0))
+    d.move((-MAX_DRAG_PX / 2, 0))
+    assert d.bar_length == pytest.approx(MAX_DRAG_PX / 2)
+    d.move((-MAX_DRAG_PX * 5, 0))  # the mouse is far beyond full power
+    assert d.bar_length == MAX_DRAG_PX and d.power == 1.0
+    d.cancel()
+    assert d.bar_length == 0.0

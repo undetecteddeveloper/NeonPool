@@ -25,6 +25,7 @@ from game.render import draw, hud
 from game.render import palette as C
 from game.render.fx import Fx
 from game.render.layout import OUTER_H, OUTER_W, OUTER_X, OUTER_Y, to_px
+from game.render.view import View
 from game.rules.free_play import FreePlay
 
 
@@ -36,12 +37,17 @@ class PlayScene:
         self.rules = FreePlay()
         self.drag = DragAim()
         self.fx = Fx()
-        self.sprites = draw.BallSprites()
-        self.table = draw.build_table()
-        self.grid = draw.build_grid()
         self.show_grid = False
         self._acc = 0.0
         self._break_pending = True  # the first hard hit after a rack shakes the screen
+        self.set_view(app.view)
+
+    def set_view(self, v: View) -> None:
+        """(Re)build everything that depends on the resolution."""
+        self.view = v
+        self.sprites = draw.BallSprites(v)
+        self.table = draw.build_table(v)
+        self.grid = draw.build_grid(v)
 
     # --- game flow -------------------------------------------------------------------
     def new_game(self) -> None:
@@ -135,19 +141,22 @@ class PlayScene:
                 self.fx.add_drop(ev.ball, balls[ev.ball].x, balls[ev.ball].y, ev.pocket)
 
     def draw(self, canvas: pg.Surface) -> None:
+        v = self.view
         canvas.blit(self.table, (0, 0))
         if self.show_grid:
             canvas.blit(self.grid, (0, 0))
-        draw.draw_balls(canvas, self.world.balls, self.sprites)
-        self.fx.draw(canvas, self.sprites)
+        draw.draw_balls(canvas, v, self.world.balls, self.sprites)
+        self.fx.draw(canvas, v, self.sprites)
         cue = self.world.balls[0]
         if self.drag.has_direction and cue.in_play:
             a = self.drag.angle
-            contact = first_contact(self.world.balls, (cue.x, cue.y), (math.cos(a), math.sin(a)))
-            draw.draw_aim(canvas, cue, contact, self.drag.pointer)
-        draw.draw_power_bar(canvas, self.drag.power)
+            d = (math.cos(a), math.sin(a))
+            contact = first_contact(self.world.balls, (cue.x, cue.y), d)
+            draw.draw_aim(canvas, v, cue, contact, d, self.drag.bar_length, self.drag.power)
+        draw.draw_power_bar(canvas, v, self.drag.power)
         hud.draw_panel(
             canvas,
+            v,
             shots=self.rules.shots,
             pocketed=self.rules.pocketed,
             feel_key=self.feel_key,
@@ -158,6 +167,7 @@ class PlayScene:
         if self.rules.shots == 0 and self._can_aim() and not self.drag.active:
             hud.text(
                 canvas,
+                v,
                 t("hud.hint"),
                 16,
                 C.TEXT_DIM,

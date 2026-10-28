@@ -15,8 +15,9 @@ from game.config import (
     SHAKE_PX,
     SHAKE_S,
 )
-from game.render.draw import BallSprites
+from game.render.draw import Aa, BallSprites, blit_pm
 from game.render.layout import BALL_PX, to_px
+from game.render.view import View
 
 
 @dataclass
@@ -72,21 +73,29 @@ class Fx:
         k = (1.0 - self._shake_age / SHAKE_S) ** 2 * SHAKE_PX
         return math.sin(self._shake_age * 90) * k, math.cos(self._shake_age * 110) * k
 
-    def draw(self, canvas: pg.Surface, sprites: BallSprites) -> None:
+    def draw(self, canvas: pg.Surface, v: View, sprites: BallSprites) -> None:
         for d in self.drops:
             t = d.age / POCKET_ANIM_S
             px, py, _ = POCKETS[d.pocket]
-            x, y = to_px(d.x + (px - d.x) * t, d.y + (py - d.y) * t)
+            x, y = v.pt(to_px(d.x + (px - d.x) * t, d.y + (py - d.y) * t))
             size = max(2, round(sprites.size * (1.0 - t * t)))
             sprite = pg.transform.smoothscale(sprites.get(d.number), (size, size))
-            canvas.blit(sprite, (round(x - size / 2), round(y - size / 2)))
+            blit_pm(canvas, sprite, (x - size / 2, y - size / 2))
         for r in self.ripples:
             t = r.age / RIPPLE_S
             radius = BALL_PX * (0.9 + 1.6 * (1 - (1 - t) ** 2))
-            size = math.ceil(radius * 2 + 6)
-            layer = pg.Surface((size, size), pg.SRCALPHA)
-            pg.draw.circle(
-                layer, (255, 255, 255, round(190 * (1 - t))), (size / 2, size / 2), radius, 2
+            c = to_px(r.x, r.y)
+            layer = Aa(
+                canvas,
+                v,
+                v.rect(c[0] - radius - 4, c[1] - radius - 4, 2 * radius + 8, 2 * radius + 8),
+                ss=3,
             )
-            cx, cy = to_px(r.x, r.y)
-            canvas.blit(layer, (round(cx - size / 2), round(cy - size / 2)))
+            pg.draw.circle(
+                layer.surf,
+                (255, 255, 255, round(190 * (1 - t))),
+                layer.pt(c),
+                layer.n(radius),
+                max(1, round(layer.n(2))),
+            )
+            layer.done()

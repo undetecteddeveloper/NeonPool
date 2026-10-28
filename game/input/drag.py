@@ -40,6 +40,11 @@ class DragAim:
         return math.hypot(self._cue[0] - self._pointer[0], self._cue[1] - self._pointer[1])
 
     @property
+    def bar_length(self) -> float:
+        """Length of the pull bar to show: grows with the pull, never beyond full power."""
+        return min(self.pull, MAX_DRAG_PX) if self.active else 0.0
+
+    @property
     def has_direction(self) -> bool:
         return self.active and self.pull >= AIM_MIN_PX
 
