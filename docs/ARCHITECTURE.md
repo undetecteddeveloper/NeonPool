@@ -20,7 +20,7 @@ game/
     collide.py           #   bi–bi, bi–băng, bi–lỗ
   rules/                 # THUẦN: eight_ball.py nhận Event -> trạng thái ván (nhóm, lỗi, thắng/thua)
   input/                 # drag.py (bản đầu) · formula.py (bản sau) -> đều trả Shot
-  render/                # vẽ bàn, bi, gậy, HUD; PX_PER_M chỉ dùng ở đây
+  render/                # vẽ bàn (table.py), bi, thanh kéo, HUD; PX_PER_M chỉ dùng ở đây
   scenes/                # menu, play, ...
 lang/vi.json, en.json
 tests/                   # pytest; conftest.py đặt SDL dummy

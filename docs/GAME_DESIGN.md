@@ -19,11 +19,11 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Hạng mục | Quyết định |
 |---|---|
 | Phong cách | Vector 2D phẳng, viền đen dày kiểu hoạt hình; giao diện tối giản hiện đại |
-| Màu | Khung giao diện tối nhẹ (xanh than), mặt bàn xanh lục tươi ca-rô hai tông, viền bàn đen dày, bi màu bão hòa |
-| Bi | Màu đặc + viền đen; bi sọc = dải trắng ngang; số nhỏ trong chấm trắng; bi trắng trơn |
+| Màu | Khung giao diện tối nhẹ (xanh than), bi màu bão hòa. BÀN vẽ lại theo ảnh tham chiếu (xem mục "Phản hồi lần 2"): KHÔNG còn ô ca-rô, nỉ xanh sáng ở giữa tối dần ra mép |
+| Bi | Màu đặc + viền đen; bi sọc = dải trắng ngang; số nhỏ trong chấm trắng; bi trắng trơn. Bóng đổ của bi rơi THẲNG XUỐNG (ánh sáng từ trên màn hình xuống), không nghiêng |
 | Bàn | Bida chuẩn 6 lỗ (4 góc + 2 giữa), hình chữ nhật, KHÔNG vật cản |
 | Vạch ngắm | Sáng, đi từ bi trắng tới điểm chạm ĐẦU TIÊN (bi hoặc băng), kèm mũi tên nhỏ cho hướng bi bị đụng; không dự đoán nảy băng |
-| Kéo thả | Kéo lùi từ bi trắng như kéo dây cung; kéo càng xa lực càng mạnh; thanh lực dọc bên trái |
+| Kéo thả | Kéo lùi từ bi trắng như kéo dây cung; kéo càng xa lực càng mạnh; thanh kéo là một thanh THẲNG, bề rộng đều, hai đầu vuông góc (không thon, không bo tròn) |
 | Lưới toạ độ | Ẩn mặc định, phím G bật/tắt (hệ toạ độ cho chế độ công thức về sau). Tạm: gốc ở TÂM bàn, x sang phải, y hướng LÊN (quy ước toán), đơn vị mét, vạch mờ mỗi 0,1 m — chốt lại khi làm chế độ công thức |
 | Âm thanh | Hiệu ứng cơ bản: gậy đánh, bi va (mạnh/nhẹ theo lực), nảy băng, rơi lỗ; KHÔNG nhạc nền; tự tạo bằng mã (nghe hơi "máy", thay file thật được); có tắt tiếng |
 | Hiệu ứng | Vừa đủ, tinh tế: bi co nhỏ biến mất khi vào lỗ, vòng gợn nhẹ khi va chạm mạnh, rung rất nhẹ khi phá bi |
@@ -36,10 +36,12 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 - Đường cong lực: lực = (kéo / kéo tối đa)² — kéo nửa chừng chỉ ra ~1/4 lực (dễ đánh nhẹ chính xác). Kéo ngắn hơn 12 px khi thả = huỷ cú.
 - Lực tối đa giảm ~28%: `TRON` 8,0 → 5,8 · `VUA` 7,0 → 5,0 · `CHAM` 6,0 → 4,3 m/s. Âm thanh và kéo to/nhỏ cửa sổ: người dùng hài lòng.
 
-## Chế độ công thức (người dùng chốt 2026-10-28; chi tiết còn lại ở PROGRESS "Đang mở")
-- Người chơi nhập PHƯƠNG TRÌNH ĐƯỜNG THẲNG y = ax + b trên hệ toạ độ của bàn (gốc ở tâm bàn, x sang phải, y lên, mét); bi trắng chạy theo đường đó; lực nhập riêng. Đường cong y = f(x) để làm SAU CÙNG.
-- Đường phải đi qua đúng vị trí bi trắng (người chơi tự tính b từ vị trí bi và bi mục tiêu): đó là phần "toán" của game.
-- Menu có HAI nút Chơi riêng ("kéo thả" và "công thức"), chọn lúc bắt đầu ván.
+## Phản hồi lần 2 (2026-10-28, người dùng sau khi test)
+- Bỏ ô ca-rô trên mặt nỉ. 
+- Bóng đổ của bi: từ trên xuống (thẳng xuống dưới bi), thay cho bóng nghiêng chéo.
+- Thanh kéo: thanh thẳng góc cạnh, bỏ đầu bo tròn và bỏ độ thon.
+- Bàn vẽ lại theo ảnh tham chiếu `ban-bida-anh-tham-chieu.webp` (ảnh của bên thứ ba, chỉ để tham khảo, KHÔNG đưa vào git): khung gỗ nâu có vân, tấm đồng/kem ở 4 góc và 2 lỗ giữa, nỉ xanh sáng ở giữa và tối dần ra mép, băng đệm xanh đậm có vạch sáng ở mép nỉ, lỗ đen có viền xám, chấm kim cương vàng trên khung (mỗi 1/8 cạnh dài, mỗi 1/4 cạnh ngắn). Hình học vật lý và vị trí lỗ KHÔNG đổi (mép nỉ = mặt băng). Mã: `game/render/table.py`.
+
 
 ## Luật tập một mình (đề xuất theo WPA 8-ball, rút gọn — người dùng duyệt khi làm tính năng luật)
 - Bàn "mở" sau cú phá. Bi đầu tiên vào lỗ hợp lệ (nguyên hoặc sọc) quyết định nhóm của người chơi.

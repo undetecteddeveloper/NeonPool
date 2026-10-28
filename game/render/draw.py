@@ -1,4 +1,4 @@
-"""Drawing helpers at device resolution: table, balls, aim, pull bar, power bar, grid.
+"""Drawing helpers at device resolution: balls, aim, pull bar, grid (the table is in table.py).
 
 Smooth edges: shapes with transparency are painted on a bigger surface, converted to
 premultiplied alpha, shrunk with smoothscale and blitted with BLEND_PREMULTIPLIED (plain
@@ -13,8 +13,6 @@ import pygame as pg
 
 from game.config import (
     BALL_R,
-    POCKETS,
-    PX_PER_M,
     TABLE_L,
     TABLE_W,
 )
@@ -26,17 +24,17 @@ from game.render.layout import (
     FIELD_W,
     FIELD_X,
     FIELD_Y,
-    OUTER_H,
-    OUTER_W,
-    OUTER_X,
-    OUTER_Y,
     to_px,
 )
+from game.render.table import build_table
 from game.render.view import View
 
 OUT_PX = 2.4  # thick cartoon outline of a ball (logical px)
 SS_BALL = 4  # sprites are painted at 4x
 RIM = BALL_PX + OUT_PX
+SHADOW_DROP = 3.5  # a ball's shadow sits this far straight below it (logical px)
+BAR_HALF_W = 4.5  # half width of the pull bar (logical px)
+BAR_EDGE = 2.4  # black outline of the pull bar
 
 
 # --- smooth-shape plumbing -------------------------------------------------------------
@@ -100,41 +98,6 @@ def blit_rrect(
     blit_pm(canvas, rrect_sprite(v, w, h, radius, fill, edge), v.pt((x - edge, y - edge)))
 
 
-# --- static table ----------------------------------------------------------------------
-def _paint_table(s: pg.Surface, v: View) -> None:
-    s.fill(C.BG)
-    pg.draw.rect(
-        s,
-        C.OUTLINE,
-        v.rect(OUTER_X - 5, OUTER_Y - 5, OUTER_W + 10, OUTER_H + 10),
-        border_radius=v.i(24),
-    )
-    pg.draw.rect(s, C.RAIL, v.rect(OUTER_X, OUTER_Y, OUTER_W, OUTER_H), border_radius=v.i(18))
-    pg.draw.rect(
-        s,
-        C.OUTLINE,
-        v.rect(FIELD_X - 5, FIELD_Y - 5, FIELD_W + 10, FIELD_H + 10),
-        border_radius=v.i(4),
-    )
-    sq = FIELD_W / 20
-    s.set_clip(v.rect(FIELD_X, FIELD_Y, FIELD_W, FIELD_H))
-    for iy in range(math.ceil(FIELD_H / sq)):
-        for ix in range(20):
-            color = C.CLOTH_A if (ix + iy) % 2 == 0 else C.CLOTH_B
-            s.fill(color, v.rect(FIELD_X + ix * sq, FIELD_Y + iy * sq, sq, sq))
-    s.set_clip(None)
-    for px, py, pr in POCKETS:
-        pg.draw.circle(s, C.POCKET, v.pt(to_px(px, py)), v.n(pr * PX_PER_M))
-
-
-def build_table(v: View) -> pg.Surface:
-    """Background + rails + checkered cloth + pockets: painted at 3x, shrunk once (smooth edges)."""
-    k = v.ss()
-    big = pg.Surface(v.scaled(k).size)
-    _paint_table(big, v.scaled(k))
-    return pg.transform.smoothscale(big, v.size)
-
-
 # --- balls -----------------------------------------------------------------------------
 class BallSprites:
     """Cached premultiplied ball sprites at this view's resolution, plus one shared shadow."""
@@ -189,7 +152,8 @@ def draw_balls(canvas: pg.Surface, v: View, balls, sprites: BallSprites) -> None
     for b in balls:
         if b.in_play:
             x, y = v.pt(to_px(b.x, b.y))
-            blit_pm(canvas, sprites.shadow, (x - half + v.n(2), y - half + v.n(3)))
+            # light comes from straight above the screen: the shadow falls straight down
+            blit_pm(canvas, sprites.shadow, (x - half, y - half + v.n(SHADOW_DROP)))
     for b in balls:
         if b.in_play:
             x, y = v.pt(to_px(b.x, b.y))
@@ -208,16 +172,16 @@ def _object_center(contact) -> tuple[float, float]:
     return contact.point[0] + dx * 2 * BALL_R, contact.point[1] + dy * 2 * BALL_R
 
 
-def _bar_polygon(p0, d, length: float, w0: float, w1: float):
-    """Tapered bar from p0 along unit d: half-width w0 at p0 growing to w1 at the far end."""
+def _bar_polygon(p0, d, length: float, half_w: float):
+    """Straight bar from p0 along unit d: a plain rectangle with square corners."""
     nx, ny = -d[1], d[0]
     p1 = (p0[0] + d[0] * length, p0[1] + d[1] * length)
     return [
-        (p0[0] + nx * w0, p0[1] + ny * w0),
-        (p1[0] + nx * w1, p1[1] + ny * w1),
-        (p1[0] - nx * w1, p1[1] - ny * w1),
-        (p0[0] - nx * w0, p0[1] - ny * w0),
-    ], p1
+        (p0[0] + nx * half_w, p0[1] + ny * half_w),
+        (p1[0] + nx * half_w, p1[1] + ny * half_w),
+        (p1[0] - nx * half_w, p1[1] - ny * half_w),
+        (p0[0] - nx * half_w, p0[1] - ny * half_w),
+    ]
 
 
 def draw_aim(
@@ -242,22 +206,17 @@ def draw_aim(
     layer = Aa(canvas, v, box_around(v, pts, 26), ss=2 if v.s <= 1.3 else 1)
     surf = layer.surf
 
-    # pull bar: black outline, power-coloured fill, round butt
+    # pull bar: a straight rectangle, black outline, power-coloured fill, square ends
     if bar_len > 6:
-        poly, tip = _bar_polygon(
-            layer.pt(bar0), (ux, uy), layer.n(bar_len), layer.n(2.4), layer.n(5.5)
-        )
-        outline, _ = _bar_polygon(
-            layer.pt((bar0[0] - ux * 2.4, bar0[1] - uy * 2.4)),
+        outline = _bar_polygon(
+            layer.pt((bar0[0] - ux * BAR_EDGE, bar0[1] - uy * BAR_EDGE)),
             (ux, uy),
-            layer.n(bar_len + 4.8),
-            layer.n(2.4 + 2.4),
-            layer.n(5.5 + 2.4),
+            layer.n(bar_len + 2 * BAR_EDGE),
+            layer.n(BAR_HALF_W + BAR_EDGE),
         )
+        poly = _bar_polygon(layer.pt(bar0), (ux, uy), layer.n(bar_len), layer.n(BAR_HALF_W))
         pg.draw.polygon(surf, C.OUTLINE, outline)
-        pg.draw.circle(surf, C.OUTLINE, tip, layer.n(5.5 + 2.4))
         pg.draw.polygon(surf, power_color(power), poly)
-        pg.draw.circle(surf, power_color(power), tip, layer.n(5.5))
 
     # glow line from the ball's rim to the first contact
     ax, ay = end[0] - centre[0], end[1] - centre[1]
