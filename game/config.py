@@ -49,9 +49,9 @@ class FeelSet:
 # Starting values: cushion e 0.98 and rolling friction ~0.01 (decel ~0.1) are the research
 # baselines in docs/GAME_DESIGN.md (TRON); VUA / CHAM are self-chosen, to be playtested.
 FEEL_SETS: dict[str, FeelSet] = {
-    "TRON": FeelSet("TRON", "feel.tron", roll_decel=0.10, cushion_e=0.98, ball_e=0.96, v_max=8.0),
-    "VUA": FeelSet("VUA", "feel.vua", roll_decel=0.18, cushion_e=0.92, ball_e=0.95, v_max=7.0),
-    "CHAM": FeelSet("CHAM", "feel.cham", roll_decel=0.35, cushion_e=0.85, ball_e=0.93, v_max=6.0),
+    "TRON": FeelSet("TRON", "feel.tron", roll_decel=0.10, cushion_e=0.98, ball_e=0.96, v_max=5.8),
+    "VUA": FeelSet("VUA", "feel.vua", roll_decel=0.18, cushion_e=0.92, ball_e=0.95, v_max=5.0),
+    "CHAM": FeelSet("CHAM", "feel.cham", roll_decel=0.35, cushion_e=0.85, ball_e=0.93, v_max=4.3),
 }
 FEEL_ORDER = ("TRON", "VUA", "CHAM")  # keys 1 / 2 / 3
 DEFAULT_FEEL = "VUA"
