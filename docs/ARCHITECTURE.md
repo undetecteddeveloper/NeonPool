@@ -33,7 +33,10 @@ tools/                   # gate.py (cổng), smoke.py, shot.py, _out/ (git bỏ 
 - `Event`: `BallHitBall(a, b, speed)`, `BallHitCushion(ball, speed)`, `BallPocketed(ball, pocket)`; `speed` = vận tốc va theo pháp tuyến (m/s), chỉ phát khi > `MIN_EVENT_SPEED`. `rules` chỉ đọc Event, không đọc trạng thái vật lý.
 - `physics.first_contact(balls, origin, direction) -> Contact(kind, distance, point, ball, object_dir)`: điểm bi trắng chạm đầu tiên (bi hoặc băng) cho vạch ngắm.
 - `rules.free_play.FreePlay`: `on_shot()`, `on_events(events)`, `shots`, `balls_left`, `take_cue_respawn()`.
-- `App`: `__init__(screen)`, `handle_event(e)`, `update(dt)`, `draw()` — tools/smoke.py và tools/shot.py dựa vào đúng bốn thứ này.
+- `App`: `__init__(screen)`, `handle_event(e)`, `update(dt)`, `draw()`, `go_play()`, `go_menu()` — tools/smoke.py và tools/shot.py dựa vào các hàm này. App mở ở menu; `PlayScene` được giữ sống để Esc → menu → "Chơi tiếp" vẫn đúng ván cũ. Phím toàn cục (App): F11 toàn màn hình, M tắt/mở tiếng; phím riêng của bàn (R, G, 1/2/3, Esc) nằm ở `PlayScene`.
+- Chuột: App đổi toạ độ cửa sổ → toạ độ canvas logic 1280×720 (`render/viewport.py`) TRƯỚC khi giao cho scene; scene chỉ biết toạ độ logic.
+- `i18n.t("khoa")`: `lang/vi.json` và `lang/en.json` phải cùng bộ khoá (test); khoá thiếu → thử ngôn ngữ kia → trả chính khoá + log cảnh báo. `render/fonts.get(size, bold)` tự tạo lại phông nếu pygame đã tắt/bật lại.
+- `Audio` (`game/audio.py`): tổng hợp âm bằng numpy, không có thiết bị thì im lặng; `on_events` chỉ phát tối đa `SFX_MAX_PER_FRAME` tiếng mạnh nhất mỗi khung (tiếng rơi lỗ luôn được phát). `Fx` (`render/fx.py`): vòng gợn, bi co vào lỗ, rung — chỉ phụ thuộc thời gian, không ngẫu nhiên.
 
 ## Quy ước chống lỗi (chi tiết kiểm thử: workflow/physics.md)
 - Bi tốc độ cao có thể xuyên băng/xuyên bi giữa hai bước: bước cố định nhỏ + chia bước con theo vận tốc tối đa, hoặc phát hiện va chạm liên tục. Không dựa vào "tốc độ chắc không tới mức đó".

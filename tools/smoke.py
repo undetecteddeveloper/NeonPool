@@ -60,6 +60,7 @@ def main() -> int:
     pg.init()
     screen = pg.display.set_mode(config.LOGICAL_SIZE)
     app = App(screen)
+    app.go_play()  # the app opens on the menu
 
     idle = measure(app, 60)
 

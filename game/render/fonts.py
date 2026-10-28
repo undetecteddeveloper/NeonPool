@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
-from functools import cache
-
 import pygame as pg
 
 CHAIN = "segoeui,arial,tahoma,dejavusans,freesans"
 
+_cache: dict[tuple[int, bool], pg.font.Font] = {}
 
-@cache
+
 def get(size: int, bold: bool = False) -> pg.font.Font:
+    key = (size, bold)
+    font = _cache.get(key)
+    if font is not None:
+        try:
+            font.get_height()  # raises once the font module has been quit since creation
+            return font
+        except pg.error:
+            pass
     if not pg.font.get_init():
         pg.font.init()
-    return pg.font.SysFont(CHAIN, size, bold=bold)
+    font = _cache[key] = pg.font.SysFont(CHAIN, size, bold=bold)
+    return font

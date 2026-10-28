@@ -10,6 +10,7 @@ from game.audio import Audio
 from game.config import LOGICAL_SIZE
 from game.render import palette as C
 from game.render.viewport import fit, window_to_logical
+from game.scenes.menu import MenuScene
 from game.scenes.play import PlayScene
 
 log = logging.getLogger("mathofpool")
@@ -21,8 +22,20 @@ class App:
         self.screen = screen
         self.canvas = pg.Surface(LOGICAL_SIZE)
         self.audio = Audio()
-        self.scene = PlayScene(self)
+        self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
+        self.menu = MenuScene(self)
+        self.scene = self.menu
         self.running = True
+
+    def go_play(self) -> None:
+        self.scene = self.play
+
+    def go_menu(self) -> None:
+        self.play.drag.cancel()
+        self.scene = self.menu
+
+    def game_in_progress(self) -> bool:
+        return self.play.rules.shots > 0
 
     # --- contract used by tools/smoke.py and tools/shot.py ---------------------------------
     def handle_event(self, e: pg.event.Event) -> None:

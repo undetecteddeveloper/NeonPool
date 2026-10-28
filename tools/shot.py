@@ -41,6 +41,8 @@ def main() -> int:
     parser.add_argument("--frames", type=int, default=60)
     parser.add_argument("--out", default="tools/_out/shot.png")
     parser.add_argument("--size", default="1280x720")
+    parser.add_argument("--scene", choices=("menu", "play"), default="play")
+    parser.add_argument("--lang", choices=("vi", "en"), default="")
     parser.add_argument(
         "--do",
         default="",
@@ -61,6 +63,12 @@ def main() -> int:
     pg.init()
     screen = pg.display.set_mode((width, height))
     app = App(screen)
+    if args.scene == "play":
+        app.go_play()
+    if args.lang:
+        from game import i18n
+
+        i18n.set_lang(args.lang)
     for action in filter(None, (a.strip() for a in args.do.split(";"))):
         app.handle_event(parse_action(pg, action))
     for _ in range(args.frames):

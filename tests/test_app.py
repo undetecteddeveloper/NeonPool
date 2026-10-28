@@ -1,0 +1,139 @@
+"""AC9/AC10: app wiring, headless. Window mapping and drag maths have their own tests."""
+
+import pygame as pg
+import pytest
+
+from game import config, i18n
+from game.app import App
+from game.render.layout import to_px
+
+
+@pytest.fixture
+def app():
+    pg.init()
+    screen = pg.display.set_mode(config.LOGICAL_SIZE)
+    a = App(screen)
+    yield a
+    pg.quit()
+    i18n.set_lang("vi")
+
+
+def key(k):
+    return pg.event.Event(pg.KEYDOWN, key=k)
+
+
+def click(pos):
+    return pg.event.Event(pg.MOUSEBUTTONDOWN, pos=pos, button=1)
+
+
+def test_app_opens_on_the_menu_and_play_enters_the_table(app):
+    assert app.scene is app.menu
+    app.handle_event(key(pg.K_RETURN))  # first item = Play
+    assert app.scene is app.play
+
+
+def test_menu_language_button_switches_language_both_ways(app):
+    assert i18n.get_lang() == "vi"
+    app.handle_event(key(pg.K_DOWN))
+    app.handle_event(key(pg.K_RETURN))
+    assert i18n.get_lang() == "en"
+    app.handle_event(key(pg.K_RETURN))
+    assert i18n.get_lang() == "vi"
+
+
+def test_menu_quit_stops_the_app(app):
+    app.handle_event(key(pg.K_UP))  # wraps to the last item: Quit
+    app.handle_event(key(pg.K_RETURN))
+    assert app.running is False
+
+
+def test_menu_buttons_work_with_the_mouse(app):
+    rects = app.menu._rects()
+    app.handle_event(click(rects[0].center))
+    assert app.scene is app.play
+
+
+def test_esc_returns_to_menu_and_play_resumes_the_same_game(app):
+    app.go_play()
+    cue = app.play.world.balls[0]
+    cx, cy = (round(v) for v in to_px(cue.x, cue.y))
+    app.handle_event(click((cx, cy)))
+    app.handle_event(
+        pg.event.Event(pg.MOUSEMOTION, pos=(cx - 150, cy), rel=(0, 0), buttons=(1, 0, 0))
+    )
+    app.handle_event(pg.event.Event(pg.MOUSEBUTTONUP, pos=(cx - 150, cy), button=1))
+    assert app.play.rules.shots == 1 and app.game_in_progress()
+    app.handle_event(key(pg.K_ESCAPE))
+    assert app.scene is app.menu
+    app.handle_event(key(pg.K_RETURN))
+    assert app.scene is app.play and app.play.rules.shots == 1
+
+
+def test_esc_while_dragging_cancels_the_drag_instead_of_leaving(app):
+    app.go_play()
+    cue = app.play.world.balls[0]
+    cx, cy = (round(v) for v in to_px(cue.x, cue.y))
+    app.handle_event(click((cx, cy)))
+    assert app.play.drag.active
+    app.handle_event(key(pg.K_ESCAPE))
+    assert not app.play.drag.active and app.scene is app.play
+
+
+def test_cannot_start_aiming_while_balls_move(app):
+    app.go_play()
+    app.play.world.balls[1].vx = 1.0  # something is rolling
+    cue = app.play.world.balls[0]
+    cx, cy = (round(v) for v in to_px(cue.x, cue.y))
+    app.handle_event(click((cx, cy)))
+    assert not app.play.drag.active
+
+
+def test_keys_restart_mute_grid_and_feel(app):
+    app.go_play()
+    app.play.rules.shots = 5
+    app.handle_event(key(pg.K_r))
+    assert app.play.rules.shots == 0
+    app.handle_event(key(pg.K_g))
+    assert app.play.show_grid
+    app.handle_event(key(pg.K_m))
+    assert app.audio.muted
+    for k, name in ((pg.K_1, "TRON"), (pg.K_2, "VUA"), (pg.K_3, "CHAM")):
+        app.handle_event(key(k))
+        assert app.play.feel_key == name and app.play.world.feel.key == name
+
+
+def test_pocketed_cue_ball_comes_back_once_everything_stops(app):
+    app.go_play()
+    play = app.play
+    play.world.balls[0].in_play = False
+    play.rules.cue_pocketed = True
+    app.update(1 / 60)
+    assert play.world.balls[0].in_play
+
+
+def test_every_screen_draws_in_both_languages(app):
+    for lang in ("vi", "en"):
+        i18n.set_lang(lang)
+        app.go_menu()
+        app.draw()
+        app.go_play()
+        app.play.show_grid = True
+        app.draw()
+
+
+def test_right_click_cancels_an_aim(app):
+    app.go_play()
+    cue = app.play.world.balls[0]
+    cx, cy = (round(v) for v in to_px(cue.x, cue.y))
+    app.handle_event(click((cx, cy)))
+    assert app.play.drag.active
+    app.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(cx, cy), button=3))
+    assert not app.play.drag.active and app.play.rules.shots == 0
+
+
+def test_drawing_a_ball_that_is_dropping_into_a_pocket(app):
+    app.go_play()
+    app.play.fx.add_drop(3, 0.05, 0.05, 0)
+    app.play.fx.add_ripple(1.0, 0.6)
+    app.update(config.POCKET_ANIM_S / 2)
+    app.draw()

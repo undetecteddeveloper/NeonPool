@@ -24,7 +24,7 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Bàn | Bida chuẩn 6 lỗ (4 góc + 2 giữa), hình chữ nhật, KHÔNG vật cản |
 | Vạch ngắm | Sáng, đi từ bi trắng tới điểm chạm ĐẦU TIÊN (bi hoặc băng), kèm mũi tên nhỏ cho hướng bi bị đụng; không dự đoán nảy băng |
 | Kéo thả | Kéo lùi từ bi trắng như kéo dây cung; kéo càng xa lực càng mạnh; thanh lực dọc bên trái |
-| Lưới toạ độ | Ẩn mặc định, một phím bật/tắt (hệ toạ độ cho chế độ công thức về sau) |
+| Lưới toạ độ | Ẩn mặc định, phím G bật/tắt (hệ toạ độ cho chế độ công thức về sau). Tạm: gốc ở TÂM bàn, x sang phải, y hướng LÊN (quy ước toán), đơn vị mét, vạch mờ mỗi 0,1 m — chốt lại khi làm chế độ công thức |
 | Âm thanh | Hiệu ứng cơ bản: gậy đánh, bi va (mạnh/nhẹ theo lực), nảy băng, rơi lỗ; KHÔNG nhạc nền; tự tạo bằng mã (nghe hơi "máy", thay file thật được); có tắt tiếng |
 | Hiệu ứng | Vừa đủ, tinh tế: bi co nhỏ biến mất khi vào lỗ, vòng gợn nhẹ khi va chạm mạnh, rung rất nhẹ khi phá bi |
 | Cửa sổ | Mở ~1280×720, kéo to/nhỏ được, F11 toàn màn hình; hình co theo, giữ đúng tỉ lệ bàn |

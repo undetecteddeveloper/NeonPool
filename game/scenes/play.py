@@ -18,11 +18,13 @@ from game.config import (
     RIPPLE_BALL_SPEED,
     RIPPLE_CUSHION_SPEED,
 )
+from game.i18n import t
 from game.input.drag import DragAim
 from game.physics import BallHitBall, BallHitCushion, BallPocketed, World, first_contact
-from game.render import draw
+from game.render import draw, hud
+from game.render import palette as C
 from game.render.fx import Fx
-from game.render.layout import to_px
+from game.render.layout import OUTER_H, OUTER_W, OUTER_X, OUTER_Y, to_px
 from game.rules.free_play import FreePlay
 
 
@@ -88,7 +90,10 @@ class PlayScene:
         elif key == pg.K_g:
             self.show_grid = not self.show_grid
         elif key == pg.K_ESCAPE:
-            self.drag.cancel()
+            if self.drag.active:
+                self.drag.cancel()
+            else:
+                self.app.go_menu()
         elif key in (pg.K_1, pg.K_2, pg.K_3):
             self.set_feel(FEEL_ORDER[key - pg.K_1])
 
@@ -141,3 +146,21 @@ class PlayScene:
             contact = first_contact(self.world.balls, (cue.x, cue.y), (math.cos(a), math.sin(a)))
             draw.draw_aim(canvas, cue, contact, self.drag.pointer)
         draw.draw_power_bar(canvas, self.drag.power)
+        hud.draw_panel(
+            canvas,
+            shots=self.rules.shots,
+            pocketed=self.rules.pocketed,
+            feel_key=self.feel_key,
+            muted=self.app.audio.muted,
+            moving=not self.world.at_rest(),
+            sprites=self.sprites,
+        )
+        if self.rules.shots == 0 and self._can_aim() and not self.drag.active:
+            hud.text(
+                canvas,
+                t("hud.hint"),
+                16,
+                C.TEXT_DIM,
+                (OUTER_X + OUTER_W // 2, OUTER_Y + OUTER_H + 26),
+                center=True,
+            )
