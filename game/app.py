@@ -6,6 +6,7 @@ import logging
 
 import pygame as pg
 
+from game.audio import Audio
 from game.config import LOGICAL_SIZE
 from game.render import palette as C
 from game.render.viewport import fit, window_to_logical
@@ -19,6 +20,7 @@ class App:
     def __init__(self, screen: pg.Surface) -> None:
         self.screen = screen
         self.canvas = pg.Surface(LOGICAL_SIZE)
+        self.audio = Audio()
         self.scene = PlayScene(self)
         self.running = True
 
@@ -27,9 +29,13 @@ class App:
         if e.type == pg.QUIT:
             self.running = False
             return
-        if e.type == pg.KEYDOWN and e.key == pg.K_F11:
-            _toggle_fullscreen()
-            return
+        if e.type == pg.KEYDOWN:
+            if e.key == pg.K_F11:
+                _toggle_fullscreen()
+                return
+            if e.key == pg.K_m:
+                self.audio.toggle_mute()
+                return
         if e.type in _MOUSE_EVENTS:
             pos = window_to_logical(e.pos, self._window_size(), LOGICAL_SIZE)
             e = pg.event.Event(e.type, {**e.dict, "pos": pos})
@@ -42,11 +48,13 @@ class App:
         self.scene.draw(self.canvas)
         screen = pg.display.get_surface() or self.screen
         screen.fill(C.OUTLINE)
-        _, x, y, w, h = fit(screen.get_size(), LOGICAL_SIZE)
+        scale, x, y, w, h = fit(screen.get_size(), LOGICAL_SIZE)
+        shake_x, shake_y = self.scene.shake_offset()
+        dest = (x + round(shake_x * scale), y + round(shake_y * scale))
         if (w, h) == LOGICAL_SIZE:
-            screen.blit(self.canvas, (x, y))
+            screen.blit(self.canvas, dest)
         else:
-            screen.blit(pg.transform.smoothscale(self.canvas, (w, h)), (x, y))
+            screen.blit(pg.transform.smoothscale(self.canvas, (w, h)), dest)
 
     def _window_size(self) -> tuple[int, int]:
         return (pg.display.get_surface() or self.screen).get_size()

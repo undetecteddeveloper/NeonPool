@@ -7,6 +7,7 @@ import math
 import pygame as pg
 
 from game.config import (
+    BREAK_SHAKE_SPEED,
     DEFAULT_FEEL,
     FEEL_ORDER,
     FEEL_SETS,
@@ -14,10 +15,13 @@ from game.config import (
     MAX_FRAME_DT,
     PHYSICS_DT,
     PX_PER_M,
+    RIPPLE_BALL_SPEED,
+    RIPPLE_CUSHION_SPEED,
 )
 from game.input.drag import DragAim
-from game.physics import World, first_contact
+from game.physics import BallHitBall, BallHitCushion, BallPocketed, World, first_contact
 from game.render import draw
+from game.render.fx import Fx
 from game.render.layout import to_px
 from game.rules.free_play import FreePlay
 
@@ -29,17 +33,20 @@ class PlayScene:
         self.world = World(seed=0, feel=FEEL_SETS[self.feel_key])
         self.rules = FreePlay()
         self.drag = DragAim()
+        self.fx = Fx()
         self.sprites = draw.BallSprites()
         self.table = draw.build_table()
         self.grid = draw.build_grid()
         self.show_grid = False
         self._acc = 0.0
+        self._break_pending = True  # the first hard hit after a rack shakes the screen
 
     # --- game flow -------------------------------------------------------------------
     def new_game(self) -> None:
         self.world.rack()
         self.rules.reset()
         self.drag.cancel()
+        self.fx.clear()
         self._acc = 0.0
 
     def set_feel(self, key: str) -> None:
@@ -48,6 +55,9 @@ class PlayScene:
 
     def _can_aim(self) -> bool:
         return self.world.balls[0].in_play and self.world.at_rest()
+
+    def shake_offset(self) -> tuple[float, float]:
+        return self.fx.shake_offset()
 
     # --- events ----------------------------------------------------------------------
     def handle_event(self, e: pg.event.Event) -> None:
@@ -69,6 +79,8 @@ class PlayScene:
             if shot is not None:
                 self.world.apply(shot)
                 self.rules.on_shot()
+                self._break_pending = self.rules.shots == 1
+                self.app.audio.play_shot(shot.power)
 
     def _key(self, key: int) -> None:
         if key == pg.K_r:
@@ -83,11 +95,17 @@ class PlayScene:
     # --- update / draw ------------------------------------------------------------------
     def update(self, dt: float) -> None:
         self._acc += min(dt, MAX_FRAME_DT)
+        frame_events = []
         while self._acc >= PHYSICS_DT:
             self._acc -= PHYSICS_DT
             events = self.world.step()
             if events:
                 self.rules.on_events(events)
+                self._show_events(events)
+                frame_events += events
+        if frame_events:
+            self.app.audio.on_events(frame_events)
+        self.fx.update(dt)
         if (
             not self.world.balls[0].in_play
             and self.world.at_rest()
@@ -95,11 +113,28 @@ class PlayScene:
         ):
             self.world.respawn_cue()
 
+    def _show_events(self, events) -> None:
+        balls = self.world.balls
+        for ev in events:
+            if isinstance(ev, BallHitBall):
+                if ev.speed >= RIPPLE_BALL_SPEED:
+                    a, b = balls[ev.a], balls[ev.b]
+                    self.fx.add_ripple((a.x + b.x) / 2, (a.y + b.y) / 2)
+                if self._break_pending and ev.speed >= BREAK_SHAKE_SPEED:
+                    self.fx.shake()
+                    self._break_pending = False
+            elif isinstance(ev, BallHitCushion):
+                if ev.speed >= RIPPLE_CUSHION_SPEED:
+                    self.fx.add_ripple(balls[ev.ball].x, balls[ev.ball].y)
+            elif isinstance(ev, BallPocketed):
+                self.fx.add_drop(ev.ball, balls[ev.ball].x, balls[ev.ball].y, ev.pocket)
+
     def draw(self, canvas: pg.Surface) -> None:
         canvas.blit(self.table, (0, 0))
         if self.show_grid:
             canvas.blit(self.grid, (0, 0))
         draw.draw_balls(canvas, self.world.balls, self.sprites)
+        self.fx.draw(canvas, self.sprites)
         cue = self.world.balls[0]
         if self.drag.has_direction and cue.in_play:
             a = self.drag.angle

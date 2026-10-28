@@ -65,6 +65,19 @@ MIN_POWER = 0.04  # releasing with less than this cancels the shot
 GRAB_RADIUS_M = BALL_R * 2.6  # how close to the cue ball a press must be to start aiming
 AIM_MIN_PX = 4  # pointer closer than this to the cue ball: no direction yet
 
+# --- Effects (subtle) and sound ---
+RIPPLE_BALL_SPEED = 1.2  # m/s: ball-ball impact at least this hard shows a ripple
+RIPPLE_CUSHION_SPEED = 1.6
+RIPPLE_S = 0.32
+MAX_RIPPLES = 14
+POCKET_ANIM_S = 0.25  # a pocketed ball shrinks toward the pocket over this time
+BREAK_SHAKE_SPEED = 2.5  # m/s: the first hard hit after a rack shakes the screen
+SHAKE_PX = 4.0
+SHAKE_S = 0.30
+SAMPLE_RATE = 44100
+SFX_MAX_PER_FRAME = 6  # cap sounds started per frame so a break is not a wall of noise
+SFX_REF_SPEED = 6.0  # m/s that maps to full volume
+
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---
 RACK_ORDER = (1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 6, 13, 14, 7, 15)
