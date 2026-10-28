@@ -29,8 +29,10 @@ tools/                   # gate.py (cổng), smoke.py, shot.py, _out/ (git bỏ 
 
 ## Hợp đồng chính
 - `Shot(angle: float, power: float 0..1, spin: float -1..1)`: spin = cao(+)/thấp(−) trên bi trắng. Ngoài `Shot`, không có đường nào khác để tác động bi trắng.
-- `World(seed)`, `World.place(balls)`, `World.apply(shot)`, `World.step(dt) -> list[Event]`, `World.at_rest() -> bool`. `step` chỉ nhận `PHYSICS_DT`; App gom dt khung hình thành nhiều bước cố định (trần dt 0,05 s để khỏi "xoắn ốc chết").
-- `Event`: `BallHitBall(a, b)`, `BallHitCushion(ball)`, `BallPocketed(ball, pocket)`, `BallLeftTable(ball)`. `rules` chỉ đọc Event, không đọc trạng thái vật lý.
+- `World(seed, feel, rack=True)`; `balls[n].number == n` (0 = bi trắng, 1–15); `World.place(n, x, y, vx, vy)`, `respawn_cue()`, `apply(shot)`, `step() -> list[Event]`, `at_rest()`, `kinetic_energy()`. `step()` luôn tiến đúng `PHYSICS_DT` (bên trong chia bước con chống xuyên); App gom dt khung hình thành nhiều bước (trần `MAX_FRAME_DT` = 0,05 s để khỏi "xoắn ốc chết"). Chồng lấn bi còn lại ≤ ~4 µm nhờ lặp tách bi tối đa 16 lượt.
+- `Event`: `BallHitBall(a, b, speed)`, `BallHitCushion(ball, speed)`, `BallPocketed(ball, pocket)`; `speed` = vận tốc va theo pháp tuyến (m/s), chỉ phát khi > `MIN_EVENT_SPEED`. `rules` chỉ đọc Event, không đọc trạng thái vật lý.
+- `physics.first_contact(balls, origin, direction) -> Contact(kind, distance, point, ball, object_dir)`: điểm bi trắng chạm đầu tiên (bi hoặc băng) cho vạch ngắm.
+- `rules.free_play.FreePlay`: `on_shot()`, `on_events(events)`, `shots`, `balls_left`, `take_cue_respawn()`.
 - `App`: `__init__(screen)`, `handle_event(e)`, `update(dt)`, `draw()` — tools/smoke.py và tools/shot.py dựa vào đúng bốn thứ này.
 
 ## Quy ước chống lỗi (chi tiết kiểm thử: workflow/physics.md)
