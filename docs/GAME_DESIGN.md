@@ -14,6 +14,22 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Ngôn ngữ | Tiếng Việt + tiếng Anh, đổi được; mặc định tiếng Việt |
 | Chỉnh cảm giác | Claude đề xuất 2–3 bộ thông số CÓ TÊN, người dùng chơi thử và chọn |
 
+## Đồ họa, âm thanh, giao diện (chốt 2026-10-28, người dùng)
+Ảnh tham khảo phong cách do người dùng đưa: game golf 2D, nền ca-rô hai tông xanh lục, khối/viền ĐEN DÀY bo tròn, bi trắng viền đen, lỗ là hình tròn đen, vạch ngắm vàng-xanh phát sáng, thanh lực dọc bo tròn (nền đen, lõi vàng) ở góc trái. CHỈ lấy phong cách; KHÔNG bắt chước nội dung ảnh (đường nảy băng, khối cản).
+| Hạng mục | Quyết định |
+|---|---|
+| Phong cách | Vector 2D phẳng, viền đen dày kiểu hoạt hình; giao diện tối giản hiện đại |
+| Màu | Khung giao diện tối nhẹ (xanh than), mặt bàn xanh lục tươi ca-rô hai tông, viền bàn đen dày, bi màu bão hòa |
+| Bi | Màu đặc + viền đen; bi sọc = dải trắng ngang; số nhỏ trong chấm trắng; bi trắng trơn |
+| Bàn | Bida chuẩn 6 lỗ (4 góc + 2 giữa), hình chữ nhật, KHÔNG vật cản |
+| Vạch ngắm | Sáng, đi từ bi trắng tới điểm chạm ĐẦU TIÊN (bi hoặc băng), kèm mũi tên nhỏ cho hướng bi bị đụng; không dự đoán nảy băng |
+| Kéo thả | Kéo lùi từ bi trắng như kéo dây cung; kéo càng xa lực càng mạnh; thanh lực dọc bên trái |
+| Lưới toạ độ | Ẩn mặc định, một phím bật/tắt (hệ toạ độ cho chế độ công thức về sau) |
+| Âm thanh | Hiệu ứng cơ bản: gậy đánh, bi va (mạnh/nhẹ theo lực), nảy băng, rơi lỗ; KHÔNG nhạc nền; tự tạo bằng mã (nghe hơi "máy", thay file thật được); có tắt tiếng |
+| Hiệu ứng | Vừa đủ, tinh tế: bi co nhỏ biến mất khi vào lỗ, vòng gợn nhẹ khi va chạm mạnh, rung rất nhẹ khi phá bi |
+| Cửa sổ | Mở ~1280×720, kéo to/nhỏ được, F11 toàn màn hình; hình co theo, giữ đúng tỉ lệ bàn |
+| MVP | Menu mở đầu (Chơi / Ngôn ngữ / Thoát) + bàn chơi tự do (15 bi tam giác, kéo thả, va chạm, nảy băng, vào lỗ, bi trắng rơi lỗ thì đặt lại) + bảng bên (số cú, bi còn lại) + phím R chơi lại, M tắt tiếng, G lưới. CHƯA có luật thắng thua, xoáy, công thức |
+
 ## Luật tập một mình (đề xuất theo WPA 8-ball, rút gọn — người dùng duyệt khi làm tính năng luật)
 - Bàn "mở" sau cú phá. Bi đầu tiên vào lỗ hợp lệ (nguyên hoặc sọc) quyết định nhóm của người chơi.
 - LỖI: bi trắng rơi lỗ; bi nhảy khỏi bàn; cú đánh không chạm bi nào; chạm bi nhóm khác trước; sau khi chạm không có bi nào vào lỗ hay chạm băng.
