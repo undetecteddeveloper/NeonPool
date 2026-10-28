@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 
-from game.config import AIM_MIN_PX, MAX_DRAG_PX, MIN_POWER
+from game.config import AIM_MIN_PX, MAX_DRAG_PX, MIN_PULL_PX, POWER_CURVE
 from game.physics.shot import Shot
 
 
@@ -55,12 +55,12 @@ class DragAim:
 
     @property
     def power(self) -> float:
-        return min(1.0, self.pull / MAX_DRAG_PX) if self.active else 0.0
+        return min(1.0, self.pull / MAX_DRAG_PX) ** POWER_CURVE if self.active else 0.0
 
     def end(self) -> Shot | None:
         """Release: the Shot, or None if the pull was too weak (counts as cancel)."""
         shot = None
-        if self.has_direction and self.power >= MIN_POWER:
+        if self.has_direction and self.pull >= MIN_PULL_PX:
             shot = Shot(self.angle, self.power)
         self.active = False
         return shot

@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from game.config import MAX_DRAG_PX, MIN_POWER
+from game.config import MAX_DRAG_PX, MIN_PULL_PX, POWER_CURVE
 from game.input.drag import DragAim
 from game.render.viewport import fit, window_to_logical
 
@@ -46,7 +46,7 @@ def test_pull_left_shoots_right():
     d.move((400, 300))  # pulled to the left of the cue ball
     shot = d.end()
     assert shot is not None and shot.angle == pytest.approx(0.0)  # shoots to the right (+x)
-    assert shot.power == pytest.approx(100 / MAX_DRAG_PX)
+    assert shot.power == pytest.approx((100 / MAX_DRAG_PX) ** POWER_CURVE)
 
 
 def test_pull_down_shoots_up_screen():
@@ -67,7 +67,7 @@ def test_power_is_clamped_to_one():
 def test_weak_pull_cancels():
     d = DragAim()
     d.begin((0, 0), (0, 0))
-    d.move((-MIN_POWER * MAX_DRAG_PX * 0.5, 0))
+    d.move((-MIN_PULL_PX * 0.5, 0))
     assert d.end() is None and not d.active
 
 
@@ -92,3 +92,22 @@ def test_bar_length_grows_with_the_pull_then_stops_at_full_power():
     assert d.bar_length == MAX_DRAG_PX and d.power == 1.0
     d.cancel()
     assert d.bar_length == 0.0
+
+
+def test_power_is_gentle_at_first_and_strong_at_the_end():
+    d = DragAim()
+    d.begin((0, 0), (0, 0))
+    powers = []
+    for fraction in (0.25, 0.5, 0.75, 1.0):
+        d.move((-MAX_DRAG_PX * fraction, 0))
+        powers.append(d.power)
+    assert powers == sorted(powers) and powers[-1] == 1.0
+    assert powers[1] < 0.5  # half the pull gives clearly less than half the power
+    assert powers[0] < powers[1] / 2
+
+
+def test_a_pull_just_above_the_minimum_still_shoots():
+    d = DragAim()
+    d.begin((0, 0), (0, 0))
+    d.move((-MIN_PULL_PX * 1.5, 0))
+    assert d.end() is not None

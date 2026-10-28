@@ -153,7 +153,6 @@ class PlayScene:
             d = (math.cos(a), math.sin(a))
             contact = first_contact(self.world.balls, (cue.x, cue.y), d)
             draw.draw_aim(canvas, v, cue, contact, d, self.drag.bar_length, self.drag.power)
-        draw.draw_power_bar(canvas, v, self.drag.power)
         hud.draw_panel(
             canvas,
             v,

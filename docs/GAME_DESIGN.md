@@ -32,8 +32,14 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 
 ## Phản hồi sau khi người dùng chơi thử MVP (2026-10-28)
 - Đồ họa: phải là vector thật, mịn ở mọi cỡ cửa sổ (laptop HD 1280×720 của người dùng; cửa sổ mở đầu tự vừa màn hình). Đã chuyển sang vẽ ở độ phân giải thật.
-- Thanh kéo: dài theo lực, DỪNG ở lực tối đa (không dài vô tận), đổi màu vàng → cam. Thanh lực bên trái vẫn giữ, chờ người dùng quyết (xem câu hỏi).
+- Thanh kéo: dài theo lực kéo, DỪNG ở mức tối đa (không dài vô tận), đổi màu vàng → cam. Đã BỎ HẲN thanh lực dọc bên trái, không hiện số % (người dùng chọn).
+- Đường cong lực: lực = (kéo / kéo tối đa)² — kéo nửa chừng chỉ ra ~1/4 lực (dễ đánh nhẹ chính xác). Kéo ngắn hơn 12 px khi thả = huỷ cú.
 - Lực tối đa giảm ~28%: `TRON` 8,0 → 5,8 · `VUA` 7,0 → 5,0 · `CHAM` 6,0 → 4,3 m/s. Âm thanh và kéo to/nhỏ cửa sổ: người dùng hài lòng.
+
+## Chế độ công thức (người dùng chốt 2026-10-28; chi tiết còn lại ở PROGRESS "Đang mở")
+- Người chơi nhập PHƯƠNG TRÌNH ĐƯỜNG THẲNG y = ax + b trên hệ toạ độ của bàn (gốc ở tâm bàn, x sang phải, y lên, mét); bi trắng chạy theo đường đó; lực nhập riêng. Đường cong y = f(x) để làm SAU CÙNG.
+- Đường phải đi qua đúng vị trí bi trắng (người chơi tự tính b từ vị trí bi và bi mục tiêu): đó là phần "toán" của game.
+- Menu có HAI nút Chơi riêng ("kéo thả" và "công thức"), chọn lúc bắt đầu ván.
 
 ## Luật tập một mình (đề xuất theo WPA 8-ball, rút gọn — người dùng duyệt khi làm tính năng luật)
 - Bàn "mở" sau cú phá. Bi đầu tiên vào lỗ hợp lệ (nguyên hoặc sọc) quyết định nhóm của người chơi.

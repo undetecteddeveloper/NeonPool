@@ -61,7 +61,8 @@ LOGICAL_SIZE = (1280, 720)
 PX_PER_M = 350  # render only (invariant 3): metres -> logical pixels
 RAIL_PX = 40  # visual rail thickness around the cloth
 MAX_DRAG_PX = 220  # pull-back distance (logical px) that means full power
-MIN_POWER = 0.04  # releasing with less than this cancels the shot
+MIN_PULL_PX = 12  # releasing with a shorter pull than this cancels the shot
+POWER_CURVE = 2.0  # power = (pull / MAX_DRAG_PX) ** POWER_CURVE: gentle at first, strong at the end
 GRAB_RADIUS_M = BALL_R * 2.6  # how close to the cue ball a press must be to start aiming
 AIM_MIN_PX = 4  # pointer closer than this to the cue ball: no direction yet
 

@@ -22,10 +22,6 @@ from game.render import fonts
 from game.render import palette as C
 from game.render.layout import (
     BALL_PX,
-    BAR_H,
-    BAR_W,
-    BAR_X,
-    BAR_Y,
     FIELD_H,
     FIELD_W,
     FIELD_X,
@@ -292,22 +288,6 @@ def draw_aim(
     layer.done()
 
 
-# --- power bar (left of the table) -----------------------------------------------------
-def draw_power_bar(canvas: pg.Surface, v: View, power: float) -> None:
-    blit_rrect(
-        canvas, v, BAR_X + 5, BAR_Y + 5, BAR_W - 10, BAR_H - 10, (BAR_W - 10) / 2, (40, 46, 62)
-    )
-    if power > 0.0:
-        inner_w, inner_h = BAR_W - 10, BAR_H - 10
-        h = max(inner_w, inner_h * power)
-        x, y = BAR_X + 5, BAR_Y + 5 + inner_h - h
-        layer = Aa(canvas, v, v.rect(x - 2, y - 2, inner_w + 4, h + 4), ss=3)
-        tl, br = layer.pt((x, y)), layer.pt((x + inner_w, y + h))
-        r = pg.Rect(tl, (br[0] - tl[0], br[1] - tl[1]))
-        pg.draw.rect(layer.surf, power_color(power), r, border_radius=int(layer.n(inner_w / 2)))
-        layer.done()
-
-
 # --- coordinate grid -------------------------------------------------------------------
 def build_grid(v: View) -> pg.Surface:
     """Grid over the canvas, origin at the table centre, x right, y UP (maths), metres.
@@ -356,7 +336,6 @@ __all__ = [
     "build_table",
     "draw_aim",
     "draw_balls",
-    "draw_power_bar",
     "power_color",
     "rrect_sprite",
     "shrink_pm",

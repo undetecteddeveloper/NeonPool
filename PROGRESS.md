@@ -1,6 +1,8 @@
 # PROGRESS — MathofPool
 
 ## Đang mở
+- Nhánh `fix/phan-hoi-mvp` (chưa gộp): đã sửa theo phản hồi chơi thử (vẽ ở độ phân giải thật, thanh kéo có giới hạn, bỏ thanh lực trái, đường cong lực, giảm lực tối đa). Người dùng cần chơi lại để xác nhận: hết răng cưa/mờ chưa, lực tối đa mới và đường cong lực có hợp không.
+- Chế độ công thức: đã chốt hướng (đường thẳng y = ax + b, hai nút Chơi ở menu). CÒN HỎI người dùng: ô nhập nằm đâu/trông thế nào, có xem trước đường đi không, mức toán, lực nhập kiểu gì, báo lỗi ra sao. Chưa viết code chế độ công thức.
 - MVP đã làm xong T1–T4 trên nhánh `feat/mvp` (chưa gộp vào `main`). VIỆC CỦA NGƯỜI DÙNG: chạy `.venv\Scripts\python.exe main.py`, chơi thử, rồi chọn bộ cảm giác bàn (phím 1 Trơn / 2 Vừa / 3 Chậm) và góp ý đồ họa/âm thanh. Chưa ai nghe âm thanh thật: Claude chỉ kiểm bằng test (có tiếng, trong khoảng âm lượng), không nghe được.
 - Chưa kiểm trên cửa sổ thật: kéo to/nhỏ cửa sổ, F11 (chỉ test hàm ánh xạ chuột và chụp headless).
 - Sau MVP (thứ tự đã chốt ở `GAME_DESIGN.md`): xoáy cao/thấp → luật 8-ball tập một mình → nhập công thức toán.
