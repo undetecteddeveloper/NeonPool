@@ -1,7 +1,7 @@
-"""The table: 8-ball practice, played by dragging back from the cue ball.
+"""The table: 8-ball practice, played by dragging back from the cue ball (a neon cue follows).
 
 After a foul the cue ball is "in hand": drag it to where you want it.
-Hotkeys: R restart, 1/2/3 feel, H how to play, Esc menu.
+Hotkeys: R restart, H how to play, Esc menu (M mute and F11 full screen belong to the App).
 """
 
 from __future__ import annotations
@@ -12,9 +12,6 @@ import pygame as pg
 
 from game.config import (
     BREAK_SHAKE_SPEED,
-    DEFAULT_FEEL,
-    FEEL_ORDER,
-    FEEL_SETS,
     GRAB_RADIUS_M,
     MAX_FRAME_DT,
     NOTICE_S,
@@ -30,6 +27,10 @@ from game.render import draw, hud
 from game.render import palette as C
 from game.render.fx import Fx
 from game.render.layout import (
+    FIELD_H,
+    FIELD_W,
+    FIELD_X,
+    FIELD_Y,
     OUTER_H,
     OUTER_W,
     OUTER_X,
@@ -39,28 +40,45 @@ from game.render.layout import (
 )
 from game.render.rim import RimRunner
 from game.render.view import View
-from game.rules.eight_ball import PLAYING, RERACK, WON, EightBall
+from game.rules.eight_ball import LOST, PLAYING, RERACK, WON, EightBall
 
 # notices hang under the table, in the free strip below it (on the cloth they hid rolling balls)
 BANNER_AT = (OUTER_X + OUTER_W / 2, OUTER_Y + OUTER_H + 12)
+CALLOUT_AT = (FIELD_X + FIELD_W / 2, FIELD_Y + FIELD_H / 2)  # the big arcade word pops here
+# notice key -> (call-out word key, colour, sound)
+CALLOUTS = {
+    "foul": ("callout.foul", C.ERROR, "foul"),
+    "notice.group_solid": ("callout.solid", C.CYAN, "notice"),
+    "notice.group_stripe": ("callout.stripe", C.CYAN, "notice"),
+    "notice.eight": ("callout.eight", C.MAGENTA, "notice"),
+    "notice.rerack": ("callout.rerack", C.AMBER, "notice"),
+}
 
 
 class PlayScene:
     def __init__(self, app) -> None:
         self.app = app
-        self.feel_key = DEFAULT_FEEL
-        self.world = World(seed=0, feel=FEEL_SETS[self.feel_key])
+        self.world = World(seed=0)  # the table always feels "medium" (the user removed the choice)
         self.rules = EightBall()
         self.drag = DragAim()
         self.fx = Fx()
+        self.board = hud.Scoreboard()
         self._acc = 0.0
-        self._clock = 0.0  # drives the pulsing ring
+        self._clock = 0.0  # drives every light on this screen (photos of the scene repeat)
         self._break_pending = True  # the first hard hit after a rack shakes the screen
         self._live = False  # a shot is rolling: judge it when everything stops
         self.placing = False  # the cue ball in hand is being dragged
         self._place_ok = True  # ... and the pointer is over an allowed spot
         self._notice: tuple[str, str] | None = None  # (kind "foul"|"info", i18n key)
         self._notice_left = 0.0
+        self._callout: tuple[str, tuple[int, int, int], float] | None = None  # (word, colour, at)
+        self._lunge: tuple[float, tuple[float, float], tuple[float, float], float, float] | None
+        self._lunge = None  # the cue darting at the ball: (at, centre, shot dir, pull, power)
+        self.pocket_times: dict[int, float] = {}  # ball -> when it went in (the panel strikes it)
+        self._ended_at = -99.0  # when the game ended (the result card grows in)
+        self._pointer: tuple[float, float] | None = None  # where the mouse is (logical)
+        self._cue_alpha = 0.0  # the cue fades in while the pointer is on the cue ball
+        self._cue_dir = (1.0, 0.0)  # the last aim, so the cue appears where it was
         self._hover: str | None = None  # hovered button of the result card
         self.set_view(app.view)
 
@@ -80,12 +98,9 @@ class PlayScene:
         self._acc = 0.0
         self._live = False
         self.placing = False
-        self._notice, self._notice_left = None, 0.0
+        self._notice, self._notice_left, self._callout, self._lunge = None, 0.0, None, None
+        self.pocket_times.clear()
         self._break_pending = True
-
-    def set_feel(self, key: str) -> None:
-        self.feel_key = key
-        self.world.feel = FEEL_SETS[key]
 
     def _can_aim(self) -> bool:
         return (
@@ -97,11 +112,17 @@ class PlayScene:
 
     def fire(self, shot: Shot) -> None:
         """Every cue shot goes through here."""
+        cue = self.world.balls[0]
+        d = (math.cos(shot.angle), math.sin(shot.angle))
+        self._lunge = (self._clock, to_px(cue.x, cue.y), d, self.drag.bar_length, shot.power)
         self.world.apply(shot)
         self.rules.on_shot()  # also ends "cue ball in hand"
         self._live = True
         self.placing = False
         self._notice_left = 0.0
+        self._callout = None
+        self._cue_alpha = 0.0  # the darting cue of the shot takes over
+        self._cue_dir = d
         self._break_pending = self.rules.is_break
         self.app.audio.play_shot(shot.power)
 
@@ -110,6 +131,9 @@ class PlayScene:
 
     def _notify(self, kind: str, key: str) -> None:
         self._notice, self._notice_left = (kind, key), NOTICE_S
+        word, colour, sound = CALLOUTS["foul" if kind == "foul" else key]
+        self._callout = (t(word), colour, self._clock)
+        getattr(self.app.audio, f"play_{sound}")()
 
     def _end_shot(self) -> None:
         """Every ball has stopped: let the rules judge the shot and show what happened."""
@@ -119,6 +143,7 @@ class PlayScene:
             self.world.rack()
             self.fx.clear()
             self.rules.rerack()
+            self.pocket_times.clear()
             self._break_pending = True
             self._notify("info", "notice.rerack")
         elif res.outcome is None:
@@ -130,12 +155,19 @@ class PlayScene:
                 self._notify("info", f"notice.group_{res.group}")
             elif res.pocketed and self.rules.eight_is_next():
                 self._notify("info", "notice.eight")
+        elif res.outcome in (WON, LOST):
+            self._ended_at = self._clock
+            (self.app.audio.play_win if res.outcome == WON else self.app.audio.play_lose)()
 
     # --- events ----------------------------------------------------------------------
     def handle_event(self, e: pg.event.Event) -> None:
         if self.rules.phase != PLAYING:
             self._result_event(e)
             return
+        if e.type in (pg.MOUSEMOTION, pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP):
+            self._pointer = e.pos
+        if e.type == pg.MOUSEBUTTONDOWN:
+            self._callout = None  # the player is acting: the big word gets out of the way
         if self._hand_event(e):
             return
         if e.type == pg.KEYDOWN:
@@ -178,9 +210,10 @@ class PlayScene:
 
     def _result_event(self, e: pg.event.Event) -> None:
         if e.type == pg.MOUSEMOTION:
-            self._hover = next(
-                (k for k, r in hud.RESULT_BUTTONS.items() if r.collidepoint(e.pos)), None
-            )
+            hover = next((k for k, r in hud.RESULT_BUTTONS.items() if r.collidepoint(e.pos)), None)
+            if hover is not None and hover != self._hover:
+                self.app.audio.play_hover()
+            self._hover = hover
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             if hud.RESULT_BUTTONS["new"].collidepoint(e.pos):
                 self.app.audio.play_click()
@@ -204,8 +237,6 @@ class PlayScene:
                 self.drag.cancel()
             else:
                 self.app.go_menu()
-        elif key in (pg.K_1, pg.K_2, pg.K_3):
-            self.set_feel(FEEL_ORDER[key - pg.K_1])
 
     # --- update / draw ------------------------------------------------------------------
     def update(self, dt: float) -> None:
@@ -225,6 +256,21 @@ class PlayScene:
         self.fx.update(dt)
         if self._live and self.world.at_rest():
             self._end_shot()
+        self._fade_cue(dt)
+
+    def _over_cue(self) -> bool:
+        """The pointer is on the cue ball (where pressing would start a shot)."""
+        if self._pointer is None:
+            return False
+        cue = self.world.balls[0]
+        return math.dist(self._pointer, to_px(cue.x, cue.y)) <= GRAB_RADIUS_M * PX_PER_M
+
+    def _fade_cue(self, dt: float) -> None:
+        """The cue shows while the pointer is on a ball that can be shot, and while aiming."""
+        if self._can_aim() and (self.drag.active or self._over_cue()):
+            self._cue_alpha = min(1.0, self._cue_alpha + dt / draw.CUE_FADE_IN_S)
+        else:
+            self._cue_alpha = max(0.0, self._cue_alpha - dt / draw.CUE_FADE_OUT_S)
 
     def _show_events(self, events) -> None:
         balls = self.world.balls
@@ -241,6 +287,8 @@ class PlayScene:
                     self.fx.add_ripple(balls[ev.ball].x, balls[ev.ball].y, "cushion")
             elif isinstance(ev, BallPocketed):
                 self.fx.add_drop(ev.ball, balls[ev.ball].x, balls[ev.ball].y, ev.pocket)
+                if ev.ball:
+                    self.pocket_times[ev.ball] = self._clock
 
     def _banner_lines(self) -> list[tuple[str, tuple[int, int, int]]]:
         lines = []
@@ -276,7 +324,21 @@ class PlayScene:
             a = self.drag.angle
             d = (math.cos(a), math.sin(a))
             contact = first_contact(self.world.balls, (cue.x, cue.y), d)
-            draw.draw_aim(canvas, v, cue, contact, d, self.drag.bar_length, self.drag.power)
+            draw.draw_aim(canvas, v, cue, contact, d)
+            self._cue_dir = d
+            draw.draw_cue(
+                canvas,
+                v,
+                to_px(cue.x, cue.y),
+                d,
+                self.drag.bar_length,
+                self.drag.power,
+                self._clock,
+            )
+        elif self._cue_alpha > 0.01 and cue.in_play and not over:  # resting behind the ball
+            centre = to_px(cue.x, cue.y)
+            draw.draw_cue(canvas, v, centre, self._cue_dir, 0.0, 0.0, self._clock, self._cue_alpha)
+        self._draw_lunge(canvas, v)
         hud.draw_panel(
             canvas,
             v,
@@ -285,13 +347,19 @@ class PlayScene:
             pocketed=self.rules.pocketed,
             group=self.rules.group,
             eight_next=self.rules.eight_is_next(),
-            feel_key=self.feel_key,
             muted=self.app.audio.muted,
             moving=not self.world.at_rest(),
             sprites=self.sprites,
+            clock=self._clock,
+            board=self.board,
+            pocket_times=self.pocket_times,
         )
         if not over:
             hud.banner(canvas, v, self._banner_lines(), BANNER_AT)
+            if self._callout is not None:
+                word, colour, at = self._callout
+                home = (BANNER_AT[0], BANNER_AT[1] + 20)
+                hud.draw_callout(canvas, v, word, colour, self._clock - at, CALLOUT_AT, home)
         if self.rules.shots == 0 and self._can_aim() and not self.drag.active:
             hud.text(
                 canvas,
@@ -299,11 +367,27 @@ class PlayScene:
                 t("hud.hint"),
                 16,
                 C.TEXT_DIM,
-                (OUTER_X + OUTER_W // 2, OUTER_Y + OUTER_H + 26),
+                (OUTER_X + OUTER_W // 2, OUTER_Y + OUTER_H + 30),
                 center=True,
             )
         if over:
             self._draw_result(canvas, v)
+
+    def _draw_lunge(self, canvas: pg.Surface, v: View) -> None:
+        """After a shot the cue darts to where the ball was, then goes out."""
+        if self._lunge is None:
+            return
+        at, centre, d, pull, power = self._lunge
+        age = self._clock - at
+        if age >= draw.LUNGE_S + draw.FADE_S:
+            self._lunge = None
+            return
+        if age < draw.LUNGE_S:
+            k = age / draw.LUNGE_S
+            draw.draw_cue(canvas, v, centre, d, pull * (1 - k * k), power, self._clock)
+        else:
+            fade = 1 - (age - draw.LUNGE_S) / draw.FADE_S
+            draw.draw_cue(canvas, v, centre, d, 0.0, power, self._clock, alpha=fade)
 
     def _draw_result(self, canvas: pg.Surface, v: View) -> None:
         res = self.rules.last
@@ -312,6 +396,7 @@ class PlayScene:
             v,
             won=self.rules.phase == WON,
             reason=t(res.reason) if res and res.reason else None,
-            rows=[(t("hud.shots"), str(self.rules.shots)), (t("hud.fouls"), str(self.rules.fouls))],
+            rows=[(t("hud.shots"), self.rules.shots), (t("hud.fouls"), self.rules.fouls)],
             hover=self._hover,
+            age=self._clock - self._ended_at,
         )

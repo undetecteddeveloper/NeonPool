@@ -1,4 +1,4 @@
-"""Drawing helpers at device resolution: balls, aim, pull bar, glass panels (table: table.py).
+"""Drawing helpers at device resolution: balls, aim, the neon cue, solid panels (table: table.py).
 
 Smooth edges: shapes with transparency are painted on a bigger surface, converted to
 premultiplied alpha, shrunk with smoothscale and blitted with BLEND_PREMULTIPLIED (plain
@@ -12,9 +12,7 @@ import math
 
 import pygame as pg
 
-from game.config import (
-    BALL_R,
-)
+from game.config import BALL_R, CUE_SHOW_PULL
 from game.render import fonts
 from game.render import palette as C
 from game.render.glow import halo, lit
@@ -29,7 +27,6 @@ RING_PX = 1.8  # the lit ring of a ball (logical px), centred on the physical ed
 HALO_PX = 6.0  # how far a ball's light reaches past its edge (logical px, before the look)
 RIM = BALL_PX + RING_PX / 2 + 0.6  # where the aim line and the bar start: just outside the ring
 SS_BALL = 4  # sprites are painted at 4x
-BAR_HALF_W = 4.5  # half width of the pull bar (logical px)
 
 
 # --- smooth-shape plumbing -------------------------------------------------------------
@@ -57,7 +54,8 @@ class Aa:
 
     def pt(self, p: tuple[float, float]) -> tuple[float, float]:
         """Logical point -> coordinates on the big surface."""
-        return (p[0] * self.v.s - self.box.x) * self.ss, (p[1] * self.v.s - self.box.y) * self.ss
+        x, y = self.v.pt(p)
+        return (x - self.box.x) * self.ss, (y - self.box.y) * self.ss
 
     def n(self, length: float) -> float:
         return length * self.v.s * self.ss
@@ -84,7 +82,7 @@ def box_around(v: View, points: list[tuple[float, float]], pad: float) -> pg.Rec
 # --- glass panels and dots ---------------------------------------------------------------
 _rr_cache: dict[tuple, tuple[pg.Surface, int]] = {}
 _dot_cache: dict[tuple, tuple[pg.Surface, int]] = {}
-FILL_ALPHA = 232  # glass: a little of the night behind shows through
+FILL_ALPHA = 250  # solid panels: text is never read against a busy background
 
 
 def _halo_px(glow: float) -> int:
@@ -104,7 +102,7 @@ def rrect_sprite(
         if len(_rr_cache) > 96:
             _rr_cache.clear()
         pad = _halo_px(glow) + math.ceil(edge) + 1
-        bv = v.scaled(v.ss())
+        bv = v.framed().scaled(v.ss())
         ow, oh = w + 2 * pad, h + 2 * pad
         body = bv.rect(pad, pad, w, h)
         r = bv.i(radius)
@@ -150,7 +148,7 @@ def blit_dot(
         if len(_dot_cache) > 64:
             _dot_cache.clear()
         pad = _halo_px(glow) + 1
-        bv = v.scaled(v.ss())
+        bv = v.framed().scaled(v.ss())
         size = 2 * (r + pad)
         disc = pg.Surface((bv.i(size), bv.i(size)), pg.SRCALPHA)
         pg.draw.circle(disc, color, (disc.get_width() / 2, disc.get_height() / 2), bv.n(r))
@@ -189,7 +187,7 @@ class BallSprites:
         return self._cache[key]
 
     def _make(self, number: int, with_halo: bool) -> pg.Surface:
-        bv = self.v.scaled(SS_BALL)
+        bv = self.v.framed().scaled(SS_BALL)
         size = self.size if with_halo else self.core_size
         big = size * SS_BALL
         c = big / 2
@@ -253,10 +251,32 @@ def draw_ring(
     layer.done()
 
 
-# --- aiming: light line, ghost ball, arrow, pull bar ------------------------------------
+# --- aiming: light line, ghost ball, arrow, and the neon cue ------------------------------
+STICK_LEN = 250.0  # the neon cue (logical px)
+STICK_TIP_W = 2.4  # half width at the tip ...
+STICK_BUTT_W = 4.2  # ... and at the butt: a cue narrows to its tip
+STICK_GAP = 3.0  # the tip rests this far behind the ball's ring when not pulled
+LUNGE_S = 0.07  # after the shot the cue darts to the ball ...
+FADE_S = 0.2  # ... and then goes out
+CUE_FADE_IN_S = 0.18  # the pointer comes onto the cue ball: the cue fades in this fast ...
+CUE_FADE_OUT_S = 0.25  # ... and out again when the pointer leaves
+# the colour of the cue as the pull tightens: cold to hot (power 0 .. 1)
+HEAT = (
+    (0.0, C.CYAN),
+    (0.35, C.VIOLET),
+    (0.6, C.MAGENTA),
+    (0.85, (255, 120, 40)),
+    (1.0, (255, 236, 150)),
+)
+
+
 def power_color(power: float) -> tuple[int, int, int]:
-    """Cyan -> pink-violet as the shot gets harder."""
-    return C.lerp(C.POWER_WEAK, C.POWER_STRONG, power)
+    """The heat of the pull: cyan (gentle) through violet and pink to orange and white-hot."""
+    p = min(1.0, max(0.0, power))
+    for (p0, c0), (p1, c1) in zip(HEAT, HEAT[1:], strict=False):
+        if p <= p1:
+            return C.lerp(c0, c1, (p - p0) / (p1 - p0))
+    return HEAT[-1][1]
 
 
 def _object_center(contact) -> tuple[float, float]:
@@ -265,83 +285,103 @@ def _object_center(contact) -> tuple[float, float]:
     return contact.point[0] + dx * 2 * BALL_R, contact.point[1] + dy * 2 * BALL_R
 
 
-def _bar_polygon(p0, d, length: float, half_w: float):
-    """Straight bar from p0 along unit d: a plain rectangle with square corners."""
-    nx, ny = -d[1], d[0]
-    p1 = (p0[0] + d[0] * length, p0[1] + d[1] * length)
+def stick_outline(tip, u, length: float = STICK_LEN, grow: float = 0.0):
+    """The cue as a quad from its tip (on the ball side) along unit u; `grow` widens it."""
+    nx, ny = -u[1], u[0]
+    t0 = (tip[0] - u[0] * grow, tip[1] - u[1] * grow)
+    t1 = (tip[0] + u[0] * (length + grow), tip[1] + u[1] * (length + grow))
+    w0, w1 = STICK_TIP_W + grow, STICK_BUTT_W + grow
     return [
-        (p0[0] + nx * half_w, p0[1] + ny * half_w),
-        (p1[0] + nx * half_w, p1[1] + ny * half_w),
-        (p1[0] - nx * half_w, p1[1] - ny * half_w),
-        (p0[0] - nx * half_w, p0[1] - ny * half_w),
+        (t0[0] + nx * w0, t0[1] + ny * w0),
+        (t1[0] + nx * w1, t1[1] + ny * w1),
+        (t1[0] - nx * w1, t1[1] - ny * w1),
+        (t0[0] - nx * w0, t0[1] - ny * w0),
     ]
 
 
-def draw_aim(
+def cue_tip(centre, shot_dir, pull: float, power: float = 0.0, clock: float = 0.0):
+    """Where the tip of the cue is (logical px), and the unit vector from the tip to the butt.
+
+    `pull` is how far the hand pulled; the cue shows CUE_SHOW_PULL of it (the power does not
+    change, only how far the cue travels on screen)."""
+    u = (-shot_dir[0], -shot_dir[1])  # the cue lies on the far side from where the ball goes
+    nx, ny = -u[1], u[0]
+    shake = math.sin(clock * 70.0) * 0.7 if power >= 0.999 else 0.0  # full power: it trembles
+    d0 = RIM + STICK_GAP + pull * CUE_SHOW_PULL  # the cue moves less than the hand
+    return (centre[0] + u[0] * d0 + nx * shake, centre[1] + u[1] * d0 + ny * shake), u
+
+
+def draw_cue(
     canvas: pg.Surface,
     v: View,
-    cue,
-    contact,
-    shot_dir,
-    bar_len: float,
+    centre: tuple[float, float],
+    shot_dir: tuple[float, float],
+    pull: float,
     power: float,
+    clock: float,
+    alpha: float = 1.0,
 ) -> None:
-    """Pull bar behind the cue ball (`bar_len` logical px, already capped by DragAim), light line
-    to the first contact, ghost ball there and an arrow on a hit ball: one supersampled layer.
-    """
-    _paint_aim(canvas, v, cue, contact, shot_dir, bar_len, power).done()
+    """The neon cue behind the ball at `centre` (logical px), pulled back with the hand; the
+    harder the pull, the hotter its colour. `alpha` fades it in, and out after a shot."""
+    tip, u = cue_tip(centre, shot_dir, pull, power, clock)
+    butt = (tip[0] + u[0] * STICK_LEN, tip[1] + u[1] * STICK_LEN)
+    layer = Aa(canvas, v, box_around(v, [tip, butt], 14), ss=2)
+    surf, look = layer.surf, C.LOOK
+    colour = power_color(power)
+    a = max(0.0, min(1.0, alpha))
+
+    def rgba(c, k: float) -> tuple[int, int, int, int]:
+        return (*c, max(0, min(255, round(255 * k * a))))
+
+    def quad(*args, **kw):
+        return [layer.pt(p) for p in stick_outline(*args, **kw)]
+
+    # a neon tube: a soft halo (stronger as it heats up), a body lit from inside, a bright core
+    heat = 0.8 + 0.6 * power
+    for grow, k in ((6.0, 0.05), (4.2, 0.07), (2.6, 0.1), (1.3, 0.16)):  # soft, in steps
+        glow_k = k * look.glow * heat
+        pg.draw.polygon(surf, rgba(colour, glow_k), quad(tip, u, grow=grow * look.reach))
+    pg.draw.polygon(surf, rgba(C.lerp(C.PANEL, colour, 0.45), 1.0), quad(tip, u))
+    core = C.lerp(colour, C.WHITE, 0.55)
+    pg.draw.line(surf, rgba(core, 1.0), layer.pt(tip), layer.pt(butt), max(1, round(layer.n(1.4))))
+    back = (tip[0] + u[0] * (STICK_LEN - 46), tip[1] + u[1] * (STICK_LEN - 46))
+    pg.draw.polygon(surf, rgba(C.lerp(colour, C.PANEL, 0.25), 1.0), quad(back, u, 46))  # the butt
+    pg.draw.polygon(surf, rgba(C.WHITE, 1.0), quad(tip, u, 8.0))  # the white tip
+    layer.done()
 
 
-def _alpha(base: float) -> int:
-    return min(255, round(base * C.LOOK.glow))
-
-
-def _paint_aim(canvas: pg.Surface, v: View, cue, contact, shot_dir, bar_len, power) -> Aa:
+def draw_aim(canvas: pg.Surface, v: View, cue, contact, shot_dir) -> None:
+    """Light line from the cue ball to the first contact, a ghost ball there and an arrow on a hit
+    ball: one supersampled layer."""
     look = C.LOOK
     centre = to_px(cue.x, cue.y)
     end = to_px(*contact.point)
-    ux, uy = -shot_dir[0], -shot_dir[1]  # the bar points AWAY from where the ball will go
-    bar0 = (centre[0] + ux * (RIM + 3), centre[1] + uy * (RIM + 3))
-    bar1 = (bar0[0] + ux * bar_len, bar0[1] + uy * bar_len)
-
-    pts = [centre, end, bar1]
+    pts = [centre, end]
     obj = None
     if contact.kind == "ball" and contact.object_dir is not None:
         ox, oy = to_px(*_object_center(contact))
         dx, dy = contact.object_dir
         obj = (ox + dx * (RIM + 3), oy + dy * (RIM + 3), dx, dy)
         pts.append((obj[0] + dx * 40, obj[1] + dy * 40))
-    layer = Aa(canvas, v, box_around(v, pts, 26), ss=2 if v.s <= 1.3 else 1)
+    layer = Aa(canvas, v, box_around(v, pts, 26), ss=2)
     surf = layer.surf
 
-    # pull bar: a straight rectangle with square ends, lit in the colour of its power
-    if bar_len > 6:
-        colour = power_color(power)
-        for grow, alpha in ((4.0 * look.reach, 40), (2.0 * look.reach, 90), (0.0, 255)):
-            poly = _bar_polygon(
-                layer.pt(bar0), (ux, uy), layer.n(bar_len), layer.n(BAR_HALF_W + grow)
-            )
-            pg.draw.polygon(surf, (*colour, _alpha(alpha) if grow else alpha), poly)
-        core = _bar_polygon(layer.pt(bar0), (ux, uy), layer.n(bar_len), layer.n(BAR_HALF_W * 0.3))
-        pg.draw.polygon(surf, (*C.lerp(colour, C.WHITE, 0.65), 255), core)  # the hot centre
-
-    # light line from the ball's rim to the first contact
     ax, ay = end[0] - centre[0], end[1] - centre[1]
     alen = math.hypot(ax, ay)
     if alen > RIM:
         a = layer.pt((centre[0] + ax / alen * RIM, centre[1] + ay / alen * RIM))
         b = layer.pt(end)
         lines = (
-            (13 * look.reach, (*C.AIM_GLOW, _alpha(40))),
-            (7 * look.reach, (*C.AIM_GLOW, _alpha(95))),
-            (2.6 * look.line, (*C.AIM, 255)),
+            (11 * look.reach, (*C.AIM_GLOW, _alpha(36))),
+            (6 * look.reach, (*C.AIM_GLOW, _alpha(85))),
+            (2.2 * look.line, (*C.AIM, 255)),
         )
         for width, color in lines:
             pg.draw.line(surf, color, a, b, max(1, round(layer.n(width))))
             pg.draw.circle(surf, color, a, layer.n(width / 2))
             pg.draw.circle(surf, color, b, layer.n(width / 2))
     pg.draw.circle(
-        surf, C.AIM, layer.pt(end), layer.n(BALL_PX), max(1, round(layer.n(2.2 * look.line)))
+        surf, C.AIM, layer.pt(end), layer.n(BALL_PX), max(1, round(layer.n(2.0 * look.line)))
     )
 
     if obj is not None:  # arrow showing where the hit ball will go
@@ -357,7 +397,11 @@ def _paint_aim(canvas: pg.Surface, v: View, cue, contact, shot_dir, bar_len, pow
             layer.pt((hx - nx * 8, hy - ny * 8)),
         ]
         pg.draw.polygon(surf, C.ACCENT, head)
-    return layer
+    layer.done()
+
+
+def _alpha(base: float) -> int:
+    return min(255, round(base * C.LOOK.glow))
 
 
 __all__ = [
@@ -369,6 +413,7 @@ __all__ = [
     "blit_rrect",
     "build_table",
     "draw_aim",
+    "draw_cue",
     "draw_balls",
     "draw_ring",
     "power_color",

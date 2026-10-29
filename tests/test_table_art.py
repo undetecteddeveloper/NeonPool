@@ -12,7 +12,6 @@ import pytest
 from game import config, i18n
 from game.app import App
 from game.config import POCKETS, PX_PER_M
-from game.physics import Contact
 from game.render import backdrop, draw, hud, table
 from game.render import palette as C
 from game.render.layout import (
@@ -54,47 +53,34 @@ def test_cloth_is_a_smooth_gradient_not_checkers(surf):
         assert max(abs(a - b) for a, b in zip(left, right, strict=True)) <= 3, ix
 
 
-def test_cloth_is_night_blue_and_brighter_in_the_middle_than_near_the_corners(surf):
+def test_the_table_is_one_flat_dark_plate_a_little_lighter_than_the_night(surf):
     middle = _px(surf, (FIELD_X + FIELD_W / 2, FIELD_Y + FIELD_H / 2))
-    corner = _px(surf, (FIELD_X + 40, FIELD_Y + 40))
-    assert sum(middle) > sum(corner) + 60
-    assert middle[2] > middle[1] > middle[0]  # blue, with the least red
+    corner = _px(surf, (FIELD_X + 60, FIELD_Y + 60))
+    assert max(abs(a - b) for a, b in zip(middle, C.TABLE, strict=True)) <= 3  # flat, no shading
+    assert middle == corner
+    outside = _px(surf, (OUTER_X - 30, OUTER_Y + OUTER_H / 2))
+    assert sum(middle) > sum(outside)  # the table reads against the night
 
 
 def test_the_cloth_next_to_a_pocket_is_plain_night_not_lit(surf):
     r, g, b = _px(surf, to_px(0.13, 0.13))  # just inside the field, beside the corner pocket
-    assert r + g + b < 120 and b >= g >= r
+    assert r + g + b < 120 and b >= r and b >= g
 
 
 def test_the_rim_is_a_cyan_line_with_a_halo_that_fades_to_the_night(surf):
     mid_y = OUTER_Y + OUTER_H / 2
     r, g, b = _px(surf, (OUTER_X + 1, mid_y))
     assert g > 150 and b > 150 and r < g - 80  # lit cyan
-    night = backdrop.night(V.size)
-    halo = tuple(surf.get_at((OUTER_X - 5, round(mid_y))))[:3]
-    far = tuple(surf.get_at((OUTER_X - 40, round(mid_y))))[:3]
-    base = tuple(night.get_at((OUTER_X - 5, round(mid_y))))[:3]
-    assert sum(halo) > sum(base) + 30  # light spills outside the rim
-    assert far == tuple(night.get_at((OUTER_X - 40, round(mid_y))))[:3]  # ... and not far
+    halo = _px(surf, (OUTER_X - 5, mid_y))
+    far = _px(surf, (OUTER_X - 40, mid_y))
+    night = tuple(backdrop.night(V.size).get_at((OUTER_X - 40, round(mid_y))))[:3]
+    assert sum(halo) > sum(far) + 30  # light spills outside the rim ...
+    assert sum(far) <= sum(night) + 3  # ... but not far: there it is the night again
 
 
 def test_pockets_are_black_where_the_physics_has_them(surf):
     for px, py, _ in POCKETS:
         assert sum(_px(surf, to_px(px, py))) < 60
-
-
-def test_diamonds_clear_the_housings_and_pockets():
-    pts = table.sight_points()
-    assert len(pts) == 18  # 6 on each long rail, 3 on each short rail
-    for x, y in pts:
-        for (px, py, pw, ph), _ in table.plate_rects():
-            assert (
-                not pg.Rect(px, py, pw, ph)
-                .inflate(2 * table.SIGHT_R, 2 * table.SIGHT_R)
-                .collidepoint(x, y)
-            )
-        for mx, my, mr in POCKETS:
-            assert math.dist((x, y), to_px(mx, my)) > mr * PX_PER_M + table.SIGHT_R
 
 
 # --- balls: dark lamps ---------------------------------------------------------------------
@@ -143,38 +129,64 @@ def test_a_ball_gives_light_evenly_all_round_it_not_a_shadow_on_one_side():
     assert abs(sx / total - cx) < 0.7 and abs(sy / total - cy) < 0.7
 
 
-# --- pull bar --------------------------------------------------------------------------------
-def test_bar_polygon_is_a_rectangle():
-    d = (0.6, 0.8)
-    pts = draw._bar_polygon((10.0, 20.0), d, 50.0, 4.0)
-    sides = [(pts[(i + 1) % 4][0] - pts[i][0], pts[(i + 1) % 4][1] - pts[i][1]) for i in range(4)]
-    for i in range(4):
-        a, b = sides[i], sides[(i + 1) % 4]
-        assert abs(a[0] * b[0] + a[1] * b[1]) < 1e-9  # right angles
-    lengths = sorted(math.hypot(*s) for s in sides)
-    assert lengths == pytest.approx([8.0, 8.0, 50.0, 50.0])  # constant width, no taper
+# --- the neon cue (replaces the pull bar, 2026-10-29) ---------------------------------------
+def test_the_cue_lies_behind_the_ball_and_travels_less_than_the_hand():
+    centre = (500.0, 300.0)
+    for pull in (0.0, 80.0, 220.0):
+        tip, u = draw.cue_tip(centre, (1.0, 0.0), pull)
+        assert u == pytest.approx((-1.0, 0.0))  # the cue is on the far side from the shot
+        shown = centre[0] - tip[0] - draw.RIM - draw.STICK_GAP
+        assert shown == pytest.approx(pull * config.CUE_SHOW_PULL)  # 25% less than the pull
+        assert tip[1] == pytest.approx(centre[1])
+    assert 0.7 <= config.CUE_SHOW_PULL <= 0.8  # the user asked for 20-30% less travel
 
 
-def test_pull_bar_ends_are_square_not_round():
-    canvas = pg.Surface(V.size)
-    canvas.fill((0, 0, 0))
-    cue = SimpleNamespace(x=1.27, y=0.635)
-    far = (cue.x + 0.5, cue.y)
-    contact = Contact("cushion", 0.5, far)
-    draw.draw_aim(canvas, V, cue, contact, (1.0, 0.0), 100.0, 0.5)
-    cx, cy = to_px(cue.x, cue.y)
-    end_x = cx - draw.RIM - 3 - 100  # outer face of the far end
-    reach = draw.BAR_HALF_W
-    for sign in (-1, 1):  # both far corners are lit: a round tip would leave them dark
-        corner = canvas.get_at((round(end_x + 1.5), round(cy + sign * (reach - 1.5))))
-        assert sum(corner[:3]) > 300
+def test_the_cue_narrows_to_its_tip():
+    quad = draw.stick_outline((0.0, 0.0), (1.0, 0.0))
+    tip_w = abs(quad[0][1] - quad[3][1])
+    butt_w = abs(quad[1][1] - quad[2][1])
+    assert tip_w < butt_w
+    assert quad[1][0] == pytest.approx(draw.STICK_LEN)
 
 
-def test_the_bar_goes_from_cyan_to_pink_violet_with_power():
-    weak, strong = draw.power_color(0.0), draw.power_color(1.0)
-    assert weak == C.CYAN and strong == C.MAGENTA
-    mid = draw.power_color(0.5)
-    assert min(weak[0], strong[0]) < mid[0] < max(weak[0], strong[0])
+def test_the_cue_gets_hotter_the_harder_the_pull():
+    assert draw.power_color(0.0) == C.CYAN  # a gentle pull is cold
+    hot = draw.power_color(1.0)
+    assert hot[0] > 240 and hot[1] > 200  # a full pull is white-hot
+    reds = [draw.power_color(p / 20)[0] for p in range(21)]
+    blues = [draw.power_color(p / 20)[2] for p in range(12, 21)]
+    assert reds == sorted(reds)  # warmer and warmer ...
+    assert blues[0] > blues[-3]  # ... the blue drains away towards the top
+
+
+def test_the_cue_is_drawn_with_a_white_tip_in_the_colour_of_its_heat():
+    def frame(power: float) -> pg.Surface:
+        canvas = pg.Surface(V.size)
+        canvas.fill((0, 0, 0))
+        draw.draw_cue(canvas, V, (640.0, 360.0), (1.0, 0.0), 40.0, power, 0.0)
+        return canvas
+
+    weak, strong = frame(0.1), frame(0.9)
+    tip_x = 640 - draw.RIM - draw.STICK_GAP - 40 * config.CUE_SHOW_PULL - 3
+    assert min(weak.get_at((round(tip_x), 360))[:3]) > 200  # the white tip
+    body = (round(tip_x - 100), 362)  # on the body, off the bright core line
+    assert strong.get_at(body)[0] > weak.get_at(body)[0] + 40  # hot: much more red
+    assert weak.get_at(body)[2] > weak.get_at(body)[0]  # cold: blue rather than red
+
+
+def test_the_cue_fades_in_on_the_cue_ball_and_out_off_it(scene):
+    cue = scene.world.balls[0]
+    on, off = to_px(cue.x, cue.y), (100.0, 100.0)
+    scene.handle_event(pg.event.Event(pg.MOUSEMOTION, pos=on, rel=(0, 0), buttons=(0, 0, 0)))
+    scene.update(draw.CUE_FADE_IN_S / 2)
+    assert 0.3 < scene._cue_alpha < 0.8  # fading in, not popping
+    scene.update(draw.CUE_FADE_IN_S)
+    assert scene._cue_alpha == 1.0
+    scene.handle_event(pg.event.Event(pg.MOUSEMOTION, pos=off, rel=(0, 0), buttons=(0, 0, 0)))
+    scene.update(draw.CUE_FADE_OUT_S / 2)
+    assert 0.2 < scene._cue_alpha < 0.8  # fading out
+    scene.update(draw.CUE_FADE_OUT_S)
+    assert scene._cue_alpha == 0.0
 
 
 # --- feedback 2026-10-29: notices off the cloth, rounded cushion ends, deep pockets -----------
@@ -220,19 +232,18 @@ def test_the_cushion_edge_facing_the_cloth_is_lit(surf):
     assert _brightness(surf, (mid[0], mid[1] + 14)) < 120  # ... and the cloth under it is night
 
 
-def test_pockets_are_a_ring_of_light_round_a_deep_hole_sunk_outwards(surf):
+def test_pockets_are_a_ring_of_pink_light_round_a_black_hole(surf):
     for px, py, pr in POCKETS:
         c = to_px(px, py)
         r = pr * PX_PER_M
         ux, uy = table.pocket_outward(px, py)
 
-        def at(radius: float, sign: int = 1, c=c, ux=ux, uy=uy) -> int:
-            return _brightness(surf, (c[0] + sign * ux * radius, c[1] + sign * uy * radius))
+        def at(radius: float, c=c, ux=ux, uy=uy) -> tuple[int, int, int]:
+            return _px(surf, (c[0] + ux * radius, c[1] + uy * radius))
 
-        ring = max(at(r + table.LIP_PX + d) for d in (-1.0, -0.5, 0.0, 0.5, 1.0))
-        assert ring > at(r * 0.5) + 300  # the ring is pink-violet light, the hole is black
-        assert at(r * 0.15, 1) < 25  # the very deepest part is nearly black
-        assert at(r * 0.45, -1) > at(r * 0.45, 1) + 15  # the near wall (cloth side) shows
+        ring = max((at(r + table.LIP_PX + d) for d in (-1.0, -0.5, 0.0, 0.5, 1.0)), key=sum)
+        assert ring[0] > 180 and ring[2] > 140 and ring[1] < ring[0] - 80  # pink light
+        assert all(sum(at(r * k)) < 25 for k in (0.0, 0.3, 0.6, 0.85))  # black all the way in
 
 
 def test_pocket_outward_points_away_from_the_middle_of_the_table():
@@ -253,22 +264,39 @@ def scene():
 
 @pytest.mark.parametrize("lang", ["vi", "en"])
 def test_notices_never_cover_the_table(scene, lang):
+    """The notice hangs under the table. The big arcade word may cross the table, but only while
+    every ball is still (notices are made when a shot ends) and it is gone at the first click."""
     i18n.set_lang(lang)
     scene.rules.cue_in_hand = True  # the 2-line case: the foul and the "place the ball" hint
-    plain = pg.Surface(scene.view.size)
+    plain = pg.Surface(scene.view.canvas)
     scene._notice_left = 0.0
     scene.draw(plain)
-    with_notice = pg.Surface(scene.view.size)
+    with_notice = pg.Surface(scene.view.canvas)
     scene._notify("foul", "foul.no_cushion")  # the longest foul text
+    assert scene._callout is not None and scene.world.at_rest()
+    scene._callout = None  # the call-out aside, the table itself is untouched
     scene.draw(with_notice)
-    table_rect = pg.Rect(OUTER_X - 6, OUTER_Y - 6, OUTER_W + 12, OUTER_H + 12)
+    table_rect = scene.view.rect(OUTER_X - 6, OUTER_Y - 6, OUTER_W + 12, OUTER_H + 12)
     assert pg.image.tobytes(plain.subsurface(table_rect), "RGB") == pg.image.tobytes(
         with_notice.subsurface(table_rect), "RGB"
     )
-    below = pg.Rect(
-        0, table_rect.bottom, scene.view.size[0], scene.view.size[1] - table_rect.bottom
-    )
+    below = pg.Rect(0, table_rect.bottom, plain.get_width(), plain.get_height() - table_rect.bottom)
     assert pg.image.tobytes(plain.subsurface(below), "RGB") != pg.image.tobytes(
         with_notice.subsurface(below), "RGB"
     )  # ... and the notice is there, under the table
     assert hud.BANNER_PAD + 24 * 2 + OUTER_Y + OUTER_H + 12 < config.LOGICAL_SIZE[1]
+
+
+def test_the_arcade_word_goes_away_at_a_click_or_by_itself(scene):
+    scene._notify("foul", "foul.no_cushion")
+    scene.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(5, 5), button=1))
+    assert scene._callout is None
+    scene._notify("info", "notice.group_solid")
+    word, _, at = scene._callout
+    assert word == i18n.t("callout.solid")
+    a, b = pg.Surface(scene.view.canvas), pg.Surface(scene.view.canvas)
+    scene._clock = at + hud.CALLOUT_S + 0.01  # after its time it draws nothing
+    scene.draw(a)
+    scene._callout = None
+    scene.draw(b)
+    assert pg.image.tobytes(a, "RGB") == pg.image.tobytes(b, "RGB")

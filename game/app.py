@@ -1,4 +1,8 @@
-"""App: owns the canvas (at the REAL window resolution), routes events to the scene."""
+"""App: owns the canvas (the WHOLE window, at its real resolution), routes events to the scene.
+
+The game opens full screen; F11 switches between full screen and a window. The 1280x720 frame
+sits in the middle at the right shape and every scene paints its background to all four edges.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ import pygame as pg
 
 from game.audio import Audio
 from game.config import LOGICAL_SIZE
+from game.render import crt
 from game.render import palette as C
 from game.render.view import View
 from game.render.viewport import window_to_logical
@@ -30,7 +35,7 @@ class App:
     def __init__(self, screen: pg.Surface) -> None:
         self.screen = screen
         self.view = View.for_window(screen.get_size())
-        self.canvas = pg.Surface(self.view.size)
+        self.canvas = pg.Surface(self.view.canvas)
         self.audio = Audio()
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.menu = MenuScene(self)
@@ -55,6 +60,8 @@ class App:
 
     def go_menu(self) -> None:
         self.play.drag.cancel()
+        if self.scene is not self.menu:
+            self.menu.enter()
         self.scene = self.menu
 
     def game_in_progress(self) -> bool:
@@ -91,7 +98,7 @@ class App:
             force or now - self._window_changed_at >= RESIZE_SETTLE_S
         ):
             self.view = target
-            self.canvas = pg.Surface(target.size)
+            self.canvas = pg.Surface(target.canvas)
             self.play.set_view(target)
             self.menu.set_view(target)
             self.help.set_view(target)
@@ -99,24 +106,20 @@ class App:
     def draw(self) -> None:
         screen = pg.display.get_surface() or self.screen
         self.sync_view()
-        self.scene.draw(self.canvas)
         target = View.for_window(screen.get_size())
-        # While the window is still being resized the assets are for the old size:
-        # stretch for a moment (soft but never wrong), then sync_view() makes it sharp again.
-        frame = self.canvas
-        if not target.same_as(self.view):
-            frame = pg.transform.smoothscale(self.canvas, target.size)
         shake_x, shake_y = self.scene.shake_offset()
-        fw, fh = frame.get_size()
-        sw, sh = screen.get_size()
-        screen.fill(C.OUTLINE)
-        screen.blit(
-            frame,
-            (
-                (sw - fw) // 2 + round(shake_x * target.s),
-                (sh - fh) // 2 + round(shake_y * target.s),
-            ),
-        )
+        if not (shake_x or shake_y) and self.canvas.get_size() == screen.get_size():
+            self.scene.draw(screen)  # the usual case: straight onto the screen, no copy
+        else:
+            # shaking, or the window is being resized and the assets are for the old size:
+            # draw on the canvas, then shift it / stretch it for a moment
+            self.scene.draw(self.canvas)
+            frame = self.canvas
+            if frame.get_size() != screen.get_size():
+                frame = pg.transform.smoothscale(self.canvas, screen.get_size())
+            screen.fill(C.BG)
+            screen.blit(frame, (round(shake_x * target.s), round(shake_y * target.s)))
+        crt.scanlines(screen, target.s)
 
     def _window_size(self) -> tuple[int, int]:
         return (pg.display.get_surface() or self.screen).get_size()
@@ -128,7 +131,7 @@ class App:
         _enable_dpi_awareness()
         pg.init()
         pg.display.set_caption("NeonPool")
-        screen = pg.display.set_mode(_start_size(), pg.RESIZABLE)
+        screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)  # the whole desktop, at its resolution
         app = App(screen)
         clock = pg.time.Clock()
         while app.running:
@@ -167,7 +170,12 @@ def _start_size() -> tuple[int, int]:
 
 
 def _toggle_fullscreen() -> None:
+    """Full screen <-> a window that fits the desktop (the app rebuilds itself for the new size)."""
+    surf = pg.display.get_surface()
     try:
-        pg.display.toggle_fullscreen()
+        if surf is not None and surf.get_flags() & pg.FULLSCREEN:
+            pg.display.set_mode(_start_size(), pg.RESIZABLE)
+        else:
+            pg.display.set_mode((0, 0), pg.FULLSCREEN)
     except pg.error as exc:  # not every driver supports it
         log.warning("fullscreen toggle failed: %s", exc)

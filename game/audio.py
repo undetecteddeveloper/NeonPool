@@ -80,6 +80,54 @@ def synth_click() -> np.ndarray:
     return _to_int16(np.sin(2 * np.pi * 1300 * t) * _decay(t, 0.012))
 
 
+# --- arcade UI sounds: soft square waves, like an 80s cabinet ---------------------------------
+def _square(freq: float, seconds: float, tau: float, duty_soft: float = 0.35) -> np.ndarray:
+    """A square-ish tone (a few odd harmonics, so it is round, not harsh) that dies away."""
+    t = _t(seconds)
+    x = sum(np.sin(2 * np.pi * freq * h * t) / h for h in (1, 3, 5)) * (1 - duty_soft)
+    x += duty_soft * np.sin(2 * np.pi * freq * t)
+    return x * _decay(t, tau) * np.minimum(1.0, t / 0.003)
+
+
+def _notes(freqs: list[float], step: float, tau: float, tail: float = 0.0) -> np.ndarray:
+    parts = [
+        _square(f, step + (tail if i == len(freqs) - 1 else 0.0), tau) for i, f in enumerate(freqs)
+    ]
+    return np.concatenate(parts)
+
+
+def synth_blip() -> np.ndarray:
+    """The pointer moved onto another button: a short high blip."""
+    return _to_int16(_square(1568, 0.045, 0.014), gain=0.5)
+
+
+def synth_confirm() -> np.ndarray:
+    """A button was pressed: two quick rising notes."""
+    return _to_int16(_notes([988, 1319], 0.045, 0.03), gain=0.7)
+
+
+def synth_win() -> np.ndarray:
+    """The game is won: a bright rising arpeggio, the last note held."""
+    return _to_int16(_notes([523, 659, 784, 1047, 1319], 0.085, 0.09, tail=0.25))
+
+
+def synth_lose() -> np.ndarray:
+    """The game is lost: three falling notes, low and slow."""
+    return _to_int16(_notes([392, 311, 233], 0.16, 0.14, tail=0.2))
+
+
+def synth_foul() -> np.ndarray:
+    """A foul: a short low buzz."""
+    t = _t(0.22)
+    x = _square(110, 0.22, 0.09) + 0.5 * _square(116.5, 0.22, 0.09)
+    return _to_int16(x * np.minimum(1.0, t / 0.01), gain=0.65)
+
+
+def synth_notice() -> np.ndarray:
+    """Good news (a group chosen, the 8 is next): a light two-note chime."""
+    return _to_int16(_notes([1047, 1568], 0.07, 0.07, tail=0.12), gain=0.6)
+
+
 def volume_for_speed(speed: float) -> float:
     return float(min(1.0, 0.12 + 0.88 * (max(speed, 0.0) / SFX_REF_SPEED) ** 0.7))
 
@@ -99,6 +147,12 @@ class Audio:
                 ("pocket", synth_pocket),
                 ("cue", synth_cue_hit),
                 ("click", synth_click),
+                ("blip", synth_blip),
+                ("confirm", synth_confirm),
+                ("win", synth_win),
+                ("lose", synth_lose),
+                ("foul", synth_foul),
+                ("notice", synth_notice),
             ):
                 self._sounds[name] = self._make(fn())
             self.available = True
@@ -125,7 +179,24 @@ class Audio:
         return True
 
     def play_click(self) -> None:
-        self._play("click", 0.5)
+        """A button was pressed."""
+        self._play("confirm", 0.45)
+
+    def play_hover(self) -> None:
+        """The pointer (or the arrow keys) moved to another button."""
+        self._play("blip", 0.3)
+
+    def play_win(self) -> None:
+        self._play("win", 0.55)
+
+    def play_lose(self) -> None:
+        self._play("lose", 0.55)
+
+    def play_foul(self) -> None:
+        self._play("foul", 0.5)
+
+    def play_notice(self) -> None:
+        self._play("notice", 0.45)
 
     def play_shot(self, power: float) -> None:
         self._play("cue", 0.25 + 0.75 * power)

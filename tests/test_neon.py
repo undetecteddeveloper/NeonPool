@@ -1,11 +1,13 @@
-"""The moving lights: the rim runner, the ribbons of the menu, the rings of light, the glow text.
+"""The moving lights: the rim runner, the living ribbons and the night of the menu, the rings
+of light, the arcade digits and the glow text.
 All time-driven: the same clock gives the same picture (a photo of a scene is repeatable)."""
 
+import numpy as np
 import pygame as pg
 import pytest
 
 from game import config, i18n
-from game.render import hud, rim, waves
+from game.render import crt, hud, rim, synth
 from game.render import palette as C
 from game.render.fx import KINDS, Fx
 from game.render.layout import (
@@ -81,34 +83,160 @@ def test_the_two_lights_run_half_a_lap_apart_in_two_colours():
     assert head_a != head_b
 
 
-# --- the ribbons ---------------------------------------------------------------------------
-RIBBON = waves.Ribbon(100, 100, 10, 3, 0.4, (C.CYAN, C.MAGENTA), 50)  # a lap of 100 px in 2 s
+# --- the living ribbons and the synthwave night -----------------------------------------------
+def _strands() -> synth.Strands:
+    return synth.Strands(0.0, 1280.0, 400.0)
 
 
-def test_a_ribbon_is_lit_around_its_line_and_dark_far_from_it():
+def _run(st: synth.Strands, seconds: float) -> None:
+    for _ in range(round(seconds * 60)):
+        st.update(1 / 60)
+
+
+def test_the_strands_move_on_their_own_and_the_same_time_gives_the_same_shape():
+    a, b = _strands(), _strands()
+    _run(a, 1.0)
+    _run(b, 1.0)
+    assert np.array_equal(a.y, b.y)  # no randomness
+    start = _strands().y.copy()
+    assert np.abs(a.y - start).max() > 2.0  # they breathe without any input
+
+
+def test_the_strands_lean_towards_the_pointer():
+    still, leaning = _strands(), _strands()
+    leaning.point_to((300.0, 520.0))  # below the horizon, on the left
+    _run(still, 1.5)
+    _run(leaning, 1.5)
+    near = np.abs(leaning.x - 300.0).argmin()
+    far = np.abs(leaning.x - 1100.0).argmin()
+    assert (leaning.y[:, near] - still.y[:, near]).mean() > 25  # pulled down towards it
+    assert abs((leaning.y[:, far] - still.y[:, far]).mean()) < 5  # ... only there
+
+
+def test_a_click_makes_a_splash_that_runs_out_and_dies_down():
+    calm, hit = _strands(), _strands()
+    hit.splash(640.0)
+    _run(calm, 0.25)
+    _run(hit, 0.25)
+    diff = np.abs(hit.y - calm.y).mean(axis=0)
+    centre = np.abs(hit.x - 640.0).argmin()
+    assert diff[centre] > 3.0
+    _run(calm, 4.0)
+    _run(hit, 4.0)
+    assert np.abs(hit.y - calm.y).max() < 1.0  # damped away after a few seconds
+
+
+def test_a_pulse_of_light_runs_both_ways_along_the_strands():
+    st = _strands()
+    st.pulse(640.0, 0.0)
+    st.vy[:] = 0.0  # leave out the kick: look only at the light of the pulse
+    light = st.glow_at(0.5)
+    peak_left = st.x[np.argmax(np.where(st.x < 640, light, 0))]
+    peak_right = st.x[np.argmax(np.where(st.x > 640, light, 0))]
+    gone = synth.PULSE_SPEED * 0.5
+    assert abs((640 - peak_left) - gone) < 30 and abs((peak_right - 640) - gone) < 30
+    assert st.glow_at(synth.PULSE_S + 0.1).max() < light.max()  # and it fades
+
+
+@pytest.mark.parametrize("window", [(1280, 720), (1920, 1200), (2560, 1080)])
+def test_the_night_fills_any_window_to_its_edges(window):
+    v = View.for_window(window)
+    sw = synth.Synthwave(v, 405)
+    canvas = pg.Surface(v.canvas)
+    canvas.fill((255, 0, 255))
+    sw.draw(canvas, 1.0)
+    for p in ((0, 0), (window[0] - 1, 0), (0, window[1] - 1), (window[0] - 1, window[1] - 1)):
+        assert tuple(canvas.get_at(p))[:3] != (255, 0, 255)  # painted right to every corner
+
+
+def test_the_sun_sits_on_the_horizon_with_stripes_that_slide_down():
+    sw = synth.Synthwave(V, 405)
+    a, b = _canvas(), _canvas()
+    sw.draw(a, 0.0)
+    sw.draw(b, synth.SUN_STRIPE_S * 0.5)
+    sun_top = V.pt((640, 405 - 140))
+    assert sum(a.get_at((round(sun_top[0]), round(sun_top[1])))[:3]) > 400  # yellow, lit
+    lower = pg.Rect(640 - 100, 405 - 60, 200, 55)  # the striped lower part changes ...
+    assert pg.image.tobytes(a.subsurface(lower), "RGB") != pg.image.tobytes(
+        b.subsurface(lower), "RGB"
+    )
+
+
+def test_the_crt_lines_are_faint_and_the_corners_darker():
+    screen = pg.Surface((400, 300))
+    screen.fill((200, 200, 200))
+    crt.scanlines(screen)
+    column = [screen.get_at((200, y))[0] for y in range(0, 30)]
+    step = crt.period(1.0)
+    dark = [y for y, c in enumerate(column) if c < 200]
+    assert dark == list(range(step - 1, 30, step))  # one thin row in every `step`
+    assert abs(min(column) - 200 * crt.SCANLINE_DARK) <= 1.5  # and only a little darker
+    vig = crt.vignette((400, 300))
+    assert vig.get_at((0, 0))[0] < vig.get_at((200, 150))[0] - 30  # corners darker
+
+
+# --- arcade digits, text placement, the title ------------------------------------------------
+def test_arcade_digits_light_only_their_segments():
+    assert set(hud.SEGMENTS["8"]) == set("abcdefg") and hud.SEGMENTS["1"] == "bc"
+    one, eight = _canvas(), _canvas()
+    hud.seg_number(one, V, 1, 1, (100, 100), 40, C.CYAN, glow_k=0)
+    hud.seg_number(eight, V, 8, 1, (100, 100), 40, C.CYAN, glow_k=0)
+
+    def lit(surf):
+        return sum(
+            1 for x in range(80, 140) for y in range(90, 150) if surf.get_at((x, y))[1] > 150
+        )
+
+    assert lit(eight) > 2.5 * lit(one)
+
+
+def test_text_is_placed_by_its_capitals_so_marks_never_push_it_down():
+    a, b = _canvas(), _canvas()
+    ra = hud.text(a, V, "HA", 30, C.WHITE, (100, 100))
+    rb = hud.text(b, V, "HỘI", 30, C.WHITE, (100, 100))
+    top_a = min(
+        y
+        for y in range(ra.top, ra.bottom)
+        for x in range(ra.left, ra.right)
+        if a.get_at((x, y))[0] > 128 and x < ra.left + 12
+    )
+    top_b = min(
+        y
+        for y in range(rb.top, rb.bottom)
+        for x in range(rb.left, rb.left + 12)
+        if b.get_at((x, y))[0] > 128
+    )
+    assert abs(top_a - top_b) <= 1  # the H starts on the same line with or without marks
+    assert abs(top_a - 100) <= 2
+
+
+def test_a_number_is_centred_in_its_badge():
     canvas = _canvas()
-    waves.Waves(V, (RIBBON,)).draw(canvas, 0.0)
-    near = max(sum(canvas.get_at((x, y))[:3]) for x in range(0, 300, 7) for y in range(90, 112))
-    assert near > 200
-    assert all(tuple(canvas.get_at((x, 300)))[:3] == (0, 0, 0) for x in range(0, 300, 11))
+    hud.text(canvas, V, "1", 15, C.WHITE, (200, 200), bold=True, center=True)
+    pts = [
+        (x, y) for x in range(185, 216) for y in range(185, 216) if canvas.get_at((x, y))[0] > 128
+    ]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    cx, cy = (min(xs) + max(xs) + 1) / 2, (min(ys) + max(ys) + 1) / 2  # the middle of the ink
+    assert abs(cx - 200) <= 1 and abs(cy - 200) <= 1
 
 
-def test_a_ribbon_travels_and_comes_round_after_one_wavelength():
-    w = waves.Waves(V, (RIBBON,))
-    a, b, c = _canvas(), _canvas(), _canvas()
-    w.draw(a, 0.0)
-    w.draw(b, 0.5)  # a quarter of a lap: it has moved
-    w.draw(c, 2.0)  # a whole lap (100 px at 50 px/s): it is back
-    assert _bytes(a) != _bytes(b)
-    assert _bytes(a) == _bytes(c)
+def test_the_title_stutters_on_then_hums():
+    from game.scenes.menu import title_level
+
+    assert title_level(0.0) == 0.0
+    levels = [title_level(t / 100) for t in range(0, 90)]
+    assert min(levels[10:]) < 0.5 < max(levels)  # it flickers while coming on
+    steady = [title_level(2 + t / 10) for t in range(60)]
+    assert min(steady) > 0.8  # then it stays lit
 
 
-@pytest.mark.parametrize("ribbons", [waves.MENU, waves.HELP])
-def test_the_real_ribbons_fit_the_screen_at_two_sizes(ribbons):
-    for v in (View(1.0), View(0.82)):
-        canvas = _canvas(v)
-        waves.Waves(v, ribbons).draw(canvas, 1.25)
-        assert _bytes(canvas) != _bytes(_canvas(v))
+def test_the_scoreboard_flashes_a_number_that_changed():
+    board = hud.Scoreboard()
+    assert board.flash("shots", 0, 0.0) == 0.0  # the first value is not a change
+    assert board.flash("shots", 1, 1.0) == 1.0
+    assert 0.0 < board.flash("shots", 1, 1.0 + hud.FLASH_S / 2) < 1.0
+    assert board.flash("shots", 1, 1.0 + hud.FLASH_S + 0.01) == 0.0
 
 
 # --- rings of light ------------------------------------------------------------------------

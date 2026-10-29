@@ -5,7 +5,7 @@ import pytest
 
 from game import config, i18n
 from game.app import App
-from game.render import hud
+from game.render import draw, hud
 from game.render import palette as C
 from game.render.layout import to_px
 from game.render.view import View
@@ -61,7 +61,8 @@ def test_opening_the_help_cancels_an_aim_in_progress(app):
 
 
 def test_the_side_panel_lists_the_help_key():
-    assert "hud.key_help" in hud.PANEL_KEYS
+    assert "hud.key_help" in [what for _, what in hud.PANEL_KEYS]
+    assert all(cap.startswith("keycap.") for cap, _ in hud.PANEL_KEYS)
 
 
 # --- pages ----------------------------------------------------------------------------------
@@ -151,8 +152,9 @@ def test_the_shot_picture_is_a_real_frame_the_ball_the_bar_and_the_step_marks_ar
     cx, cy = to_px(0.62, 0.64)
     cue = _px(pic, (cx - crop_x, cy - crop_y))
     assert min(cue) > 225  # the white ball, drawn by the game
-    bar = _px(pic, (cx - 60 - crop_x, cy - crop_y))
-    assert min(bar) > 150  # the lit pull bar, drawn by the game (a hot white-ish centre)
+    tip_x = cx - draw.RIM - draw.STICK_GAP - 150 * config.CUE_SHOW_PULL - 3  # the white tip
+    tip = max((_px(pic, (tip_x - crop_x + dx, cy - crop_y)) for dx in range(-8, 9)), key=sum)
+    assert min(tip) > 200  # the neon cue's white tip, drawn by the game
     step_one = _px(pic, (cx - crop_x - 4, cy - 46 - crop_y - 6))
     assert step_one[0] > 200 and step_one[1] < 140 and step_one[2] > 160  # the pink-violet badge
 

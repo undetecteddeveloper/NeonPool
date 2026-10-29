@@ -89,16 +89,16 @@ def test_cannot_start_aiming_while_balls_move(app):
     assert not app.play.drag.active
 
 
-def test_keys_restart_mute_and_feel(app):
+def test_keys_restart_and_mute_and_the_table_always_feels_medium(app):
     app.go_play()
     app.play.rules.shots = 5
     app.handle_event(key(pg.K_r))
     assert app.play.rules.shots == 0
     app.handle_event(key(pg.K_m))
     assert app.audio.muted
-    for k, name in ((pg.K_1, "TRON"), (pg.K_2, "VUA"), (pg.K_3, "CHAM")):
+    for k in (pg.K_1, pg.K_2, pg.K_3):  # the user removed the "table feel" choice (2026-10-29)
         app.handle_event(key(k))
-        assert app.play.feel_key == name and app.play.world.feel.key == name
+        assert app.play.world.feel.key == "VUA"
 
 
 def test_every_screen_draws_in_both_languages(app):

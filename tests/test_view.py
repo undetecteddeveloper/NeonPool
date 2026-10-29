@@ -44,8 +44,10 @@ def test_every_screen_is_rebuilt_sharp_for_any_window_size(app, size):
     pg.display.set_mode(size, pg.RESIZABLE)
     app.sync_view(force=True)
     assert app.view.same_as(View.for_window(size))
-    assert app.canvas.get_size() == app.view.size
-    assert app.play.table.get_size() == app.view.size  # built for this size, not stretched
+    assert app.canvas.get_size() == size  # the canvas is the whole window: no black bars
+    assert app.play.table.get_size() == size  # built for this size, not stretched
+    fw, fh = app.view.size  # ... and the 1280x720 frame keeps its shape in the middle
+    assert abs(fw / fh - 16 / 9) < 0.01 and fw <= size[0] and fh <= size[1]
     for go in (app.go_menu, app.go_play):
         go()
         app.draw()

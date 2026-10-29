@@ -12,7 +12,6 @@ from types import SimpleNamespace
 
 import pygame as pg
 
-from game.config import DEFAULT_FEEL
 from game.i18n import t
 from game.render import hud
 from game.render import palette as C
@@ -247,7 +246,6 @@ def picture_keys(v: View) -> pg.Surface:
         pocketed=set(),
         group=None,
         eight_next=False,
-        feel_key=DEFAULT_FEEL,
         muted=False,
         moving=False,
         sprites=BallSprites(big),
@@ -255,10 +253,10 @@ def picture_keys(v: View) -> pg.Surface:
     count = len(hud.PANEL_KEYS)
     crop = pg.Rect(PANEL_X + 4, hud.KEYS_Y - 16, PANEL_W - 8, count * hud.KEY_STEP + 26)
     pic = canvas.subsurface(big.rect(*crop)).copy()
-    row = hud.PANEL_KEYS.index("hud.key_help")
+    row = [what for _, what in hud.PANEL_KEYS].index("hud.key_help")
     a = Annot(pic, big, crop.topleft)
-    y = hud.KEYS_Y + row * hud.KEY_STEP + 7
-    a.arrow((PANEL_X + 150, y), (PANEL_X + 96, y), C.ACCENT)
+    y = hud.KEYS_Y + row * hud.KEY_STEP + 8
+    a.arrow((PANEL_X + 176, y), (PANEL_X + 132, y), C.ACCENT)
     out = _blank(v)
     out.fill(C.BG)  # a darker backdrop, so the side panel stands out as it does in the game
     x, y0 = (out.get_width() - pic.get_width()) // 2, (out.get_height() - pic.get_height()) // 2
@@ -270,5 +268,6 @@ PICTURES = (picture_cue, picture_groups, picture_fouls, picture_hand, picture_en
 
 
 def build(index: int, v: View) -> pg.Surface:
-    """Picture number `index` for this view and the current language."""
-    return PICTURES[index](v)
+    """Picture number `index` for this view and the current language (a surface of its own, so
+    the frame offset of the window plays no part)."""
+    return PICTURES[index](v.framed())

@@ -8,12 +8,12 @@ import pygame as pg
 
 from game import i18n
 from game.i18n import t
-from game.render import backdrop, hud
+from game.render import hud
 from game.render import palette as C
 from game.render.draw import blit_dot, blit_rrect
 from game.render.guide_art import Annot
+from game.render.synth import Synthwave
 from game.render.view import View
-from game.render.waves import HELP, Waves
 from game.scenes import help_pictures
 from game.scenes.help_pictures import ART_H
 
@@ -32,6 +32,7 @@ TEXT_X, TEXT_W = 740, 450
 PREV = pg.Rect(60, 612, 170, 46)
 NEXT = pg.Rect(1050, 612, 170, 46)
 DOTS = [pg.Rect(640 - 3 * 26 + 4 + i * 26, 624, 18, 22) for i in range(len(TOPICS))]
+HORIZON = 604  # the night behind: a low horizon, the floor grid under the page buttons
 
 
 class HelpScene:
@@ -46,13 +47,14 @@ class HelpScene:
     def set_view(self, v: View) -> None:
         self.view = v
         self._pictures: dict[tuple, pg.Surface] = {}
-        self.waves = Waves(v, HELP, strength=0.55)
+        self.synth = Synthwave(v, HORIZON, sun=False, dim=0.6)
 
     def shake_offset(self) -> tuple[float, float]:
         return 0.0, 0.0
 
     def update(self, dt: float) -> None:
         self._clock += dt
+        self.synth.update(dt)
 
     def _picture(self, index: int) -> pg.Surface:
         """The picture of a topic: made when first shown, and again after a language change."""
@@ -64,6 +66,7 @@ class HelpScene:
     # --- input -------------------------------------------------------------------------------
     def go(self, page: int) -> None:
         if page != self.page and 0 <= page < len(TOPICS):
+            self.synth.pulse(PREV.centerx if page < self.page else NEXT.centerx, self._clock)
             self.page = page
             self.app.audio.play_click()
 
@@ -76,7 +79,11 @@ class HelpScene:
             elif e.key in (pg.K_LEFT, pg.K_a):
                 self.go(self.page - 1)
         elif e.type == pg.MOUSEMOTION:
-            self._hover = self._target(e.pos)
+            self.synth.point_to(e.pos)
+            target = self._target(e.pos)
+            if target is not None and target != self._hover:
+                self.app.audio.play_hover()
+            self._hover = target
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             target = self._target(e.pos)
             if target == "prev":
@@ -97,14 +104,16 @@ class HelpScene:
     # --- drawing -----------------------------------------------------------------------------
     def draw(self, canvas: pg.Surface) -> None:
         v, i = self.view, self.page
-        canvas.blit(backdrop.night(canvas.get_size()), (0, 0))
-        self.waves.draw(canvas, self._clock)
-        hud.glow_text_left(canvas, v, t("guide.title"), 34, C.WHITE, C.CYAN, (60, 30))
-        hint = t("guide.back")
-        hud.text(canvas, v, hint, 15, C.TEXT_DIM, (1220 - hud.text_width(v, hint, 15), 42))
-        blit_rrect(canvas, v, CARD.x, CARD.y, CARD.w, CARD.h, 16, C.PANEL, 1.6, C.CYAN_DIM, 0.5)
+        self.synth.draw(canvas, self._clock)
+        hud.glow_text(canvas, v, t("guide.title"), 40, C.WHITE, C.MAGENTA, (60, 50), face="display",
+                      align="left")  # fmt: skip
+        hud.keycap(canvas, v, t("keycap.esc"), (1220 - 120, 42), 36)
+        hud.text(canvas, v, t("guide.back_label"), 14, C.TEXT_DIM, (1220 - 76, 46))
+        blit_rrect(canvas, v, CARD.x, CARD.y, CARD.w, CARD.h, 10, C.PANEL, 1.6, C.VIOLET, 0.5)
         canvas.blit(self._picture(i), v.ipt(ART_POS))
-        hud.text(canvas, v, t(f"{TOPICS[i][0]}.title"), 30, C.ACCENT, (TEXT_X, 134), bold=True)
+        hud.label(canvas, v, t("guide.page").format(n=i + 1, of=len(TOPICS)), (TEXT_X, 128),
+                  C.TEXT_DIM, 11)  # fmt: skip
+        hud.text(canvas, v, t(f"{TOPICS[i][0]}.title"), 28, C.CYAN, (TEXT_X, 148), bold=True)
         self._sentences(canvas, i)
         for key, rect, label in (("prev", PREV, "guide.prev"), ("next", NEXT, "guide.next")):
             off = (key == "prev" and i == 0) or (key == "next" and i == len(TOPICS) - 1)
@@ -112,15 +121,16 @@ class HelpScene:
             hud.button(canvas, v, rect, t(label), state)
         for k, r in enumerate(DOTS):
             lit = k == i
-            blit_dot(canvas, v, r.center, 5, C.ACCENT if lit else C.PANEL_EDGE, 0.9 if lit else 0.0)
+            colour = C.ACCENT if lit else C.PANEL_EDGE
+            blit_dot(canvas, v, r.center, 5 if lit else 4, colour, 0.9 if lit else 0.0)
 
-    def _sentences(self, canvas: pg.Surface, topic: int, size: int = 19) -> None:
+    def _sentences(self, canvas: pg.Surface, topic: int, size: int = 18) -> None:
         """The topic's sentences, each behind its step number (or a small dot)."""
         v = self.view
         prefix, count, markers = TOPICS[topic]
-        step, y = round(size * 1.4), 190.0
+        step, y = round(size * 1.55), 202.0
         for i in range(count):
-            self._marker(canvas, markers[i], (TEXT_X + 12, y + size * 0.75))
+            self._marker(canvas, markers[i], (TEXT_X + 12, y + size * 0.36))
             for line in hud.wrap(v, t(f"{prefix}.b{i + 1}"), size, TEXT_W - 36):
                 hud.text(canvas, v, line, size, C.TEXT, (TEXT_X + 36, y))
                 y += step
@@ -129,6 +139,6 @@ class HelpScene:
     def _marker(self, canvas: pg.Surface, n: int | None, c: tuple[float, float]) -> None:
         a = Annot(canvas, self.view)
         if n is None:
-            a.disc(c, 4, C.ACCENT)
+            a.disc(c, 3.5, C.ACCENT)
         else:
             a.step(n, c)
