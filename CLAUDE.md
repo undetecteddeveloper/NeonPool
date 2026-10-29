@@ -1,4 +1,4 @@
-# MathofPool — luật làm việc
+# NeonPool — luật làm việc
 
 > Luật riêng của dự án này. Luật dùng chung mọi project (tiếng Việt, ĐỦ BƯỚC/THIẾU, không hoàn tác, commit rồi dừng) nằm ở `~/.claude/CLAUDE.md` — không chép lại ở đây.
 > Luật theo loại việc: `.claude/workflow/`. Thiết kế đã chốt: `docs/GAME_DESIGN.md`. Kiến trúc: `docs/ARCHITECTURE.md`. Tiến độ: `PROGRESS.md`.

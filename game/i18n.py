@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-log = logging.getLogger("mathofpool")
+log = logging.getLogger("neonpool")
 
 LANG_DIR = Path(__file__).resolve().parent.parent / "lang"
 LANGS = ("vi", "en")

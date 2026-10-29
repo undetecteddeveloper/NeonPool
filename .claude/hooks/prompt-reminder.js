@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 
 const REMINDER = [
-  "[NHẮC — MathofPool] Luật đầy đủ: CLAUDE.md.",
+  "[NHẮC — NeonPool] Luật đầy đủ: CLAUDE.md.",
   '1) Đầu việc nói "Tôi coi đây là <loại>", rồi đọc .claude/workflow/<loại>.md. Chỉ hỏi người dùng về hướng ĐỊNH HƯỚNG (thứ người chơi thấy/cảm thấy, viết bằng kết quả); kỹ thuật tự quyết.',
   '2) Công cụ thiếu/lỗi: thử lại 1 lần → báo ngay → ghi CHƯA LÀM → không nói "xong". Chỉ dùng .venv\\Scripts\\python.exe.',
   "3) Bất biến: physics/rules không import pygame · mọi cú đánh = Shot · bước cố định, mét–giây · hằng số trong config · chữ qua i18n vi+en · xác định theo seed.",
@@ -23,7 +23,7 @@ process.stdin.on("end", () => {
   try {
     const prompt = String(JSON.parse(data.replace(/^﻿/, "")).prompt || "").normalize("NFC");
     fs.writeFileSync(
-      path.join(os.tmpdir(), "mathofpool-intent.json"),
+      path.join(os.tmpdir(), "neonpool-intent.json"),
       JSON.stringify({ merge: MERGE_INTENT.test(prompt), at: Date.now() })
     );
   } catch {

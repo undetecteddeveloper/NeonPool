@@ -87,7 +87,7 @@ const br = branch();
 const brWarn = br === "main" || br === "master" ? " — ĐANG Ở NHÁNH CHÍNH: tạo nhánh làm việc trước khi sửa" : "";
 
 const context = [
-  "[PHIÊN MỚI — MathofPool] Làm CLAUDE.md §2 NGAY, trước việc đầu tiên: báo MỘT dòng về công cụ, rồi ≤3 dòng việc dang dở và hỏi có tiếp không.",
+  "[PHIÊN MỚI — NeonPool] Làm CLAUDE.md §2 NGAY, trước việc đầu tiên: báo MỘT dòng về công cụ, rồi ≤3 dòng việc dang dở và hỏi có tiếp không.",
   "Hook đã kiểm cơ học:",
   `- Công cụ Python: ${toolsLine}`,
   `- Cổng kiểm tra: ${gateLine}`,

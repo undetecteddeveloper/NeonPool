@@ -11,7 +11,7 @@ import pygame as pg
 from game.config import SAMPLE_RATE, SFX_MAX_PER_FRAME, SFX_MIN_SPEED, SFX_REF_SPEED
 from game.physics import BallHitBall, BallHitCushion, BallPocketed, Event
 
-log = logging.getLogger("mathofpool")
+log = logging.getLogger("neonpool")
 _RNG_SEED = 1234  # fixed so the sounds are the same every run
 
 

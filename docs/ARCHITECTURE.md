@@ -1,11 +1,11 @@
-# MathofPool — kiến trúc và hợp đồng module
+# NeonPool — kiến trúc và hợp đồng module
 
 Nguồn sự thật cho cách code. Cần thứ chưa có ở đây → thêm TRONG file mình sở hữu và ghi vào đây; không đổi chữ ký công khai của module khác.
 
 ## Chạy / công cụ
 - Python: `.venv\Scripts\python.exe` (3.13), pygame-ce 2.5.8 (`import pygame as pg`), numpy có sẵn, pytest, ruff.
 - Chạy game: `.venv\Scripts\python.exe main.py` · không cửa sổ: đặt `SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy` (tools và tests tự đặt).
-- Chú thích code bằng tiếng Anh, ngắn. Type hint cho hàm công khai. Không `print` trong vòng lặp nóng; dùng `logging` (logger `mathofpool`).
+- Chú thích code bằng tiếng Anh, ngắn. Type hint cho hàm công khai. Không `print` trong vòng lặp nóng; dùng `logging` (logger `neonpool`).
 
 ## Bố cục thư mục
 ```

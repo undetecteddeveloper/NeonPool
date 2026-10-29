@@ -19,7 +19,7 @@ from game.scenes.help import HelpScene
 from game.scenes.menu import MenuScene
 from game.scenes.play import PlayScene
 
-log = logging.getLogger("mathofpool")
+log = logging.getLogger("neonpool")
 _MOUSE_EVENTS = (pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP, pg.MOUSEMOTION)
 RESIZE_SETTLE_S = 0.2  # rebuild the sharp assets once the window stops changing size
 MAX_START_SCALE = 1.5
@@ -127,7 +127,7 @@ class App:
         logging.basicConfig(level=logging.INFO)
         _enable_dpi_awareness()
         pg.init()
-        pg.display.set_caption("MathofPool")
+        pg.display.set_caption("NeonPool")
         screen = pg.display.set_mode(_start_size(), pg.RESIZABLE)
         app = App(screen)
         clock = pg.time.Clock()

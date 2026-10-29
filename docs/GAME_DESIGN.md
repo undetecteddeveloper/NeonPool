@@ -1,4 +1,4 @@
-# MathofPool — thiết kế đã chốt
+# NeonPool — thiết kế đã chốt
 
 Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code: `ARCHITECTURE.md`. Đổi mục nào ở đây = hướng sản phẩm → phải hỏi người dùng (CLAUDE.md §5).
 
@@ -45,7 +45,7 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 ## Phản hồi lần 3 (2026-10-29, người dùng sau khi chơi chế độ công thức)
 - Bỏ chế độ công thức khỏi dự án: vừa khó chơi vừa không tạo nhiều cảm giác thích thú so với chơi thường. Kéo theo: bỏ mức toán Dễ/Vừa/Khó, nút Gợi ý, lưới toạ độ (phím G), đường cong y = f(x) khỏi kế hoạch. Menu còn Chơi / Ngôn ngữ / Thoát (sau đó thêm Hướng dẫn, xem mục dưới).
 - Giữ: bàn vẽ lại, bóng thẳng xuống, thanh kéo vuông (lần 2) và luật 8-ball (mục dưới).
-- CHƯA quyết (hỏi người dùng khi tới lúc): tên game "MathofPool" và dòng phụ "Bida và những con số" còn nhắc đến toán; yếu tố "toán" nếu muốn giữ thì nằm ở đâu.
+- Đã quyết (2026-10-29): game đổi tên thành NeonPool, dòng phụ vi "Mỗi cú đánh một vệt sáng" / en "Every shot leaves a glow"; không còn yếu tố toán trong tên và chữ hiện ra. (Tên cũ là MathofPool.)
 - Việc kế tiếp theo thứ tự đã chọn: xoáy cao/thấp.
 
 ## Phản hồi lần 4 (2026-10-29, người dùng chơi bản 8-ball; ảnh tham chiếu thứ hai `ban-bida.png`, của bên thứ ba, KHÔNG đưa vào git)

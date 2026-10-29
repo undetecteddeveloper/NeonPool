@@ -20,7 +20,7 @@ function deny(reason) {
 
 function mergeIntent() {
   try {
-    const flag = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), "mathofpool-intent.json"), "utf8"));
+    const flag = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), "neonpool-intent.json"), "utf8"));
     return flag.merge === true;
   } catch {
     return false;
