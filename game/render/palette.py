@@ -27,8 +27,10 @@ PLATE_EDGE = (112, 82, 38)
 PLATE_INNER = (172, 138, 78)
 SIGHT = (242, 204, 106)  # the diamonds on the rails
 SIGHT_EDGE = (128, 90, 36)
-POCKET = (10, 10, 12)
-POCKET_RIM = (54, 46, 40)
+POCKET = (4, 4, 5)  # the deepest part of the hole
+POCKET_WALL = (34, 35, 39)  # the near wall, a crescent around the hole
+POCKET_RIM = (58, 60, 66)  # dark ring between the lip and the wall
+POCKET_LIP = (132, 134, 140)  # the light metal lip
 
 ERROR = (240, 96, 90)
 OK = (126, 226, 126)

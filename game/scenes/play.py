@@ -30,9 +30,6 @@ from game.render import draw, hud
 from game.render import palette as C
 from game.render.fx import Fx
 from game.render.layout import (
-    FIELD_W,
-    FIELD_X,
-    FIELD_Y,
     OUTER_H,
     OUTER_W,
     OUTER_X,
@@ -43,7 +40,8 @@ from game.render.layout import (
 from game.render.view import View
 from game.rules.eight_ball import PLAYING, RERACK, WON, EightBall
 
-BANNER_AT = (FIELD_X + FIELD_W / 2, FIELD_Y + 74)  # notices sit below the top middle pocket
+# notices hang under the table, in the free strip below it (on the cloth they hid rolling balls)
+BANNER_AT = (OUTER_X + OUTER_W / 2, OUTER_Y + OUTER_H + 12)
 
 
 class PlayScene:

@@ -7,10 +7,22 @@ from types import SimpleNamespace
 import pygame as pg
 import pytest
 
+from game import config, i18n
+from game.app import App
 from game.config import POCKETS, PX_PER_M
 from game.physics import Contact
-from game.render import draw, table
-from game.render.layout import FIELD_H, FIELD_W, FIELD_X, FIELD_Y, to_px
+from game.render import draw, hud, table
+from game.render.layout import (
+    FIELD_H,
+    FIELD_W,
+    FIELD_X,
+    FIELD_Y,
+    OUTER_H,
+    OUTER_W,
+    OUTER_X,
+    OUTER_Y,
+    to_px,
+)
 from game.render.view import View
 
 V = View(1.0)
@@ -126,3 +138,92 @@ def test_pull_bar_ends_are_square_not_round():
     for sign in (-1, 1):  # both far corners are filled: a round tip would leave them white
         corner = canvas.get_at((round(end_x + 1.5), round(cy + sign * (reach - 1.5))))
         assert sum(corner[:3]) < 150
+
+
+# --- feedback 2026-10-29: notices off the cloth, rounded cushion ends, deep pockets -----------
+def _brightness(surf: pg.Surface, p: tuple[float, float]) -> int:
+    return sum(_px(surf, p))
+
+
+def test_cushions_are_rounded_at_both_ends_near_the_pockets():
+    length, t, r = 300.0, table.CUSHION_PX, table.CUSHION_END_R
+    pts = table.cushion_outline(length)
+    assert min(s for s, _ in pts) == 0.0 and max(s for s, _ in pts) == length
+    face = [p for p in pts if p[1] < 0.01]  # points on the cloth face
+    assert min(s for s, _ in face) == pytest.approx(r)  # the straight face starts r in from the end
+    assert max(s for s, _ in face) == pytest.approx(length - r)
+    for s, d in pts:  # the corner on the cloth side is cut away, so no point lies nearer than this
+        if s < r and d < r:
+            assert math.hypot(s - r, d - r) == pytest.approx(r, abs=1e-6)
+    assert max(d for _, d in pts) == t  # the base on the wood side is straight
+
+
+def test_the_cushion_shadow_follows_the_rounded_outline():
+    plain, grown = table.cushion_outline(300.0), table.cushion_outline(300.0, e=4.0)
+    assert min(d for _, d in grown) == pytest.approx(-4.0)
+    assert min(d for _, d in plain) == pytest.approx(0.0)
+    assert (min(s for s, _ in grown), max(s for s, _ in grown)) == (0.0, 300.0)  # ends stay put
+
+
+def test_there_are_six_cushions_and_each_clears_its_pockets():
+    strips = table.cushion_strips()
+    assert len(strips) == 6
+    for a, b, _ in strips:
+        for px, py, pr in POCKETS:
+            centre = to_px(px, py)
+            for end in (a, b):
+                assert math.dist(end, centre) >= pr * PX_PER_M - 1e-6 + 1  # no end deep in a pocket
+
+
+def test_pockets_have_a_light_lip_a_dark_ring_and_a_hole_sunk_outwards(surf):
+    for px, py, pr in POCKETS:
+        c = to_px(px, py)
+        r = pr * PX_PER_M
+        ux, uy = table.pocket_outward(px, py)
+
+        def at(radius: float, sign: int = 1, c=c, ux=ux, uy=uy) -> int:
+            return _brightness(surf, (c[0] + sign * ux * radius, c[1] + sign * uy * radius))
+
+        lip = at(r + table.LIP_PX * 0.5)
+        assert lip > at(r * 0.5) + 150  # the lip is much lighter than the hole
+        assert at(r * 0.15, 1) < 25  # the very deepest part is nearly black
+        assert at(r * 0.45, -1) > at(r * 0.45, 1) + 15  # the near wall (cloth side) shows
+
+
+def test_pocket_outward_points_away_from_the_middle_of_the_table():
+    assert table.pocket_outward(0.0, 0.0) == pytest.approx((-math.sqrt(0.5), -math.sqrt(0.5)))
+    assert table.pocket_outward(1.27, 0.0) == pytest.approx((0.0, -1.0))
+    assert table.pocket_outward(1.27, 1.27) == pytest.approx((0.0, 1.0))
+
+
+@pytest.fixture
+def scene():
+    pg.init()
+    a = App(pg.display.set_mode(config.LOGICAL_SIZE))
+    a.go_play()
+    yield a.play
+    pg.quit()
+    i18n.set_lang("vi")
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+def test_notices_never_cover_the_table(scene, lang):
+    i18n.set_lang(lang)
+    scene.rules.cue_in_hand = True  # the 2-line case: the foul and the "place the ball" hint
+    plain = pg.Surface(scene.view.size)
+    scene._notice_left = 0.0
+    scene.draw(plain)
+    with_notice = pg.Surface(scene.view.size)
+    scene._notify("foul", "foul.no_cushion")  # the longest foul text
+    scene.draw(with_notice)
+    table_rect = pg.Rect(OUTER_X - 6, OUTER_Y - 6, OUTER_W + 12, OUTER_H + 12)
+    assert pg.image.tobytes(plain.subsurface(table_rect), "RGB") == pg.image.tobytes(
+        with_notice.subsurface(table_rect), "RGB"
+    )
+    below = pg.Rect(
+        0, table_rect.bottom, scene.view.size[0], scene.view.size[1] - table_rect.bottom
+    )
+    assert pg.image.tobytes(plain.subsurface(below), "RGB") != pg.image.tobytes(
+        with_notice.subsurface(below), "RGB"
+    )  # ... and the notice is there, under the table
+    assert hud.BANNER_PAD + 24 * 2 + OUTER_Y + OUTER_H + 12 < config.LOGICAL_SIZE[1]

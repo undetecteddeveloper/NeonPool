@@ -15,6 +15,7 @@ from game.render.layout import PANEL_H, PANEL_W, PANEL_X, PANEL_Y
 from game.render.view import View
 
 MINI = 20  # side of a small ball in the "balls left" grid (logical px)
+BANNER_PAD = 16  # vertical padding of a notice (logical px), two lines make it 64 tall
 
 
 @cache
@@ -171,20 +172,21 @@ def banner(
     canvas: pg.Surface,
     v: View,
     lines: list[tuple[str, tuple[int, int, int]]],
-    center: tuple[float, float],
+    top_centre: tuple[float, float],
 ) -> None:
-    """A short notice on the cloth: dark pill with one or two lines of text."""
+    """A short notice (dark pill, one or two lines) hanging from `top_centre`.
+
+    It sits OUTSIDE the table, below it: on the cloth it would hide balls rolling near a cushion.
+    """
     if not lines:
         return
     size, step = 16, 24
     w = max(text_width(v, s, size, True) for s, _ in lines) + 40
-    h = 16 + step * len(lines)
-    x, y = center[0] - w / 2, center[1] - h / 2
-    blit_rrect(canvas, v, x, y, w, h, 12, C.PANEL, edge=4)
+    x, y = top_centre[0] - w / 2, top_centre[1]
+    blit_rrect(canvas, v, x, y, w, BANNER_PAD + step * len(lines), 12, C.PANEL, edge=4)
     for i, (s, color) in enumerate(lines):
-        text(
-            canvas, v, s, size, color, (center[0], y + 8 + step * (i + 0.5)), bold=True, center=True
-        )
+        pos = (top_centre[0], y + BANNER_PAD / 2 + step * (i + 0.5))
+        text(canvas, v, s, size, color, pos, bold=True, center=True)
 
 
 RESULT_CARD = pg.Rect(334, 207, 400, 300)  # between the head spot and the rack (logical px)

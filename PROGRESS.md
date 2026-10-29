@@ -6,9 +6,10 @@
 - HỎI người dùng khi tới lúc: tên game "MathofPool" và dòng phụ "Bida và những con số" còn nhắc toán; nếu muốn giữ yếu tố toán thì nó nằm ở đâu.
 - Việc kế tiếp: xoáy cao/thấp (`Shot.spin` đã có trong hợp đồng, vật lý chưa dùng). Chưa lưu cài đặt (ngôn ngữ, tắt tiếng chỉ trong phiên).
 - Nhánh `feat/cong-thuc` (chế độ công thức, 302 test) giữ lại tới khi người dùng nói xoá (hook chặn `git branch -D`: người dùng tự chạy hoặc bảo Claude hướng dẫn). Không gộp vào `main`.
-- Ảnh `ban-bida-anh-tham-chieu.webp` ở thư mục gốc là của bên thứ ba, chỉ để tham khảo, cố ý KHÔNG đưa vào git.
+- Ảnh `ban-bida-anh-tham-chieu.webp` và `ban-bida.png` ở thư mục gốc là của bên thứ ba, chỉ để tham khảo, cố ý KHÔNG đưa vào git.
 
 ## Vừa xong
+- 2026-10-29 sửa theo phản hồi bản 8-ball: thông báo dời xuống dải trống dưới bàn (không còn che bi sát băng trên); lỗ có vành sáng + thành + hố đen lún ra ngoài; thành băng bo cong hai đầu sát lỗ, bóng băng theo đường bo. Test 178 → 185. Dựng bàn 46 ms (cỡ 0,82), 62 ms (1×), 115 ms (2×); smoke 2,1–4,1 ms/khung. Đã chụp ảnh và nhìn: `tools\_outfter.png`, `banner_vi.png`, `banner_en_small.png`, `edge_corner.png`.
 - 2026-10-29 bỏ chế độ công thức (người dùng chốt: khó chơi, ít thú vị): gỡ ô nhập, mức toán, Gợi ý, lưới toạ độ (phím G), đường nét đứt; menu còn Chơi / Ngôn ngữ / Thoát. Test 302 → 178 (bỏ các test của phần công thức và mức toán; test luật 8-ball và bàn giữ nguyên). Smoke 2,1–4,7 ms/khung (ngân sách 16,7).
 - 2026-10-29 dọn nhánh: `main` = đỉnh `fix/phan-hoi-mvp` (gồm MVP và sửa theo phản hồi); đã xoá `chore/workflow`, `feat/mvp`, `fix/phan-hoi-mvp` bằng `git branch -d` sau khi gộp.
 - 2026-10-28 luật 8-ball tập một mình (`rules/eight_ball.py` thuần) + bi trắng trong tay + bảng kết quả; sự kiện va chạm phát từ 0,001 m/s để luật thấy cả cú chạm rất nhẹ (âm thanh vẫn bỏ < 0,05 m/s).
