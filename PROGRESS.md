@@ -1,8 +1,7 @@
 # PROGRESS — NeonPool
 
 ## Đang mở
-- Nhánh `feat/giao-dien-neon` (CHƯA gộp vào `main`, chờ người dùng nói gộp): giao diện ARCADE 80 / SYNTHWAVE + đổi tên NeonPool, 263 test, cổng đầy đủ xanh. NGƯỜI DÙNG chưa duyệt bản chạy thật lần này; Claude chỉ xem ảnh từng khung (chưa thấy chuyển động, chưa nghe tiếng bíp mới, chưa thử toàn màn hình thật — máy chụp không có màn hình). Chạy thử: `.venv\Scripts\python.exe main.py`.
-- `main` (chưa có neon): MVP kéo thả + bàn kiểu cũ (gỗ, nỉ xanh lá) + luật 8-ball + màn Hướng dẫn chơi, 205 test. Không còn chế độ công thức.
+- `main` (2026-10-30, người dùng duyệt và nói gộp): giao diện ARCADE 80 / SYNTHWAVE NeonPool đã gộp từ `feat/giao-dien-neon` (đã xoá nhánh), 263 test, cổng đầy đủ xanh. Chạy thử: `.venv\Scripts\python.exe main.py`.
 - Bản cũ (gỗ, nỉ xanh lá: bàn, lỗ/băng, thông báo, Hướng dẫn) người dùng đã duyệt; bản neon CHƯA. Còn mở từ trước: lực tối đa và đường cong lực. Claude chưa nghe âm thanh và chưa thử chuột thật.
 - Đã chốt 2026-10-29: game tên NeonPool (cũ: MathofPool), dòng phụ "Mỗi cú đánh một vệt sáng" / "Every shot leaves a glow". Tên thư mục dự án vẫn là `MathofPool` (đổi thư mục giữa phiên làm hỏng đường dẫn phiên và bộ nhớ Claude; người dùng tự đổi khi muốn).
 - Việc kế tiếp: xoáy cao/thấp (`Shot.spin` đã có trong hợp đồng, vật lý chưa dùng). Cài đặt đã lưu (2026-10-29); tắt tiếng bằng M cố ý chỉ trong phiên.
