@@ -10,13 +10,14 @@ and jump when you click, like water when a stone goes in. Time-driven, no random
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 import pygame as pg
 
 from game.render import crt
 from game.render import palette as C
-from game.render.draw import BallSprites
+from game.render.draw import RING_PX, SpinBalls
 from game.render.layout import BALL_PX
 from game.render.view import View
 
@@ -40,8 +41,23 @@ FLOAT_EVERY_S = 2.4  # a new ball comes up this often ...
 FLOAT_MAX = 5  # ... while fewer than this many are on screen
 FLOAT_SCALE = 1.43  # the balls are this many times their size on the table (2.2 less 35%)
 FLOAT_RISE = 150.0  # rising speed far from the surface (logical px/s); it slows on arrival
-FLOAT_DRIFT = 34.0  # drifting speed along the ribbons, the way the waves run (logical px/s)
+FLOAT_SLANT = 0.36  # far from the ribbons the current carries a ball 0.36 px sideways per px it
+#                     rises: a slant of about 20 degrees off the vertical
+FLOAT_DRIFT = 70.0  # at the ribbons the current is stronger: the drifting speed (logical px/s)
+FLOAT_NEAR = 160.0  # the current reaches its full strength this close to the ribbons (px)
+FLOAT_FLOW_EASE = 3.0  # 1/s: a ball follows a change of the current this fast (no jerks)
 FLOAT_SINK = 0.35  # a floating ball sits this much of its radius below the surface
+# depth: how many of the STRANDS run behind a ball (the others cross in front of it). It wanders
+# between the strands, never behind all of them or in front of all of them
+FLOAT_DEPTH_MID = 3.0
+FLOAT_DEPTH_SWING = 1.9
+FLOAT_DEPTH_RATE = (0.45, 0.9)  # rad/s: a ball's own pace, from ... to
+# turning: the number and the stripe turn back and forth, wide while rising, less while drifting
+FLOAT_SPIN_RISE = 90.0  # degrees each way
+FLOAT_SPIN_DRIFT = 35.0
+FLOAT_SPIN_RATE = (0.9, 1.7)  # rad/s while rising
+FLOAT_SPIN_SLOW = 0.55  # ... and this fraction of it while drifting
+FLOAT_CALM_EASE = 1.5  # 1/s: rising turns into drifting this fast
 GRID_LEVELS = 8  # brightness steps of a cross line (made once, then only placed)
 
 Point = tuple[float, float]
@@ -136,51 +152,122 @@ class Strands:
         return light
 
 
+def front_weights(depth: float) -> list[float]:
+    """How much of each strand crosses IN FRONT of a ball at this depth (0 behind it, 1 in front;
+    in between, a strand is passing through the ball's depth and fades from one to the other)."""
+    return [min(1.0, max(0.0, i + 1 - depth)) for i in range(STRANDS)]
+
+
+@dataclass
+class FloatBall:
+    number: int
+    x: float
+    y: float
+    floating: bool = False
+    vx: float = 0.0  # sideways speed (logical px/s): the current carries the ball
+    calm: float = 0.0  # 0 while rising .. 1 once it drifts on the ribbons
+    depth_phase: float = 0.0
+    depth_rate: float = FLOAT_DEPTH_RATE[0]
+    spin_phase: float = 0.0
+    spin_rate: float = FLOAT_SPIN_RATE[0]
+
+    def depth(self) -> float:
+        """How many strands run behind the ball now."""
+        return FLOAT_DEPTH_MID + FLOAT_DEPTH_SWING * math.sin(self.depth_phase)
+
+    def turn(self) -> float:
+        """How far the number and the stripe are turned now, in degrees (back and forth)."""
+        amp = FLOAT_SPIN_RISE + (FLOAT_SPIN_DRIFT - FLOAT_SPIN_RISE) * self.calm
+        return amp * math.sin(self.spin_phase)
+
+
 class Floaters:
-    """Balls rising out of the floor one after another; arriving at the ribbon each slows down,
-    then bobs on it and drifts away with the waves until it leaves the screen. They never touch
-    the ribbons' motion: the ribbons are the same with or without them."""
+    """Balls rising out of the floor one after another, carried up and to the right by the
+    current, turning back and forth as they come. Arriving at the ribbons each slows down, then
+    bobs on them and drifts away with the waves until it leaves the screen. They weave between
+    the strands (see FloatBall.depth) and never touch the ribbons' motion: the ribbons are the
+    same with or without them."""
 
     def __init__(self, v: View, strands: Strands, left: float, right: float, bottom: float) -> None:
         self.v, self.strands = v, strands
         self.left, self.right, self.bottom = left, right, bottom
-        self.sprites = BallSprites(v.scaled(FLOAT_SCALE))
+        self.sprites = SpinBalls(v.scaled(FLOAT_SCALE))
         self.r = BALL_PX * FLOAT_SCALE  # logical radius
-        self.balls: list[list] = []  # [number, x, y, floating]
+        self.disc = self._make_disc()
+        self.balls: list[FloatBall] = []
         self._spawned = 0
         self._next = 0.6  # the first ball comes up soon after the menu opens
         self._t = 0.0
+
+    def _make_disc(self) -> pg.Surface:
+        """White inside a ball (its ring included), black outside, smooth edge: where the strands
+        in front of a ball may show."""
+        size, k = self.sprites.size, 4
+        sv = self.sprites.v
+        ring = max(2.0 / k, RING_PX * C.LOOK.line * sv.s)
+        big = pg.Surface((size * k, size * k))
+        pg.draw.circle(big, (255, 255, 255), (size * k / 2, size * k / 2),
+                       (BALL_PX * sv.s + ring / 2) * k)  # fmt: skip
+        return pg.transform.smoothscale(big, (size, size))
 
     def update(self, dt: float) -> None:
         self._t += dt
         if self._t >= self._next:
             self._next = self._t + FLOAT_EVERY_S
             if len(self.balls) < FLOAT_MAX:
-                i = self._spawned
-                number = FLOAT_ORDER[i % len(FLOAT_ORDER)]
-                span = self.right - self.left
-                x = self.left + span * (0.06 + 0.7 * _hash(i, 7))  # drifts right: start leftish
-                self.balls.append([number, x, self.bottom + self.r, False])
-                self._spawned += 1
+                self.balls.append(self._spawn())
         for ball in self.balls:
-            number, x, y, floating = ball
-            surface = self.strands.surface(x) + self.r * FLOAT_SINK
-            if not floating:
-                gap = y - surface
-                y -= (35.0 + (FLOAT_RISE - 35.0) * min(1.0, gap / 120.0)) * dt  # slows on arrival
-                floating = y <= surface
-            if floating:
-                x += FLOAT_DRIFT * dt
-                y = self.strands.surface(x) + self.r * FLOAT_SINK
-            ball[1:] = [x, y, floating]
-        self.balls = [b for b in self.balls if b[1] - self.r * 2 < self.right]
+            self._move(ball, dt)
+        self.balls = [b for b in self.balls if b.x - self.r * 2 < self.right]
 
-    def draw(self, canvas: pg.Surface) -> None:
-        half = self.sprites.size / 2
-        for number, x, y, _ in self.balls:
-            px, py = self.v.pt((x, y))
-            canvas.blit(self.sprites.get(number), (round(px - half), round(py - half)),
+    def _spawn(self) -> FloatBall:
+        i = self._spawned
+        self._spawned += 1
+        span = self.right - self.left
+        x = self.left + span * (0.06 + 0.7 * _hash(i, 7))  # drifts right: start leftish
+        lo, hi = FLOAT_DEPTH_RATE
+        s_lo, s_hi = FLOAT_SPIN_RATE
+        return FloatBall(
+            number=FLOAT_ORDER[i % len(FLOAT_ORDER)],
+            x=x,
+            y=self.bottom + self.r,
+            vx=FLOAT_SLANT * FLOAT_RISE,  # carried sideways from the very first moment
+            depth_phase=6.28 * _hash(i, 11),
+            depth_rate=lo + (hi - lo) * _hash(i, 13),
+            spin_phase=6.28 * _hash(i, 17),
+            spin_rate=s_lo + (s_hi - s_lo) * _hash(i, 19),
+        )
+
+    def _move(self, b: FloatBall, dt: float) -> None:
+        surface = self.strands.surface(b.x) + self.r * FLOAT_SINK
+        near = 1.0
+        if not b.floating:
+            gap = b.y - surface
+            near = max(0.0, 1.0 - gap / FLOAT_NEAR)
+            b.y -= (35.0 + (FLOAT_RISE - 35.0) * min(1.0, gap / 120.0)) * dt  # slows on arrival
+            b.floating = b.y <= surface
+        # the current: weak and slanting far away, stronger near the ribbons; the ball follows it
+        far = FLOAT_SLANT * FLOAT_RISE
+        flow = far + (FLOAT_DRIFT - far) * near
+        b.vx += (flow - b.vx) * min(1.0, dt * FLOAT_FLOW_EASE)
+        b.x += b.vx * dt
+        if b.floating:
+            b.y = self.strands.surface(b.x) + self.r * FLOAT_SINK
+        b.calm += ((1.0 if b.floating else 0.0) - b.calm) * min(1.0, dt * FLOAT_CALM_EASE)
+        b.depth_phase += b.depth_rate * dt
+        b.spin_phase += b.spin_rate * (1.0 - (1.0 - FLOAT_SPIN_SLOW) * b.calm) * dt
+
+    def draw(self, canvas: pg.Surface, front=None) -> None:
+        """Draw the balls; `front(canvas, ball, spot)` then draws what passes in front of each."""
+        size = self.sprites.size
+        half = size / 2
+        for b in self.balls:
+            px, py = self.v.pt((b.x, b.y))
+            spot = pg.Rect(round(px - half), round(py - half), size, size)
+            canvas.blit(self.sprites.spun(b.number, b.turn()), spot.topleft,
                         special_flags=pg.BLEND_PREMULTIPLIED)  # fmt: skip
+            if front is not None:
+                front(canvas, b, spot)
 
 
 class Synthwave:
@@ -215,6 +302,10 @@ class Synthwave:
         bottom_px = min(ch, v.i(horizon + BAND_DOWN) + v.oy)
         self.layer = pg.Surface((cw, max(1, bottom_px - self.layer_top)))
         self._rungs = self._bake_rungs()
+        self._geo: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None  # see _geometry
+        self._front = (  # where the strands in front of a ball are drawn before they are added
+            pg.Surface((self.floaters.sprites.size,) * 2) if self.floaters is not None else None
+        )
 
     # --- baking ---------------------------------------------------------------------------
     def _bake_sky(self) -> pg.Surface:
@@ -331,12 +422,13 @@ class Synthwave:
         if self.sun is not None:
             self._draw_sun(canvas, clock)
         self._draw_grid(canvas, clock)
+        self._geometry(clock)
         layer = self.layer
         layer.fill((0, 0, 0))
         self._draw_strands(layer, clock)
         canvas.blit(layer, (0, self.layer_top), special_flags=pg.BLEND_RGB_ADD)
-        if self.floaters is not None:  # over the ribbons: their light added over a ball dims it
-            self.floaters.draw(canvas)
+        if self.floaters is not None:  # the balls hide the strands behind them; the strands in
+            self.floaters.draw(canvas, self._draw_front)  # front of a ball cross over its face
 
     def _draw_stars(self, canvas: pg.Surface, clock: float) -> None:
         v = self.v
@@ -381,21 +473,25 @@ class Synthwave:
             level = min(GRID_LEVELS - 1, int((0.08 + 0.55 * z) / 0.63 * GRID_LEVELS))
             canvas.blit(self._rungs[level], (0, round(y) - half), special_flags=pg.BLEND_RGB_ADD)
 
-    def _draw_strands(self, layer: pg.Surface, clock: float) -> None:
+    def _geometry(self, clock: float) -> None:
+        """Where every strand is on the canvas (device px) and how much light runs along it."""
         v, st = self.v, self.strands
+        u = np.arange(STRANDS) / (STRANDS - 1)
+        spread = (np.arange(STRANDS) - (STRANDS - 1) / 2) * 3.0  # side by side, then they braid
+        ys = (st.base_y + spread[:, None] + st.y * (0.7 + 0.3 * u)[:, None]) * v.s + v.oy
+        self._geo = (st.x * v.s + v.ox, ys, st.glow_at(clock))
+
+    def _draw_strands(self, layer: pg.Surface, clock: float) -> None:
+        v = self.v
         top = self.layer_top
-        xs = st.x * v.s + v.ox
-        light = st.glow_at(clock)
+        xs, ys, light = self._geo
         chunks = 9
         n = len(xs)
         edges = np.linspace(0, n - 1, chunks + 1).astype(int)
         glow_w, mid_w, core_w = v.i(7 * C.LOOK.reach), max(1, v.i(3)), max(1, v.i(1.4))
         for i in range(STRANDS):
-            u = i / (STRANDS - 1)
-            base = C.lerp(C.CYAN, C.MAGENTA, u)
-            spread = (i - (STRANDS - 1) / 2) * 3.0  # the strands lie side by side, then braid
-            ys = (st.base_y + spread + st.y[i] * (0.7 + 0.3 * u)) * v.s + v.oy - top
-            pts = np.column_stack((xs, ys)).tolist()
+            base = C.lerp(C.CYAN, C.MAGENTA, i / (STRANDS - 1))
+            pts = np.column_stack((xs, ys[i] - top)).tolist()
             # the wide soft glow in one go; the bright parts carry the light of pulses and motion
             pg.draw.lines(layer, C.scale(base, 0.12 * self.dim), False, pts, max(1, glow_w))
             for c in range(chunks):
@@ -406,3 +502,30 @@ class Synthwave:
                 bright = (0.8 + 0.5 * min(1.5, k)) * self.dim
                 pg.draw.lines(layer, C.scale(col, bright * 0.35), False, seg, mid_w)
                 pg.draw.lines(layer, C.scale(col, bright), False, seg, core_w)
+
+    def _draw_front(self, canvas: pg.Surface, ball: FloatBall, spot: pg.Rect) -> None:
+        """The strands that run in FRONT of this ball cross over its face (sharp lines, drawn only
+        inside the ball: the ribbons round it are already on the canvas)."""
+        v = self.v
+        xs, ys, light = self._geo
+        a = max(0, int(np.searchsorted(xs, spot.left)) - 1)
+        b = min(len(xs), int(np.searchsorted(xs, spot.right)) + 1)
+        if b - a < 2:
+            return
+        near = (ys[:, a:b] > spot.top - 3) & (ys[:, a:b] < spot.bottom + 3)
+        if not near.any():  # still rising below the ribbons
+            return
+        tmp = self._front
+        tmp.fill((0, 0, 0))
+        mid_w, core_w = max(1, v.i(3)), max(1, v.i(1.4))
+        k = float(light[a:b].mean())
+        for i, w in enumerate(front_weights(ball.depth())):
+            if w <= 0.0:
+                continue
+            pts = np.column_stack((xs[a:b] - spot.left, ys[i, a:b] - spot.top)).tolist()
+            col = C.lerp(C.lerp(C.CYAN, C.MAGENTA, i / (STRANDS - 1)), C.WHITE, min(0.8, k * 0.6))
+            bright = (0.8 + 0.5 * min(1.5, k)) * self.dim * w
+            pg.draw.lines(tmp, C.scale(col, bright * 0.35), False, pts, mid_w)
+            pg.draw.lines(tmp, C.scale(col, bright), False, pts, core_w)
+        tmp.blit(self.floaters.disc, (0, 0), special_flags=pg.BLEND_RGB_MULT)
+        canvas.blit(tmp, spot.topleft, special_flags=pg.BLEND_RGB_ADD)

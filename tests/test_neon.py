@@ -11,8 +11,10 @@ import pytest
 from game import config, i18n
 from game.render import crt, hud, synth, table
 from game.render import palette as C
+from game.render.draw import SpinBalls
 from game.render.fx import KINDS, Fx
 from game.render.layout import (
+    BALL_PX,
     OUTER_H,
     OUTER_W,
     OUTER_X,
@@ -139,6 +141,31 @@ def test_a_pulse_of_light_runs_both_ways_along_the_strands():
     assert st.glow_at(synth.PULSE_S + 0.1).max() < light.max()  # and it fades
 
 
+def _menu(**kw) -> tuple[synth.Synthwave, synth.Floaters]:
+    sw = synth.Synthwave(V, 405, floaters=True, **kw)
+    sw.floaters._next = 1e9  # no balls but the ones the test puts there
+    return sw, sw.floaters
+
+
+def _rise_of_the_first_ball() -> list[synth.FloatBall]:
+    """Snapshots of the first ball of the menu from the moment it comes up until it lands."""
+    sw = synth.Synthwave(V, 405, floaters=True)
+    track = []
+    for _ in range(60 * 12):
+        sw.update(1 / 60)
+        for b in sw.floaters.balls:
+            if b.number == 1:
+                track.append(synth.FloatBall(**vars(b)))
+        if track and track[-1].floating:
+            break
+    return track
+
+
+def _light(surf: pg.Surface, rect: pg.Rect) -> int:
+    """All the light (sum of the colour values) inside `rect`."""
+    return int(pg.surfarray.array3d(surf.subsurface(rect)).astype(np.int64).sum())
+
+
 def test_a_ball_landing_on_the_ribbon_leaves_it_alone():
     with_balls = synth.Synthwave(V, 405, floaters=True)
     without = synth.Synthwave(V, 405)
@@ -146,23 +173,56 @@ def test_a_ball_landing_on_the_ribbon_leaves_it_alone():
     for _ in range(12 * 60):
         with_balls.update(1 / 60)
         without.update(1 / 60)
-        landed = landed or any(b[3] for b in with_balls.floaters.balls)
+        landed = landed or any(b.floating for b in with_balls.floaters.balls)
     assert landed
     assert np.array_equal(with_balls.strands.y, without.strands.y)  # no dip, no ripple
 
 
-def test_the_balls_are_drawn_over_the_ribbons_so_that_nothing_dims_them():
-    sw = synth.Synthwave(V, 405, floaters=True)
-    fl = sw.floaters
+def test_a_ball_hides_the_strands_behind_it():
+    sw, fl = _menu()
     x = 600.0
     y = sw.strands.surface(x) + fl.r * synth.FLOAT_SINK
-    fl.balls = [[3, x, y, True]]
-    fl._next = 1e9  # no other ball
+    fl.balls = [synth.FloatBall(3, x, y, floating=True)]
     sw._draw_strands = lambda layer, clock: layer.fill((255, 255, 255))  # ribbon light everywhere
+    sw._draw_front = lambda canvas, ball, spot: None  # and nothing in front of the ball
     canvas = _canvas()
     sw.draw(canvas, 0.0)
     px, py = V.pt((x + 0.45 * fl.r, y))  # the dark body of the ball, clear of its number
     assert sum(canvas.get_at((round(px), round(py)))[:3]) < 300  # not the white light behind it
+
+
+def test_the_strands_in_front_cross_the_ball_but_only_inside_it():
+    sw, fl = _menu()
+    sw._geometry(0.0)
+    xs, ys, _ = sw._geo
+    j = len(xs) // 2
+    x, y = (xs[j] - V.ox) / V.s, (ys[5, j] - V.oy) / V.s  # the ball sits right on the last strand
+    fl.balls = [synth.FloatBall(3, x, y, floating=True)]  # depth 3: strands 3, 4, 5 are in front
+    sw._draw_strands = lambda layer, clock: None  # the ribbons themselves are off
+    with_front, without = _canvas(), _canvas()
+    sw.draw(with_front, 0.0)
+    sw._draw_front = lambda canvas, ball, spot: None
+    sw.draw(without, 0.0)
+    spot = pg.Rect(0, 0, fl.sprites.size, fl.sprites.size)
+    spot.center = V.ipt((x, y))
+    assert _light(with_front, spot) > _light(without, spot) + 300  # lines run across the face
+    for column in (  # the strand runs on to both edges of the sprite: it must stop at the ball
+        pg.Rect(spot.left, spot.top, 1, spot.h),
+        pg.Rect(spot.right - 1, spot.top, 1, spot.h),
+    ):
+        assert _light(with_front, column) == _light(without, column)  # none outside it
+
+
+def test_which_strands_are_in_front_follows_the_depth():
+    assert synth.front_weights(3.0) == [0, 0, 0, 1, 1, 1]
+    assert synth.front_weights(3.5) == [0, 0, 0, 0.5, 1, 1]  # strand 3 is passing through
+    ball = synth.FloatBall(3, 0.0, 0.0, depth_rate=0.9)
+    depths = []
+    for _ in range(60 * 30):
+        ball.depth_phase += ball.depth_rate / 60
+        depths.append(ball.depth())
+    assert 1.0 < min(depths) < 1.5 and 4.5 < max(depths) < 5.0  # between two strands, all along
+    assert synth.front_weights(min(depths))[0] == 0 and synth.front_weights(max(depths))[-1] == 1
 
 
 def test_balls_float_up_one_by_one_land_on_the_ribbon_and_drift_away():
@@ -172,11 +232,11 @@ def test_balls_float_up_one_by_one_land_on_the_ribbon_and_drift_away():
     for _ in range(30 * 60):  # half a minute of menu
         sw.update(1 / 60)
         assert len(fl.balls) <= synth.FLOAT_MAX
-        for number, x, y, floating in fl.balls:
-            seen.add(number)
-            if floating:
+        for b in fl.balls:
+            seen.add(b.number)
+            if b.floating:
                 landed = True
-                assert abs(y - (sw.strands.surface(x) + fl.r * synth.FLOAT_SINK)) < 1e-6
+                assert abs(b.y - (sw.strands.surface(b.x) + fl.r * synth.FLOAT_SINK)) < 1e-6
     assert landed
     assert seen == set(range(1, len(seen) + 1)) and len(seen) >= synth.FLOAT_MAX  # 1, 2, 3 ...
     first = synth.Synthwave(V, 405, floaters=True)
@@ -187,16 +247,79 @@ def test_balls_float_up_one_by_one_land_on_the_ribbon_and_drift_away():
     assert first.floaters.balls == second.floaters.balls  # no randomness
 
 
-def test_a_floating_ball_drifts_the_way_the_waves_run_and_leaves_the_screen():
-    sw = synth.Synthwave(V, 405, floaters=True)
-    fl = sw.floaters
-    fl.balls = [[3, 600.0, sw.strands.surface(600.0), True]]
-    fl._next = 1e9  # no new balls
+def test_a_rising_ball_is_carried_up_and_sideways_and_its_path_bends_with_the_current():
+    track = _rise_of_the_first_ball()
+    rising = [b for b in track if not b.floating]
+    assert len(rising) > 120 and track[-1].floating  # it came up and landed
+    assert all(b2.x > b1.x and b2.y < b1.y for b1, b2 in zip(rising, rising[1:], strict=False))
+
+    def off_vertical(a: synth.FloatBall, b: synth.FloatBall) -> float:
+        return math.degrees(math.atan2(b.x - a.x, a.y - b.y))
+
+    start = off_vertical(rising[0], rising[30])  # half a second after it appeared
+    end = off_vertical(rising[-31], rising[-1])  # the last half second before it lands
+    assert 14 < start < 27  # about 20 degrees off the vertical, to the right
+    assert end > 45  # the current has bent it towards the ribbons' own direction
+
+
+def test_the_number_turns_back_and_forth_wide_while_rising_and_less_while_drifting():
+    rising = [b.turn() for b in _rise_of_the_first_ball() if not b.floating]
+    assert max(rising) - min(rising) > 60  # a wide swing within the rise
+    ball = synth.FloatBall(3, 0.0, 0.0)
+    swing = []
+    for calm in (0.0, 1.0):
+        ball.calm = calm
+        swing.append(max(abs(_turn_at(ball, p / 10)) for p in range(63)))
+    assert swing[0] == pytest.approx(synth.FLOAT_SPIN_RISE, abs=1.0)
+    assert swing[1] == pytest.approx(synth.FLOAT_SPIN_DRIFT, abs=1.0)
+    sw, fl = _menu()
+    ball = synth.FloatBall(3, 600.0, sw.strands.surface(600.0), floating=True)
+    fl.balls = [ball]
+    for _ in range(60 * 5):
+        sw.update(1 / 60)
+    assert ball.calm > 0.95  # drifting: gentle and slow
+    before = ball.spin_phase
     sw.update(1.0)
-    assert fl.balls[0][1] > 600.0  # to the right
+    assert ball.spin_phase - before == pytest.approx(
+        ball.spin_rate * synth.FLOAT_SPIN_SLOW, rel=0.05
+    )
+
+
+def _turn_at(ball: synth.FloatBall, phase: float) -> float:
+    ball.spin_phase = phase
+    return ball.turn()
+
+
+def test_a_floating_ball_drifts_the_way_the_waves_run_and_leaves_the_screen():
+    sw, fl = _menu()
+    fl.balls = [synth.FloatBall(3, 600.0, sw.strands.surface(600.0), True, vx=synth.FLOAT_DRIFT)]
+    sw.update(1.0)
+    assert fl.balls[0].x > 600.0  # to the right
     for _ in range(60 * 40):
         sw.update(1 / 60)
     assert fl.balls == []  # gone off the right edge
+
+
+def test_a_turning_ball_keeps_its_body_and_turns_only_its_number():
+    sprites = SpinBalls(View(1.5))
+    size = sprites.size
+    a, b = sprites.spun(3, 0.0), sprites.spun(3, 60.0)
+    assert a.get_size() == b.get_size() == (size, size)
+    r = BALL_PX * 1.5
+    inner, outer = 0, 0
+    for x in range(size):
+        for y in range(size):
+            d = math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2)
+            same = a.get_at((x, y)) == b.get_at((x, y))
+            if d >= 0.8 * r:
+                assert same, (x, y)  # the ring and the glow round the ball do not move
+                outer += 1
+            elif d <= 0.4 * r and not same:
+                inner += 1
+    assert outer > 500 and inner > 5  # the number inside did
+    assert sprites.spun(3, 1.0) is sprites.spun(3, 0.0)  # one sprite for each 3 degrees
+    assert sprites.spun(3, 2.0) is not sprites.spun(3, 0.0)
+    assert sprites.spun(0, 90.0) is sprites.spun(0, 0.0)  # the white ball has no number to turn
 
 
 @pytest.mark.parametrize("window", [(1280, 720), (1920, 1200), (2560, 1080)])

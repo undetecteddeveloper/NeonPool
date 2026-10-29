@@ -15,7 +15,7 @@ import pygame as pg
 from game.config import BALL_R, CUE_SHOW_PULL
 from game.render import fonts
 from game.render import palette as C
-from game.render.glow import halo, lit
+from game.render.glow import blur_pm, halo, lit
 from game.render.layout import (
     BALL_PX,
     to_px,
@@ -27,6 +27,9 @@ RING_PX = 1.8  # the lit ring of a ball (logical px), centred on the physical ed
 HALO_PX = 6.0  # how far a ball's light reaches past its edge (logical px, before the look)
 RIM = BALL_PX + RING_PX / 2 + 0.6  # where the aim line and the bar start: just outside the ring
 SS_BALL = 4  # sprites are painted at 4x
+SPIN_STEP_DEG = 3.0  # a turning ball has a sprite for every 3 degrees
+SPIN_GLOW_PX = 3.0  # how soft the glow round a turning number is (sprite pixels)
+SPIN_GLOW = (160, 160, 160, 160)  # ... and how strong (0..255)
 
 
 # --- smooth-shape plumbing -------------------------------------------------------------
@@ -187,13 +190,44 @@ class BallSprites:
             self._cache[key] = self._make(number, with_halo)
         return self._cache[key]
 
-    def _make(self, number: int, with_halo: bool) -> pg.Surface:
+    def _geometry(self) -> tuple[View, float, float]:
+        """(the supersampled view, ball radius, ring width) of a sprite, all in painting pixels."""
         bv = self.v.framed().scaled(SS_BALL)
+        return bv, BALL_PX * bv.s, max(2.0, RING_PX * C.LOOK.line * bv.s)
+
+    @staticmethod
+    def _stripe(
+        big: int, r: float, ring: float, color: tuple[int, int, int], degrees: float = 0.0
+    ) -> pg.Surface:
+        """The lit band of a stripe ball (turned by `degrees`), cut to the disc of the ball."""
+        c = big / 2
+        band = pg.Surface((big, big), pg.SRCALPHA)
+        pg.draw.rect(band, (*color, 60), (0, c - r * 0.52, big, r * 1.04))
+        for sign in (-1, 1):
+            y = c + sign * r * 0.52
+            pg.draw.line(band, (*color, 255), (0, y), (big, y), max(1, round(ring * 0.7)))
+        if degrees:
+            turned = pg.transform.rotate(band, degrees)
+            band = pg.Surface((big, big), pg.SRCALPHA)
+            band.blit(turned, turned.get_rect(center=(c, c)))
+        mask = pg.Surface((big, big), pg.SRCALPHA)
+        pg.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
+        band.blit(mask, (0, 0), special_flags=pg.BLEND_RGBA_MIN)
+        return band
+
+    @staticmethod
+    def _digit(number: int, r: float, color: tuple[int, int, int], degrees: float = 0.0):
+        """The number of a ball as a lit surface (turned by `degrees`)."""
+        font = fonts.get(max(6, int(r * (1.0 if number < 10 else 0.82))), bold=True)
+        text = font.render(str(number), True, C.WHITE if number > 8 else color)
+        return pg.transform.rotate(text, degrees) if degrees else text
+
+    def _make(self, number: int, with_halo: bool, glyph: bool = True) -> pg.Surface:
+        """One ball. `glyph` False leaves out the number and the stripe (see SpinBalls)."""
+        bv, r, ring = self._geometry()
         size = self.size if with_halo else self.core_size
         big = size * SS_BALL
         c = big / 2
-        r = BALL_PX * bv.s
-        ring = max(2.0, RING_PX * C.LOOK.line * bv.s)
         base = number if number <= 8 else number - 8
         color = C.BALL_COLORS[base]
 
@@ -203,20 +237,12 @@ class BallSprites:
             pg.draw.circle(light, color, (c, c), r + ring / 2)
         else:
             pg.draw.circle(body, C.BODY, (c, c), r)
-            if number > 8:  # a stripe: two lit chords with a faint glow between them
-                band = pg.Surface((big, big), pg.SRCALPHA)
-                pg.draw.rect(band, (*color, 60), (0, c - r * 0.52, big, r * 1.04))
-                for sign in (-1, 1):
-                    y = c + sign * r * 0.52
-                    pg.draw.line(band, (*color, 255), (0, y), (big, y), max(1, round(ring * 0.7)))
-                mask = pg.Surface((big, big), pg.SRCALPHA)
-                pg.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
-                band.blit(mask, (0, 0), special_flags=pg.BLEND_RGBA_MIN)
-                light.blit(band, (0, 0))
+            if glyph and number > 8:  # a stripe: two lit chords with a faint glow between them
+                light.blit(self._stripe(big, r, ring, color), (0, 0))
             pg.draw.circle(light, color, (c, c), r + ring / 2, round(ring))
-            font = fonts.get(max(6, int(r * (1.0 if number < 10 else 0.82))), bold=True)
-            text = font.render(str(number), True, C.WHITE if number > 8 else color)
-            light.blit(text, text.get_rect(center=(c, c)))
+            if glyph:
+                text = self._digit(number, r, color)
+                light.blit(text, text.get_rect(center=(c, c)))
 
         light_pm = light.premul_alpha()
         out = body.premul_alpha()
@@ -225,6 +251,47 @@ class BallSprites:
             out.blit(glow, (0, 0), special_flags=pg.BLEND_RGBA_ADD)
         out.blit(light_pm, (0, 0), special_flags=pg.BLEND_PREMULTIPLIED)
         return pg.transform.smoothscale(out, (size, size))
+
+
+class SpinBalls(BallSprites):
+    """Balls that can be turned: the body, the ring and its glow stay put, the number and the
+    stripe turn. A sprite is made once per ball and per step of SPIN_STEP_DEG: the smooth edges
+    need supersampling, so rotating a finished sprite every frame would blur it."""
+
+    def __init__(self, v: View) -> None:
+        super().__init__(v)
+        self._still: dict[int, pg.Surface] = {}  # the ball without its number and stripe
+        self._turned: dict[tuple[int, int], pg.Surface] = {}
+
+    def spun(self, number: int, degrees: float) -> pg.Surface:
+        """The ball with its number and stripe turned `degrees` (the cue ball has neither)."""
+        step = 0 if number == 0 else round(degrees / SPIN_STEP_DEG)
+        key = (number, step)
+        if key not in self._turned:
+            self._turned[key] = self._turn(number, step * SPIN_STEP_DEG)
+        return self._turned[key]
+
+    def _turn(self, number: int, degrees: float) -> pg.Surface:
+        if number == 0:
+            return self._get(0, True)
+        if number not in self._still:
+            self._still[number] = self._make(number, True, glyph=False)
+        _, r, ring = self._geometry()
+        size = self.size
+        big = size * SS_BALL
+        color = C.BALL_COLORS[number if number <= 8 else number - 8]
+        layer = pg.Surface((big, big), pg.SRCALPHA)
+        if number > 8:
+            layer.blit(self._stripe(big, r, ring, color, degrees), (0, 0))
+        text = self._digit(number, r, color, degrees)
+        layer.blit(text, text.get_rect(center=(big / 2, big / 2)))
+        glyph = shrink_pm(layer, (size, size))
+        glow = blur_pm(glyph, SPIN_GLOW_PX)  # the lit number glows a little, as it does unturned
+        glow.fill(SPIN_GLOW, special_flags=pg.BLEND_RGBA_MULT)
+        out = self._still[number].copy()
+        out.blit(glow, (0, 0), special_flags=pg.BLEND_RGBA_ADD)
+        out.blit(glyph, (0, 0), special_flags=pg.BLEND_PREMULTIPLIED)
+        return out
 
 
 def draw_balls(canvas: pg.Surface, v: View, balls, sprites: BallSprites) -> None:
