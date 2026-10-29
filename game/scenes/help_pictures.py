@@ -8,7 +8,6 @@ always match the game, at any window size and in the current language.
 
 from __future__ import annotations
 
-import math
 from types import SimpleNamespace
 
 import pygame as pg
@@ -69,9 +68,7 @@ def _pose(
     scene._clock = 0.0  # a fixed pulse for the ring
     if pull is not None:
         cx, cy = to_px(scene.world.balls[0].x, scene.world.balls[0].y)
-        angle = math.atan2(-pull[1], -pull[0])  # the shot goes away from the pull
-        scene.knob.angle = angle
-        scene.drag.begin((cx, cy), (cx, cy), angle)
+        scene.drag.begin((cx, cy))  # the shot goes away from the pull
         scene.drag.move((cx + pull[0], cy + pull[1]))
     return scene
 

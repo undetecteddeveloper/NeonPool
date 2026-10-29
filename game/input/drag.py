@@ -3,8 +3,8 @@
 Two parts, both ending in one `Shot`:
 - `Knob`: while the pointer is on the cue ball (nothing pressed), going round the ball's centre
   turns the cue like a dial, one turn of the pointer for one turn of the cue.
-- `DragAim`: press, pull, release. With a locked `angle` (the dial's) the pull, in any direction,
-  only sets the power; without one the shot goes from the pointer through the cue ball.
+- `DragAim`: press, pull, release. The shot goes the opposite way to the pull, from wherever on
+  the ball the press was, so the aim is free to change all through the pull.
 Works in logical screen pixels (same orientation as table coordinates, so angles carry over).
 """
 
@@ -48,23 +48,14 @@ class Knob:
 class DragAim:
     def __init__(self) -> None:
         self.active = False
-        self._cue = (0.0, 0.0)
         self._press = (0.0, 0.0)
         self._pointer = (0.0, 0.0)
-        self._locked: float | None = None
 
-    def begin(
-        self,
-        cue_px: tuple[float, float],
-        pointer_px: tuple[float, float],
-        angle: float | None = None,
-    ) -> None:
-        """Start pulling. `angle` locks the direction of the shot (the dial's)."""
+    def begin(self, pointer_px: tuple[float, float]) -> None:
+        """Start pulling from where the pointer is now."""
         self.active = True
-        self._cue = cue_px
         self._press = pointer_px
         self._pointer = pointer_px
-        self._locked = angle
 
     def move(self, pointer_px: tuple[float, float]) -> None:
         if self.active:
@@ -79,9 +70,8 @@ class DragAim:
 
     @property
     def pull(self) -> float:
-        """Pull distance in logical pixels: from where the press was (locked) or from the ball."""
-        start = self._press if self._locked is not None else self._cue
-        return math.hypot(start[0] - self._pointer[0], start[1] - self._pointer[1])
+        """Pull distance in logical pixels, from where the press was."""
+        return math.hypot(self._press[0] - self._pointer[0], self._press[1] - self._pointer[1])
 
     @property
     def bar_length(self) -> float:
@@ -94,10 +84,8 @@ class DragAim:
 
     @property
     def angle(self) -> float:
-        """Shooting direction: the locked one, else from the pointer through the cue ball."""
-        if self._locked is not None:
-            return self._locked
-        return math.atan2(self._cue[1] - self._pointer[1], self._cue[0] - self._pointer[0])
+        """Shooting direction: away from the pull (only means something once `has_direction`)."""
+        return math.atan2(self._press[1] - self._pointer[1], self._press[0] - self._pointer[0])
 
     @property
     def power(self) -> float:

@@ -177,13 +177,16 @@ class PlayScene:
                 cue = self.world.balls[0]
                 cx, cy = to_px(cue.x, cue.y)
                 if math.hypot(e.pos[0] - cx, e.pos[1] - cy) <= GRAB_RADIUS_M * PX_PER_M:
-                    self.drag.begin((cx, cy), e.pos, self.knob.angle)  # the dial's angle
+                    self.drag.begin(e.pos)
+                    self.knob.release()
             elif e.button == 3:
                 self.drag.cancel()
         elif e.type == pg.MOUSEMOTION:
             self.drag.move(e.pos)
             if not self.drag.active:
                 self._turn_knob(e.pos)
+            elif self.drag.has_direction:
+                self.knob.angle = self.drag.angle  # a cancelled pull leaves the cue where it was
         elif e.type == pg.MOUSEBUTTONUP and e.button == 1 and self.drag.active:
             self.drag.move(e.pos)
             shot = self.drag.end()

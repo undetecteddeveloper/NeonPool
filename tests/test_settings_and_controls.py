@@ -148,18 +148,16 @@ def test_the_very_centre_of_the_ball_does_not_turn_the_cue():
     assert knob.angle == pytest.approx(1.0)
 
 
-def test_with_a_locked_angle_the_pull_only_sets_the_power():
+def test_the_pull_sets_the_direction_as_well_as_the_power_and_may_change_all_along():
     d = DragAim()
-    d.begin((500, 300), (505, 300), angle=0.4)
-    d.move((505, 300 + config.MAX_DRAG_PX))  # pulled straight down
+    d.begin((505, 300))  # pressed a little off the centre of the ball: that changes nothing
+    d.move((505, 300 + config.MAX_DRAG_PX))  # pulled straight down: the shot goes up
+    assert d.angle == pytest.approx(-math.pi / 2) and d.power == pytest.approx(1.0)
+    d.move((505 + config.MAX_DRAG_PX / 2, 300))  # still pulling: sideways, half way
+    assert d.angle == pytest.approx(math.pi)  # the aim followed the pull, it was not locked
     shot = d.end()
-    assert shot.angle == pytest.approx(0.4) and shot.power == pytest.approx(1.0)
-    d.begin((500, 300), (505, 300), angle=-2.0)
-    d.move((505 + config.MAX_DRAG_PX / 2, 300))  # pulled sideways, half way
-    shot = d.end()
-    assert shot.angle == pytest.approx(-2.0) and shot.power == pytest.approx(
-        0.5**config.POWER_CURVE
-    )
+    assert shot.angle == pytest.approx(math.pi)
+    assert shot.power == pytest.approx(0.5**config.POWER_CURVE)
 
 
 def test_in_the_game_the_dial_sets_the_shot(app):
@@ -171,13 +169,35 @@ def test_in_the_game_the_dial_sets_the_shot(app):
     def move(x, y, buttons=(0, 0, 0)):
         play.handle_event(pg.event.Event(pg.MOUSEMOTION, pos=(x, y), rel=(0, 0), buttons=buttons))
 
+    def press(x, y):
+        play.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(x, y), button=1))
+
+    def release(x, y):
+        play.handle_event(pg.event.Event(pg.MOUSEBUTTONUP, pos=(x, y), button=1))
+
     move(cx + 15, cy)  # onto the ball, on its right
     move(cx, cy + 15)  # a quarter turn round it (clockwise on screen)
     assert play.knob.angle == pytest.approx(math.pi / 2, abs=1e-6)
-    play.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(cx, cy + 15), button=1))
-    move(cx - 120, cy + 15, (1, 0, 0))  # pulled to the left: the aim does not change
-    play.handle_event(pg.event.Event(pg.MOUSEBUTTONUP, pos=(cx - 120, cy + 15), button=1))
-    assert cue.vy > 0 and abs(cue.vx) < 1e-6  # the ball goes down the screen, as dialled
+    press(cx, cy + 15)
+    move(cx, cy - 105, (1, 0, 0))  # pulled up, back along the cue: the cue stays as dialled
+    assert play.drag.angle == pytest.approx(math.pi / 2, abs=1e-6)
+    move(cx - 120, cy + 15, (1, 0, 0))  # ... and then pulled to the left: the aim follows
+    assert play.drag.angle == pytest.approx(0.0, abs=1e-6)
+    release(cx - 120, cy + 15)
+    assert cue.vx > 0 and abs(cue.vy) < 1e-6  # the ball goes right, away from the pull
+
+
+def test_a_cancelled_pull_leaves_the_cue_where_the_pull_put_it(app):
+    app.go_play()
+    play = app.play
+    cx, cy = to_px(play.world.balls[0].x, play.world.balls[0].y)
+    play.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(cx, cy), button=1))
+    play.handle_event(
+        pg.event.Event(pg.MOUSEMOTION, pos=(cx, cy + 60), rel=(0, 0), buttons=(1, 0, 0))
+    )
+    play.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(cx, cy + 60), button=3))  # cancel
+    assert not play.drag.active
+    assert play.knob.angle == pytest.approx(-math.pi / 2, abs=1e-6)  # pulled down: aims up
 
 
 # --- the screen changes like an old tube ------------------------------------------------------

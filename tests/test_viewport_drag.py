@@ -42,7 +42,7 @@ def test_mouse_mapping_hits_canvas_corners_and_centre(window):
 # --- AC4: drag aiming -----------------------------------------------------------------------
 def test_pull_left_shoots_right():
     d = DragAim()
-    d.begin((500, 300), (500, 300))
+    d.begin((500, 300))
     d.move((400, 300))  # pulled to the left of the cue ball
     shot = d.end()
     assert shot is not None and shot.angle == pytest.approx(0.0)  # shoots to the right (+x)
@@ -51,7 +51,7 @@ def test_pull_left_shoots_right():
 
 def test_pull_down_shoots_up_screen():
     d = DragAim()
-    d.begin((500, 300), (500, 300))
+    d.begin((500, 300))
     d.move((500, 360))
     shot = d.end()
     assert shot.angle == pytest.approx(-math.pi / 2)  # up = -y in screen/table coordinates
@@ -59,14 +59,14 @@ def test_pull_down_shoots_up_screen():
 
 def test_power_is_clamped_to_one():
     d = DragAim()
-    d.begin((0, 0), (0, 0))
+    d.begin((0, 0))
     d.move((-5000, 0))
     assert d.power == 1.0 and d.end().power == 1.0
 
 
 def test_weak_pull_cancels():
     d = DragAim()
-    d.begin((0, 0), (0, 0))
+    d.begin((0, 0))
     d.move((-MIN_PULL_PX * 0.5, 0))
     assert d.end() is None and not d.active
 
@@ -74,7 +74,7 @@ def test_weak_pull_cancels():
 def test_cancel_and_idle_state():
     d = DragAim()
     assert d.power == 0.0 and not d.has_direction and d.end() is None
-    d.begin((10, 10), (10, 10))
+    d.begin((10, 10))
     assert d.active and not d.has_direction  # pointer on the ball: no direction yet
     d.move((60, 10))
     d.cancel()
@@ -85,7 +85,7 @@ def test_cancel_and_idle_state():
 def test_bar_length_grows_with_the_pull_then_stops_at_full_power():
     d = DragAim()
     assert d.bar_length == 0.0
-    d.begin((0, 0), (0, 0))
+    d.begin((0, 0))
     d.move((-MAX_DRAG_PX / 2, 0))
     assert d.bar_length == pytest.approx(MAX_DRAG_PX / 2)
     d.move((-MAX_DRAG_PX * 5, 0))  # the mouse is far beyond full power
@@ -96,7 +96,7 @@ def test_bar_length_grows_with_the_pull_then_stops_at_full_power():
 
 def test_power_is_gentle_at_first_and_strong_at_the_end():
     d = DragAim()
-    d.begin((0, 0), (0, 0))
+    d.begin((0, 0))
     powers = []
     for fraction in (0.25, 0.5, 0.75, 1.0):
         d.move((-MAX_DRAG_PX * fraction, 0))
@@ -108,6 +108,6 @@ def test_power_is_gentle_at_first_and_strong_at_the_end():
 
 def test_a_pull_just_above_the_minimum_still_shoots():
     d = DragAim()
-    d.begin((0, 0), (0, 0))
+    d.begin((0, 0))
     d.move((-MIN_PULL_PX * 1.5, 0))
     assert d.end() is not None

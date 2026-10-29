@@ -66,7 +66,7 @@ VOLUME_STEP = 0.1  # the volume setting moves in steps of 10%
 CUE_SHOW_PULL = 0.75  # the neon cue travels 75% of the pull (the power is unchanged)
 POWER_CURVE = 2.0  # power = (pull / MAX_DRAG_PX) ** POWER_CURVE: gentle at first, strong at the end
 GRAB_RADIUS_M = BALL_R * 2.6  # how close to the cue ball a press must be to start aiming
-AIM_MIN_PX = 4  # pointer closer than this to the cue ball: no direction yet
+AIM_MIN_PX = 4  # pulled less than this from where the press was: no direction yet
 KNOB_DEAD_PX = 3.0  # turning the cue: the pointer this close to the ball centre is ignored
 
 # --- Effects (subtle) and sound ---

@@ -55,7 +55,7 @@ def test_h_in_a_game_opens_the_help_and_escape_returns_to_the_same_game(app):
 
 def test_opening_the_help_cancels_an_aim_in_progress(app):
     app.go_play()
-    app.play.drag.begin((100, 100), (100, 100))
+    app.play.drag.begin((100, 100))
     app.handle_event(key(pg.K_h))
     assert not app.play.drag.active
 
