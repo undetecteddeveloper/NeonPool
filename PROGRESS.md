@@ -1,14 +1,15 @@
 # PROGRESS — MathofPool
 
 ## Đang mở
-- NHÁNH `feat/ban-moi-8ball` (chưa gộp vào `main`, 178 test, cổng xanh): MVP kéo thả + bàn vẽ lại theo ảnh tham chiếu + luật 8-ball (lỗi, nhóm nguyên/sọc, bi trắng trong tay, bảng kết quả, bảng bên Lỗi/Nhóm). Không còn chế độ công thức.
-- VIỆC CỦA NGƯỜI DÙNG: chơi thử bản kéo thả và góp ý: (1) bàn mới, bóng thẳng xuống, thanh kéo vuông có hợp không; (2) luật 8-ball có dễ hiểu không, thông báo lỗi và việc kéo bi trắng sau lỗi có tự nhiên không; (3) lực tối đa và đường cong lực (từ lần trước). Claude chưa nghe âm thanh và chưa thử chuột thật.
+- `main` đã có tất cả (gộp 2026-10-29, 205 test, cổng xanh): MVP kéo thả + bàn vẽ lại theo ảnh tham chiếu + luật 8-ball + màn Hướng dẫn chơi. Không còn chế độ công thức. Chỉ còn nhánh `feat/cong-thuc` (xem dưới).
+- NGƯỜI DÙNG đã duyệt bàn mới, lỗ/băng, thông báo và màn Hướng dẫn. Còn mở từ trước: lực tối đa và đường cong lực (từ lần trước). Claude chưa nghe âm thanh và chưa thử chuột thật.
 - HỎI người dùng khi tới lúc: tên game "MathofPool" và dòng phụ "Bida và những con số" còn nhắc toán; nếu muốn giữ yếu tố toán thì nó nằm ở đâu.
 - Việc kế tiếp: xoáy cao/thấp (`Shot.spin` đã có trong hợp đồng, vật lý chưa dùng). Chưa lưu cài đặt (ngôn ngữ, tắt tiếng chỉ trong phiên).
 - Nhánh `feat/cong-thuc` (chế độ công thức, 302 test) giữ lại tới khi người dùng nói xoá (hook chặn `git branch -D`: người dùng tự chạy hoặc bảo Claude hướng dẫn). Không gộp vào `main`.
 - Ảnh `ban-bida-anh-tham-chieu.webp` và `ban-bida.png` ở thư mục gốc là của bên thứ ba, chỉ để tham khảo, cố ý KHÔNG đưa vào git.
 
 ## Vừa xong
+- 2026-10-29 gộp `feat/ban-moi-8ball` vào `main` (fast-forward) và xoá nhánh bằng `git branch -d`; cổng chạy lại trên `main` xanh.
 - 2026-10-29 màn Hướng dẫn chơi (brief `docs/plans/20261029-huong-dan.md`): nút menu + phím H, 6 trang lật, hình là ảnh thật do game vẽ rồi đánh dấu (`scenes/help_pictures.py`, `render/guide_art.py`), vi + en. Test 186 → 205. Khung đầu của mỗi trang làm hình 12–41 ms (trang 1: 158 ms vì dựng bàn; trang phím tắt 715 → 97 ms ở cửa sổ 2× sau khi chỉ vẽ bảng bên thay vì cả bàn); khung thường 1,8 ms. Đã phác 3 bố cục bằng ảnh, người dùng chọn Trang lật. Ảnh: `tools\_out\guide_0..5.png`, `guide_en_1.png`, `guide_en_small_2.png`, `menu_new.png`.
 - 2026-10-29 chỉnh tinh: tấm đồng/gỗ không còn lòi ra ở khoảng nêm giữa đầu băng bo cong và vành lỗ (lót nền băng sẫm dưới băng, nên tấm đồng chỉ còn nằm trên phần gỗ, băng xanh liền hai bên lỗ giữa như ảnh tham chiếu). Test mới đỏ khi bỏ lớp lót. Ảnh: `tools/_out/backing_mid.png`, `backing_corner.png`, `after2.png`.
 - 2026-10-29 sửa theo phản hồi bản 8-ball: thông báo dời xuống dải trống dưới bàn (không còn che bi sát băng trên); lỗ có vành sáng + thành + hố đen lún ra ngoài; thành băng bo cong hai đầu sát lỗ, bóng băng theo đường bo. Test 178 → 185. Dựng bàn 46 ms (cỡ 0,82), 62 ms (1×), 115 ms (2×); smoke 2,1–4,1 ms/khung. Đã chụp ảnh và nhìn: `tools\_outfter.png`, `banner_vi.png`, `banner_en_small.png`, `edge_corner.png`.
