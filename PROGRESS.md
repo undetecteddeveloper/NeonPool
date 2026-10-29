@@ -1,11 +1,12 @@
 # PROGRESS — MathofPool
 
 ## Đang mở
-- `main` đã có tất cả (gộp 2026-10-29, 205 test, cổng xanh): MVP kéo thả + bàn vẽ lại theo ảnh tham chiếu + luật 8-ball + màn Hướng dẫn chơi. Không còn chế độ công thức. Chỉ còn nhánh `feat/cong-thuc` (xem dưới).
+- ĐANG LÀM (nhánh `feat/giao-dien-neon`, tách từ `main`): đổi đồ họa sang neon nền tối + hiệu ứng wave, nâng giao diện theo phong cách neon. Đã xong: cài plugin `frontend-design@claude-plugins-official` (phạm vi dự án, `.claude/settings.json`). CHƯA LÀM: nạp skill vào phiên (phiên đầu không nạp được, chờ người dùng khởi động lại/nạp lại plugin), hỏi người dùng về hướng neon (màu, nơi có wave, mức sáng), phác 2–3 hướng bằng ảnh rồi mới code (ui.md).
+- `main` đã có tất cả (gộp 2026-10-29, 205 test, cổng xanh): MVP kéo thả + bàn vẽ lại theo ảnh tham chiếu + luật 8-ball + màn Hướng dẫn chơi. Không còn chế độ công thức.
 - NGƯỜI DÙNG đã duyệt bàn mới, lỗ/băng, thông báo và màn Hướng dẫn. Còn mở từ trước: lực tối đa và đường cong lực (từ lần trước). Claude chưa nghe âm thanh và chưa thử chuột thật.
 - HỎI người dùng khi tới lúc: tên game "MathofPool" và dòng phụ "Bida và những con số" còn nhắc toán; nếu muốn giữ yếu tố toán thì nó nằm ở đâu.
 - Việc kế tiếp: xoáy cao/thấp (`Shot.spin` đã có trong hợp đồng, vật lý chưa dùng). Chưa lưu cài đặt (ngôn ngữ, tắt tiếng chỉ trong phiên).
-- Nhánh `feat/cong-thuc` (chế độ công thức, 302 test) giữ lại tới khi người dùng nói xoá (hook chặn `git branch -D`: người dùng tự chạy hoặc bảo Claude hướng dẫn). Không gộp vào `main`.
+- Nhánh `feat/cong-thuc` (chế độ công thức, 302 test): `git branch --list` ngày 2026-10-29 không còn thấy trong máy; nếu còn cần bản đó thì phải khôi phục từ reflog, không gộp vào `main`.
 - Ảnh `ban-bida-anh-tham-chieu.webp` và `ban-bida.png` ở thư mục gốc là của bên thứ ba, chỉ để tham khảo, cố ý KHÔNG đưa vào git.
 
 ## Vừa xong
