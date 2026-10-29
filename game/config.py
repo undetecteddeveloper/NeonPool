@@ -69,7 +69,10 @@ AIM_MIN_PX = 4  # pointer closer than this to the cue ball: no direction yet
 # --- Effects (subtle) and sound ---
 RIPPLE_BALL_SPEED = 1.2  # m/s: ball-ball impact at least this hard shows a ripple
 RIPPLE_CUSHION_SPEED = 1.6
-RIPPLE_S = 0.32
+RIPPLE_S = 0.5  # a ripple of light spreads and fades over this time
+POCKET_WAVE_S = 0.9  # a pocketed ball sends a wave out of the pocket
+POCKET_WAVE_PX = 64  # ... that spreads this far past the pocket rim (logical px)
+BALL_RIPPLE_PX = 30  # how far a collision ripple spreads past the balls (logical px)
 MAX_RIPPLES = 14
 POCKET_ANIM_S = 0.25  # a pocketed ball shrinks toward the pocket over this time
 BREAK_SHAKE_SPEED = 2.5  # m/s: the first hard hit after a rack shakes the screen

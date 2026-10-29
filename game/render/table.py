@@ -1,19 +1,21 @@
-"""The table, painted once per resolution after the reference picture.
+"""The table, painted once per resolution: a night-blue cloth inside a rail of light.
 
-Wooden frame with grain, brass plates at the corners and middle pockets, cloth that is bright in
-the centre and deep green at the edges, cushions whose ends are rounded and hug the pockets, deep
-pockets (light lip, wall, dark hole sunk towards the outside) and gold diamonds on the rails.
-No checkers: the old chessboard cloth is gone. Painted at k x and shrunk once (smooth edges).
+The rail is dark with a lit cyan rim, the cushions are dark with a lit edge facing the cloth (their
+ends are rounded and hug the pockets), the pockets are deep holes ringed in pink-violet, and small
+lit diamonds mark the rail. Three steps: the dark shapes (painted at k x, shrunk once), the halo
+of every lit line (one soft layer, added), then the lit lines themselves (painted at k x, shrunk).
 """
 
 from __future__ import annotations
 
 import math
+from functools import cache
 
 import numpy as np
 import pygame as pg
 
 from game.config import POCKETS, PX_PER_M, RAIL_PX, TABLE_L, TABLE_W
+from game.render import backdrop, glow
 from game.render import palette as C
 from game.render.layout import (
     FIELD_H,
@@ -26,42 +28,27 @@ from game.render.layout import (
     OUTER_Y,
     to_px,
 )
-from game.render.view import View
+from game.render.view import CropView, View
 
-CUSHION_PX = 12  # rubber between the cloth and the wood (the cloth edge is the cushion face)
-WOOD_PX = RAIL_PX - CUSHION_PX
-FRAME_R = 20  # outer corner radius of the frame
-PLATE_R = 8  # corner radius of the middle-pocket plates
+CUSHION_PX = 12  # rubber between the cloth and the rail (the cloth edge is the cushion face)
+WOOD_PX = RAIL_PX - CUSHION_PX  # depth of the rail itself
+FRAME_R = 20  # outer corner radius of the table
+PLATE_R = 8  # corner radius of the middle-pocket housings
 CORNER_ARM = POCKETS[0][2] * PX_PER_M  # the cushion face starts this far from the corner
-PLATE_MARGIN = 10  # how far a plate reaches past the pocket along the rail (under the cushion)
-SIDE_HALF = POCKETS[4][2] * PX_PER_M + PLATE_MARGIN  # half width of a middle-pocket plate
-CUSHION_END_R = 12.0  # both ends of a cushion are rounded with this radius (as in the reference)
+PLATE_MARGIN = 10  # how far a housing reaches past the pocket along the rail (under the cushion)
+SIDE_HALF = POCKETS[4][2] * PX_PER_M + PLATE_MARGIN  # half width of a middle-pocket housing
+CUSHION_END_R = 12.0  # both ends of a cushion are rounded with this radius
 CUSHION_TUCK = -2.0  # a cushion starts this far inside the pocket circle (negative: short of it)
-CUSHION_SHADOW = ((6.0, 10), (4.5, 24), (3.0, 38), (1.5, 56))  # (distance px, alpha) on the cloth
-LIP_PX = 3.0  # the light metal lip around each pocket
-WALL_PX = 1.4  # dark ring between the lip and the pocket wall
+CUSHION_SHADOW = ((6.0, 12), (4.5, 28), (3.0, 44), (1.5, 62))  # (distance px, alpha) on the cloth
+LIP_PX = 1.4  # the pocket ring sits this far outside the hole
 HOLE_SHIFT = 0.16  # the dark hole is sunk this fraction of the radius towards the outside
-SIGHT_R = 3.6  # half diagonal of a rail diamond
+SIGHT_R = 3.2  # half diagonal of a rail diamond
 CLOTH_RES = (320, 160)  # the cloth gradient is built this small, then stretched smoothly
+GLOW_DOWN = 2  # the halo layer is built at 1/2 of the device size, then stretched smoothly
 
 
 def _lerp(a, b, t: float) -> tuple[int, int, int]:
     return tuple(round(x + (y - x) * t) for x, y in zip(a, b, strict=True))
-
-
-def wood_color(depth: float) -> tuple[int, int, int]:
-    """Wood colour `depth` logical px in from the outer edge of the frame."""
-    t = min(1.0, max(0.0, depth / WOOD_PX))
-    stops = C.WOOD_STOPS
-    for (t0, c0), (t1, c1) in zip(stops, stops[1:], strict=False):
-        if t <= t1:
-            return _lerp(c0, c1, (t - t0) / (t1 - t0))
-    return stops[-1][1]
-
-
-def _hash(i: int, salt: float) -> float:
-    """Repeatable pseudo-random number in [0, 1) (the picture must not change between runs)."""
-    return abs(math.sin(i * 12.9898 + salt * 78.233) * 43758.5453) % 1.0
 
 
 def cloth_gradient(size: tuple[int, int]) -> pg.Surface:
@@ -76,48 +63,10 @@ def cloth_gradient(size: tuple[int, int]) -> pg.Surface:
     return pg.transform.smoothscale(small, size)
 
 
-# --- parts -------------------------------------------------------------------------------
-def _paint_wood(s: pg.Surface, v: View) -> None:
-    pg.draw.rect(
-        s,
-        wood_color(WOOD_PX),
-        v.rect(OUTER_X, OUTER_Y, OUTER_W, OUTER_H),
-        border_radius=v.i(FRAME_R),
-    )
-    band = max(2, v.i(1) + 1)  # a ring is a bit wider than its step so rings never leave gaps
-    for i in range(WOOD_PX):
-        rect = v.rect(OUTER_X + i, OUTER_Y + i, OUTER_W - 2 * i, OUTER_H - 2 * i)
-        pg.draw.rect(s, wood_color(i + 0.5), rect, band, border_radius=max(2, v.i(FRAME_R - i)))
-
-
-def _paint_grain(s: pg.Surface, v: View) -> None:
-    """Long faint streaks along each rail: lines in a slightly lighter/darker wood colour."""
-    width = max(1, v.i(1))
-    for rail in range(4):
-        horizontal = rail < 2
-        span0 = (OUTER_X if horizontal else OUTER_Y) + 36
-        span1 = (OUTER_X + OUTER_W if horizontal else OUTER_Y + OUTER_H) - 36
-        for j in range(26):
-            depth = 2 + _hash(j, rail) * (WOOD_PX - 4)
-            start = span0 + _hash(j, rail + 10) * (span1 - span0 - 60)
-            end = min(span1, start + 50 + _hash(j, rail + 20) * 190)
-            shade = 0.18 if _hash(j, rail + 30) > 0.45 else -0.14
-            base = wood_color(depth)
-            target = (255, 214, 150) if shade > 0 else (30, 12, 4)
-            color = _lerp(base, target, abs(shade))
-            if rail == 0:  # top
-                a, b = (start, OUTER_Y + depth), (end, OUTER_Y + depth)
-            elif rail == 1:  # bottom
-                a, b = (start, OUTER_Y + OUTER_H - depth), (end, OUTER_Y + OUTER_H - depth)
-            elif rail == 2:  # left
-                a, b = (OUTER_X + depth, start), (OUTER_X + depth, end)
-            else:  # right
-                a, b = (OUTER_X + OUTER_W - depth, start), (OUTER_X + OUTER_W - depth, end)
-            pg.draw.line(s, color, v.pt(a), v.pt(b), width)
-
-
+# --- geometry (logical px; shared by the three steps and by the tests) ---------------------
 def plate_rects() -> list[tuple[tuple[float, float, float, float], tuple[int, int, int, int]]]:
-    """Six brass plates: ((x, y, w, h), (top-left, top-right, bottom-right, bottom-left radius))."""
+    """Six pocket housings (not drawn: they are the rail's colour, but the cushion bands and the
+    diamonds are laid out round them): ((x, y, w, h), (corner radii: tl, tr, br, bl))."""
     arm = RAIL_PX + CORNER_ARM + PLATE_MARGIN
     right, bottom = OUTER_X + OUTER_W, OUTER_Y + OUTER_H
     mid = FIELD_X + FIELD_W / 2
@@ -135,30 +84,9 @@ def plate_rects() -> list[tuple[tuple[float, float, float, float], tuple[int, in
     ]
 
 
-def _paint_plates(s: pg.Surface, v: View) -> None:
-    for (x, y, w, h), (tl, tr, br, bl) in plate_rects():
-        for inset, color, width in ((0, C.PLATE_EDGE, 0), (2, C.PLATE, 0), (5, C.PLATE_INNER, 1)):
-            rect = v.rect(x + inset, y + inset, w - 2 * inset, h - 2 * inset)
-            pg.draw.rect(
-                s,
-                color,
-                rect,
-                max(1, v.i(width)) if width else 0,
-                border_top_left_radius=max(1, v.i(tl - inset)),
-                border_top_right_radius=max(1, v.i(tr - inset)),
-                border_bottom_right_radius=max(1, v.i(br - inset)),
-                border_bottom_left_radius=max(1, v.i(bl - inset)),
-            )
-
-
-def _paint_cloth(s: pg.Surface, v: View) -> None:
-    field = v.rect(FIELD_X, FIELD_Y, FIELD_W, FIELD_H)
-    s.blit(cloth_gradient(field.size), field.topleft)
-
-
 def cushion_outline(length: float, e: float = 0.0, steps: int = 10) -> list[tuple[float, float]]:
     """One cushion in its own axes: s along the strip, d from the cloth face (0) to the
-    wood (CUSHION_PX). Both face-side corners are rounded; `e` > 0 grows the face side (shadow).
+    rail (CUSHION_PX). Both face-side corners are rounded; `e` > 0 grows the face side (shadow).
     """
     r, r2 = CUSHION_END_R, CUSHION_END_R + e
     pts = [(0.0, CUSHION_PX), (0.0, r)]
@@ -173,10 +101,10 @@ def cushion_outline(length: float, e: float = 0.0, steps: int = 10) -> list[tupl
 
 
 def cushion_strips() -> list[tuple[tuple[float, float], tuple[float, float], tuple[int, int]]]:
-    """(start, end, out) of the six cushions: along the cloth edge, `out` points at the wood.
+    """(start, end, out) of the six cushions: along the cloth edge, `out` points at the rail.
 
     Each strip stops CUSHION_TUCK px inside the pocket circle on both ends (negative: short of it),
-    so the rounded ends show next to the pocket lip.
+    so the rounded ends show next to the pocket ring.
     """
     cx = FIELD_X + FIELD_W / 2
     c, m = CORNER_ARM - CUSHION_TUCK, POCKETS[4][2] * PX_PER_M - CUSHION_TUCK
@@ -192,9 +120,9 @@ def cushion_strips() -> list[tuple[tuple[float, float], tuple[float, float], tup
 
 
 def cushion_bands() -> list[tuple[float, float, float, float]]:
-    """(x, y, w, h) of the four bands the cushions sit in, between the cloth and the wood.
+    """(x, y, w, h) of the four bands the cushions sit in, between the cloth and the rail.
 
-    The corner squares are left out: there the plate belongs.
+    The corner squares are left out: there the housing belongs.
     """
     right, bottom = FIELD_X + FIELD_W, FIELD_Y + FIELD_H
     t = CUSHION_PX
@@ -216,36 +144,6 @@ def _strip_points(a, b, out, e: float = 0.0) -> list[tuple[float, float]]:
     ]
 
 
-def _paint_cushions(s: pg.Surface, v: View) -> None:
-    """Rubber strips along the cloth edge (the face is the cloth edge), rounded at both ends."""
-    strips = cushion_strips()
-    # the brass plates reach over the cushion band: cover that band first, so no brass peeks out
-    # next to the rounded ends and the plates only show on the wood (as in the reference)
-    for x, y, w, h in cushion_bands():
-        s.fill(C.CUSHION_BASE, v.rect(x, y, w, h))
-    # the soft shadow on the cloth follows the rounded outline: widest ring first, then narrower
-    ox, oy = OUTER_X, OUTER_Y
-    shade = pg.Surface(v.rect(0, 0, OUTER_W, OUTER_H).size, pg.SRCALPHA)
-    for dist, alpha in CUSHION_SHADOW:
-        for a, b, out in strips:
-            pts = [v.pt((x - ox, y - oy)) for x, y in _strip_points(a, b, out, dist)]
-            pg.draw.polygon(shade, (0, 0, 0, alpha), pts)
-    s.blit(shade, v.pt((ox, oy)))
-    for a, b, out in strips:
-        pts = _strip_points(a, b, out)
-        pg.draw.polygon(s, C.CUSHION, [v.pt(p) for p in pts])
-        pg.draw.line(s, C.CUSHION_BASE, v.pt(pts[0]), v.pt(pts[-1]), max(1, v.i(1.2)))
-        pg.draw.lines(s, C.CUSHION_NOSE, False, [v.pt(p) for p in pts[1:-1]], max(1, v.i(1.6)))
-
-
-def _blend_circle(s: pg.Surface, v: View, centre, radius: float, color) -> None:
-    """A translucent disc (pygame's own draw would overwrite the pixels, not blend them)."""
-    n = v.n(radius)
-    layer = pg.Surface((2 * math.ceil(n) + 2,) * 2, pg.SRCALPHA)
-    pg.draw.circle(layer, color, (layer.get_width() / 2, layer.get_height() / 2), n)
-    s.blit(layer, (centre[0] - layer.get_width() / 2, centre[1] - layer.get_height() / 2))
-
-
 def pocket_outward(px: float, py: float) -> tuple[float, float]:
     """Unit vector towards the outside of the table at a pocket: diagonal at a corner pocket,
     straight up/down at a middle pocket."""
@@ -255,32 +153,8 @@ def pocket_outward(px: float, py: float) -> tuple[float, float]:
     return ux / n, uy / n
 
 
-def _paint_pockets(s: pg.Surface, v: View) -> None:
-    """Each pocket: a soft shadow on the plate, a light lip, a dark ring, the wall and a deep hole.
-
-    The hole is a stack of ever smaller, darker discs sunk towards the outside of the table, so the
-    near wall shows as a crescent: that is what gives the pocket its depth.
-    """
-    for px, py, pr in POCKETS:
-        c = v.pt(to_px(px, py))
-        r = pr * PX_PER_M
-        ux, uy = pocket_outward(px, py)
-        for extra, alpha in ((7.0, 18), (5.0, 30), (3.0, 46)):
-            _blend_circle(s, v, c, r + LIP_PX + extra * 0.6, (0, 0, 0, alpha))
-        pg.draw.circle(s, C.POCKET_LIP, c, v.n(r + LIP_PX))
-        pg.draw.circle(s, C.POCKET_RIM, c, v.n(r + WALL_PX))
-        pg.draw.circle(s, C.POCKET_WALL, c, v.n(r))
-        steps = 6
-        for i in range(steps):
-            t = i / (steps - 1)
-            shift = r * HOLE_SHIFT * t
-            centre = (c[0] + ux * v.n(shift), c[1] + uy * v.n(shift))
-            color = _lerp(C.POCKET_WALL, C.POCKET, t)
-            pg.draw.circle(s, color, centre, v.n(r * (0.92 - 0.58 * t)))
-
-
 def sight_points() -> list[tuple[float, float]]:
-    """Centres of the gold diamonds: every eighth of the long rails, every quarter of the short."""
+    """Centres of the diamonds: every eighth of the long rails, every quarter of the short."""
     depth = WOOD_PX / 2
     top, bottom = OUTER_Y + depth, OUTER_Y + OUTER_H - depth
     left, right = OUTER_X + depth, OUTER_X + OUTER_W - depth
@@ -294,29 +168,121 @@ def sight_points() -> list[tuple[float, float]]:
     return pts
 
 
-def _paint_sights(s: pg.Surface, v: View) -> None:
-    r = SIGHT_R
+# --- step 1: the dark shapes ---------------------------------------------------------------
+def _paint_dark(s: pg.Surface, v: View) -> None:
+    """Rail, cloth and cushions on a transparent surface (the night shows round them)."""
+    pg.draw.rect(s, C.RAIL, v.rect(OUTER_X, OUTER_Y, OUTER_W, OUTER_H), border_radius=v.i(FRAME_R))
+    field = v.rect(FIELD_X, FIELD_Y, FIELD_W, FIELD_H)
+    s.blit(cloth_gradient(field.size), field.topleft)
+
+    # the housings reach over the cushion band: cover that band first, so nothing peeks out
+    # next to the rounded ends and the housings only show on the rail
+    for x, y, w, h in cushion_bands():
+        s.fill(C.CUSHION_BASE, v.rect(x, y, w, h))
+    strips = cushion_strips()
+    # the soft shadow on the cloth follows the rounded outline: widest ring first, then narrower
+    shade = pg.Surface(v.rect(0, 0, OUTER_W, OUTER_H).size, pg.SRCALPHA)
+    for dist, alpha in CUSHION_SHADOW:
+        for a, b, out in strips:
+            pts = [
+                ((x - OUTER_X) * v.s, (y - OUTER_Y) * v.s)
+                for x, y in _strip_points(a, b, out, dist)
+            ]
+            pg.draw.polygon(shade, (0, 0, 0, alpha), pts)
+    s.blit(shade, v.pt((OUTER_X, OUTER_Y)))
+    for a, b, out in strips:
+        pts = _strip_points(a, b, out)
+        pg.draw.polygon(s, C.CUSHION, [v.pt(p) for p in pts])
+        pg.draw.line(s, C.CUSHION_BASE, v.pt(pts[0]), v.pt(pts[-1]), max(1, v.i(1.2)))
+
+
+# --- step 2: the halo -------------------------------------------------------------------------
+def _glow_pass(dev: pg.Surface, v: View) -> None:
+    """Add the soft light round every lit line: one small layer, blurred, stretched, added."""
+    look = C.LOOK
+    lv = View(v.s / GLOW_DOWN)
+    w, h = dev.get_size()
+    layer = pg.Surface((max(1, w // GLOW_DOWN), max(1, h // GLOW_DOWN)))
+
+    def lit(color, f: float) -> tuple[int, int, int]:
+        return tuple(min(255, round(c * f * look.glow)) for c in color)
+
+    rim = lv.rect(OUTER_X, OUTER_Y, OUTER_W, OUTER_H)
+    for width, f in ((11, 0.30), (6, 0.55), (2.5, 0.85)):
+        pg.draw.rect(layer, lit(C.CYAN, f), rim, max(1, lv.i(width)), border_radius=lv.i(FRAME_R))
+    for a, b, out in cushion_strips():
+        pts = [lv.pt(p) for p in _strip_points(a, b, out)[1:-1]]
+        for width, f in ((7, 0.30), (3, 0.55)):
+            pg.draw.lines(layer, lit(C.CUSHION_NOSE, f), False, pts, max(1, lv.i(width)))
+    for px, py, pr in POCKETS:
+        c, r = lv.pt(to_px(px, py)), pr * PX_PER_M + LIP_PX
+        for width, f in ((10, 0.30), (5, 0.60), (2.4, 0.9)):
+            pg.draw.circle(layer, lit(C.POCKET_RING, f), c, lv.n(r + width / 2), lv.i(width))
     for x, y in sight_points():
-        diamond = [v.pt((x, y - r)), v.pt((x + r, y)), v.pt((x, y + r)), v.pt((x - r, y))]
-        pg.draw.polygon(s, C.SIGHT_EDGE, diamond)
-        inner = [v.pt((x, y - r * 0.72)), v.pt((x + r * 0.72, y)), v.pt((x, y + r * 0.72))]
-        pg.draw.polygon(s, C.SIGHT, [*inner, v.pt((x - r * 0.72, y))])
+        pg.draw.circle(layer, lit(C.SIGHT, 0.5), lv.pt((x, y)), lv.n(SIGHT_R * 1.6))
+
+    soft = glow.blur_pm(layer, 4.5 * look.reach)
+    dev.blit(pg.transform.smoothscale(soft, dev.get_size()), (0, 0), special_flags=pg.BLEND_RGB_ADD)
 
 
-def paint_table(s: pg.Surface, v: View) -> None:
-    s.fill(C.BG)
-    _paint_wood(s, v)
-    _paint_grain(s, v)
-    _paint_plates(s, v)
-    _paint_cloth(s, v)
-    _paint_cushions(s, v)
-    _paint_pockets(s, v)
-    _paint_sights(s, v)
+# --- step 3: the lit lines --------------------------------------------------------------------
+def _paint_lines(s: pg.Surface, v: View) -> None:
+    """The cores of the lit lines and the pockets, on a transparent surface."""
+    line = C.LOOK.line
+    pg.draw.rect(
+        s,
+        C.CYAN,
+        v.rect(OUTER_X, OUTER_Y, OUTER_W, OUTER_H),
+        max(1, v.i(2.0 * line)),
+        border_radius=v.i(FRAME_R),
+    )
+    for a, b, out in cushion_strips():
+        pts = [v.pt(p) for p in _strip_points(a, b, out)[1:-1]]
+        pg.draw.lines(s, C.CUSHION_NOSE, False, pts, max(1, v.i(1.8 * line)))
+
+    for px, py, pr in POCKETS:  # a ring of light round a deep hole sunk towards the outside
+        c = v.pt(to_px(px, py))
+        r = pr * PX_PER_M
+        ux, uy = pocket_outward(px, py)
+        pg.draw.circle(s, C.POCKET_WALL, c, v.n(r + LIP_PX))
+        steps = 6
+        for i in range(steps):
+            t = i / (steps - 1)
+            shift = r * HOLE_SHIFT * t
+            centre = (c[0] + ux * v.n(shift), c[1] + uy * v.n(shift))
+            pg.draw.circle(s, _lerp(C.POCKET_WALL, C.POCKET, t), centre, v.n(r * (0.92 - 0.58 * t)))
+        ring = max(1, v.i(2.0 * line))
+        pg.draw.circle(s, C.POCKET_RING, c, v.n(r + LIP_PX) + ring / 2, ring)
+
+    rr = SIGHT_R
+    for x, y in sight_points():
+        diamond = [v.pt((x, y - rr)), v.pt((x + rr, y)), v.pt((x, y + rr)), v.pt((x - rr, y))]
+        pg.draw.polygon(s, C.SIGHT, diamond)
 
 
+def _shrink(big: pg.Surface, size: tuple[int, int]) -> pg.Surface:
+    return pg.transform.smoothscale(big.premul_alpha(), size)
+
+
+@cache
 def build_table(v: View) -> pg.Surface:
-    """The finished table for this view's resolution: painted at 3x (2x when big), shrunk once."""
+    """The finished table for this view's resolution: painted at 3x (2x when big), shrunk once.
+
+    Remembered per resolution, so the how-to-play pictures and the game share one table: never draw
+    on the result, only blit it. The two big layers only cover the table, not the whole canvas.
+    """
     k = v.ss()
-    big = pg.Surface(v.scaled(k).size)
-    paint_table(big, v.scaled(k))
-    return pg.transform.smoothscale(big, v.size)
+    box = v.rect(OUTER_X - 3, OUTER_Y - 3, OUTER_W + 6, OUTER_H + 6)  # device px
+    big = CropView(v.s * k, box.x * k, box.y * k)
+    layer_size = (box.w * k, box.h * k)
+
+    dark = pg.Surface(layer_size, pg.SRCALPHA)
+    _paint_dark(dark, big)
+    dev = backdrop.night(v.size).copy()
+    dev.blit(_shrink(dark, box.size), box.topleft, special_flags=pg.BLEND_PREMULTIPLIED)
+    del dark
+    _glow_pass(dev, v)
+    lines = pg.Surface(layer_size, pg.SRCALPHA)
+    _paint_lines(lines, big)
+    dev.blit(_shrink(lines, box.size), box.topleft, special_flags=pg.BLEND_PREMULTIPLIED)
+    return dev

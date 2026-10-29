@@ -37,6 +37,7 @@ from game.render.layout import (
     to_m,
     to_px,
 )
+from game.render.rim import RimRunner
 from game.render.view import View
 from game.rules.eight_ball import PLAYING, RERACK, WON, EightBall
 
@@ -68,6 +69,7 @@ class PlayScene:
         self.view = v
         self.sprites = draw.BallSprites(v)
         self.table = draw.build_table(v)
+        self.rim = RimRunner(v)
 
     # --- game flow -------------------------------------------------------------------
     def new_game(self) -> None:
@@ -230,13 +232,13 @@ class PlayScene:
             if isinstance(ev, BallHitBall):
                 if ev.speed >= RIPPLE_BALL_SPEED:
                     a, b = balls[ev.a], balls[ev.b]
-                    self.fx.add_ripple((a.x + b.x) / 2, (a.y + b.y) / 2)
+                    self.fx.add_ripple((a.x + b.x) / 2, (a.y + b.y) / 2, "ball")
                 if self._break_pending and ev.speed >= BREAK_SHAKE_SPEED:
                     self.fx.shake()
                     self._break_pending = False
             elif isinstance(ev, BallHitCushion):
                 if ev.speed >= RIPPLE_CUSHION_SPEED:
-                    self.fx.add_ripple(balls[ev.ball].x, balls[ev.ball].y)
+                    self.fx.add_ripple(balls[ev.ball].x, balls[ev.ball].y, "cushion")
             elif isinstance(ev, BallPocketed):
                 self.fx.add_drop(ev.ball, balls[ev.ball].x, balls[ev.ball].y, ev.pocket)
 
@@ -261,6 +263,7 @@ class PlayScene:
     def draw(self, canvas: pg.Surface) -> None:
         v = self.view
         canvas.blit(self.table, (0, 0))
+        self.rim.draw(canvas, self._clock)
         draw.draw_balls(canvas, v, self.world.balls, self.sprites)
         self.fx.draw(canvas, v, self.sprites)
         cue = self.world.balls[0]

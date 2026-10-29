@@ -1,8 +1,9 @@
-"""Drawing helpers at device resolution: balls, aim, pull bar (the table is in table.py).
+"""Drawing helpers at device resolution: balls, aim, pull bar, glass panels (table: table.py).
 
 Smooth edges: shapes with transparency are painted on a bigger surface, converted to
 premultiplied alpha, shrunk with smoothscale and blitted with BLEND_PREMULTIPLIED (plain
 smoothscale on straight alpha leaves dark fringes). Opaque layers are just shrunk.
+Light: every lit shape gets a halo from render/glow.py, sized by the chosen palette.LOOK.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from game.config import (
 )
 from game.render import fonts
 from game.render import palette as C
+from game.render.glow import halo, lit
 from game.render.layout import (
     BALL_PX,
     to_px,
@@ -23,12 +25,11 @@ from game.render.layout import (
 from game.render.table import build_table
 from game.render.view import View
 
-OUT_PX = 2.4  # thick cartoon outline of a ball (logical px)
+RING_PX = 1.8  # the lit ring of a ball (logical px), centred on the physical edge
+HALO_PX = 6.0  # how far a ball's light reaches past its edge (logical px, before the look)
+RIM = BALL_PX + RING_PX / 2 + 0.6  # where the aim line and the bar start: just outside the ring
 SS_BALL = 4  # sprites are painted at 4x
-RIM = BALL_PX + OUT_PX
-SHADOW_DROP = 3.5  # a ball's shadow sits this far straight below it (logical px)
 BAR_HALF_W = 4.5  # half width of the pull bar (logical px)
-BAR_EDGE = 2.4  # black outline of the pull bar
 
 
 # --- smooth-shape plumbing -------------------------------------------------------------
@@ -39,6 +40,11 @@ def shrink_pm(big: pg.Surface, size: tuple[int, int]) -> pg.Surface:
 
 def blit_pm(dst: pg.Surface, spr: pg.Surface, pos: tuple[float, float]) -> None:
     dst.blit(spr, (round(pos[0]), round(pos[1])), special_flags=pg.BLEND_PREMULTIPLIED)
+
+
+def blit_add(dst: pg.Surface, spr: pg.Surface, pos: tuple[float, float]) -> None:
+    """Add light (the surface's RGB, premultiplied by its alpha) on top of a dark ground."""
+    dst.blit(spr, (round(pos[0]), round(pos[1])), special_flags=pg.BLEND_RGB_ADD)
 
 
 class Aa:
@@ -75,23 +81,46 @@ def box_around(v: View, points: list[tuple[float, float]], pad: float) -> pg.Rec
     )
 
 
-_rr_cache: dict[tuple, pg.Surface] = {}
+# --- glass panels and dots ---------------------------------------------------------------
+_rr_cache: dict[tuple, tuple[pg.Surface, int]] = {}
+_dot_cache: dict[tuple, tuple[pg.Surface, int]] = {}
+FILL_ALPHA = 232  # glass: a little of the night behind shows through
+
+
+def _halo_px(glow: float) -> int:
+    """Logical px of room a lit shape needs round it for its halo (0 when unlit)."""
+    return math.ceil(7 * glow * C.LOOK.reach) if glow > 0 else 0
 
 
 def rrect_sprite(
-    v: View, w: float, h: float, radius: float, fill, edge: float, edge_color=C.OUTLINE
-) -> pg.Surface:
-    """Outlined rounded rectangle (logical w x h inside an `edge` black border), premultiplied."""
-    key = (round(v.s, 4), w, h, radius, fill, edge, edge_color)
+    v: View, w: float, h: float, radius: float, fill, edge: float, edge_color, glow: float
+) -> tuple[pg.Surface, int]:
+    """A glass rounded rectangle (logical w x h) with a lit edge and its halo, premultiplied.
+
+    Returns (sprite, pad): the sprite reaches `pad` logical px past the rectangle on every side.
+    """
+    key = (round(v.s, 4), w, h, radius, fill, edge, edge_color, round(glow, 3))
     if key not in _rr_cache:
         if len(_rr_cache) > 96:
             _rr_cache.clear()
+        pad = _halo_px(glow) + math.ceil(edge) + 1
         bv = v.scaled(v.ss())
-        ow, oh = w + 2 * edge, h + 2 * edge
-        big = pg.Surface((bv.i(ow), bv.i(oh)), pg.SRCALPHA)
-        pg.draw.rect(big, edge_color, big.get_rect(), border_radius=bv.i(radius + edge))
-        pg.draw.rect(big, fill, bv.rect(edge, edge, w, h), border_radius=bv.i(radius))
-        _rr_cache[key] = shrink_pm(big, (v.i(ow), v.i(oh)))
+        ow, oh = w + 2 * pad, h + 2 * pad
+        body = bv.rect(pad, pad, w, h)
+        r = bv.i(radius)
+        plate = pg.Surface((bv.i(ow), bv.i(oh)), pg.SRCALPHA)
+        pg.draw.rect(plate, (*fill, FILL_ALPHA), body, border_radius=r)
+        out = plate.premul_alpha()
+        if edge > 0:
+            line = pg.Surface(plate.get_size(), pg.SRCALPHA)
+            width = max(1, bv.i(edge * C.LOOK.line))
+            pg.draw.rect(line, edge_color, body, width, border_radius=r)
+            line = line.premul_alpha()
+            if glow > 0:
+                light = halo(line, bv.n(_halo_px(glow)) * 0.55, 1.6 * glow * C.LOOK.glow)
+                out.blit(light, (0, 0), special_flags=pg.BLEND_RGBA_ADD)
+            out.blit(line, (0, 0), special_flags=pg.BLEND_PREMULTIPLIED)
+        _rr_cache[key] = (pg.transform.smoothscale(out, (v.i(ow), v.i(oh))), pad)
     return _rr_cache[key]
 
 
@@ -103,70 +132,104 @@ def blit_rrect(
     w: float,
     h: float,
     radius: float,
-    fill,
-    edge: float = 5,
-    edge_color=C.OUTLINE,
+    fill=C.PANEL,
+    edge: float = 1.5,
+    edge_color=C.CYAN_DIM,
+    glow: float = 0.0,
 ) -> None:
-    spr = rrect_sprite(v, w, h, radius, fill, edge, edge_color)
-    blit_pm(canvas, spr, v.pt((x - edge, y - edge)))
+    spr, pad = rrect_sprite(v, w, h, radius, fill, edge, edge_color, glow)
+    blit_pm(canvas, spr, v.pt((x - pad, y - pad)))
+
+
+def blit_dot(
+    canvas: pg.Surface, v: View, centre: tuple[float, float], r: float, color, glow: float = 0.0
+) -> None:
+    """A small lit disc (page dots, switches) with its halo, centred on a logical point."""
+    key = (round(v.s, 4), r, color, round(glow, 3))
+    if key not in _dot_cache:
+        if len(_dot_cache) > 64:
+            _dot_cache.clear()
+        pad = _halo_px(glow) + 1
+        bv = v.scaled(v.ss())
+        size = 2 * (r + pad)
+        disc = pg.Surface((bv.i(size), bv.i(size)), pg.SRCALPHA)
+        pg.draw.circle(disc, color, (disc.get_width() / 2, disc.get_height() / 2), bv.n(r))
+        disc = disc.premul_alpha()
+        out = lit(disc, bv.n(pad) * 0.6, 1.4 * glow * C.LOOK.glow) if glow > 0 else disc
+        _dot_cache[key] = (pg.transform.smoothscale(out, (v.i(size), v.i(size))), pad)
+    spr, pad = _dot_cache[key]
+    blit_pm(canvas, spr, v.pt((centre[0] - r - pad, centre[1] - r - pad)))
 
 
 # --- balls -----------------------------------------------------------------------------
 class BallSprites:
-    """Cached premultiplied ball sprites at this view's resolution, plus one shared shadow."""
+    """Cached premultiplied ball sprites at this view's resolution.
+
+    A ball is a dark body with a lit ring and a lit number, like a lamp; a stripe has a lit band
+    across the body, the cue ball is one lit disc. `get` has the halo, `core` does not (the small
+    balls in the side panel).
+    """
 
     def __init__(self, v: View) -> None:
         self.v = v
-        self.size = math.ceil(2 * (BALL_PX + OUT_PX) * v.s) + 2
-        self._cache: dict[int, pg.Surface] = {}
-        self.shadow = self._make_shadow()
+        self.core_size = math.ceil(2 * (BALL_PX + RING_PX) * v.s) + 2
+        self.size = math.ceil(2 * (BALL_PX + HALO_PX * C.LOOK.reach) * v.s) + 2
+        self._cache: dict[tuple[int, bool], pg.Surface] = {}
 
     def get(self, number: int) -> pg.Surface:
-        if number not in self._cache:
-            self._cache[number] = self._make(number)
-        return self._cache[number]
+        return self._get(number, True)
 
-    def _make_shadow(self) -> pg.Surface:
-        big = pg.Surface((self.size * SS_BALL, self.size * SS_BALL), pg.SRCALPHA)
-        c = self.size * SS_BALL / 2
-        pg.draw.circle(big, (0, 0, 0, 58), (c, c), (BALL_PX + OUT_PX) * self.v.s * SS_BALL)
-        return shrink_pm(big, (self.size, self.size))
+    def core(self, number: int) -> pg.Surface:
+        return self._get(number, False)
 
-    def _make(self, number: int) -> pg.Surface:
+    def _get(self, number: int, with_halo: bool) -> pg.Surface:
+        key = (number, with_halo)
+        if key not in self._cache:
+            self._cache[key] = self._make(number, with_halo)
+        return self._cache[key]
+
+    def _make(self, number: int, with_halo: bool) -> pg.Surface:
         bv = self.v.scaled(SS_BALL)
-        big_size = self.size * SS_BALL
-        c = big_size / 2
+        size = self.size if with_halo else self.core_size
+        big = size * SS_BALL
+        c = big / 2
         r = BALL_PX * bv.s
-        surf = pg.Surface((big_size, big_size), pg.SRCALPHA)
-        pg.draw.circle(surf, C.OUTLINE, (c, c), r + OUT_PX * bv.s)
+        ring = max(2.0, RING_PX * C.LOOK.line * bv.s)
         base = number if number <= 8 else number - 8
-        pg.draw.circle(surf, C.BALL_COLORS[base], (c, c), r)
+        color = C.BALL_COLORS[base]
 
-        if number > 8:  # stripe: a white band across the middle, clipped to the ball
-            band = pg.Surface((big_size, big_size), pg.SRCALPHA)
-            pg.draw.rect(band, C.WHITE, (0, c - r * 0.46, big_size, r * 0.92))
-            mask = pg.Surface((big_size, big_size), pg.SRCALPHA)
-            pg.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
-            band.blit(mask, (0, 0), special_flags=pg.BLEND_RGBA_MIN)
-            surf.blit(band, (0, 0))
+        light = pg.Surface((big, big), pg.SRCALPHA)  # everything that gives light
+        body = pg.Surface((big, big), pg.SRCALPHA)  # the dark body under it
+        if number == 0:  # the cue ball: one lit disc
+            pg.draw.circle(light, color, (c, c), r + ring / 2)
+        else:
+            pg.draw.circle(body, C.BODY, (c, c), r)
+            if number > 8:  # a stripe: two lit chords with a faint glow between them
+                band = pg.Surface((big, big), pg.SRCALPHA)
+                pg.draw.rect(band, (*color, 60), (0, c - r * 0.52, big, r * 1.04))
+                for sign in (-1, 1):
+                    y = c + sign * r * 0.52
+                    pg.draw.line(band, (*color, 255), (0, y), (big, y), max(1, round(ring * 0.7)))
+                mask = pg.Surface((big, big), pg.SRCALPHA)
+                pg.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
+                band.blit(mask, (0, 0), special_flags=pg.BLEND_RGBA_MIN)
+                light.blit(band, (0, 0))
+            pg.draw.circle(light, color, (c, c), r + ring / 2, round(ring))
+            font = fonts.get(max(6, int(r * (1.0 if number < 10 else 0.82))), bold=True)
+            text = font.render(str(number), True, C.WHITE if number > 8 else color)
+            light.blit(text, text.get_rect(center=(c, c)))
 
-        if number != 0:  # white dot with the number
-            pg.draw.circle(surf, C.OUTLINE, (c, c), r * 0.56)
-            pg.draw.circle(surf, C.WHITE, (c, c), r * 0.50)
-            font = fonts.get(max(6, int(r * (1.0 if number < 10 else 0.8))), bold=True)
-            text = font.render(str(number), True, C.OUTLINE)
-            surf.blit(text, text.get_rect(center=(c, c)))
-
-        return shrink_pm(surf, (self.size, self.size))
+        light_pm = light.premul_alpha()
+        out = body.premul_alpha()
+        if with_halo:
+            glow = halo(light_pm, bv.n(HALO_PX * C.LOOK.reach) * 0.5, 1.3 * C.LOOK.glow)
+            out.blit(glow, (0, 0), special_flags=pg.BLEND_RGBA_ADD)
+        out.blit(light_pm, (0, 0), special_flags=pg.BLEND_PREMULTIPLIED)
+        return pg.transform.smoothscale(out, (size, size))
 
 
 def draw_balls(canvas: pg.Surface, v: View, balls, sprites: BallSprites) -> None:
     half = sprites.size / 2
-    for b in balls:
-        if b.in_play:
-            x, y = v.pt(to_px(b.x, b.y))
-            # light comes from straight above the screen: the shadow falls straight down
-            blit_pm(canvas, sprites.shadow, (x - half, y - half + v.n(SHADOW_DROP)))
     for b in balls:
         if b.in_play:
             x, y = v.pt(to_px(b.x, b.y))
@@ -190,10 +253,10 @@ def draw_ring(
     layer.done()
 
 
-# --- aiming: glow line, ghost ball, arrow, pull bar ------------------------------------
+# --- aiming: light line, ghost ball, arrow, pull bar ------------------------------------
 def power_color(power: float) -> tuple[int, int, int]:
-    """Yellow -> orange as the shot gets harder."""
-    return 250, round(232 - 118 * power), round(60 - 20 * power)
+    """Cyan -> pink-violet as the shot gets harder."""
+    return C.lerp(C.POWER_WEAK, C.POWER_STRONG, power)
 
 
 def _object_center(contact) -> tuple[float, float]:
@@ -223,13 +286,18 @@ def draw_aim(
     bar_len: float,
     power: float,
 ) -> None:
-    """Pull bar behind the cue ball (`bar_len` logical px, already capped by DragAim), glow line
+    """Pull bar behind the cue ball (`bar_len` logical px, already capped by DragAim), light line
     to the first contact, ghost ball there and an arrow on a hit ball: one supersampled layer.
     """
     _paint_aim(canvas, v, cue, contact, shot_dir, bar_len, power).done()
 
 
+def _alpha(base: float) -> int:
+    return min(255, round(base * C.LOOK.glow))
+
+
 def _paint_aim(canvas: pg.Surface, v: View, cue, contact, shot_dir, bar_len, power) -> Aa:
+    look = C.LOOK
     centre = to_px(cue.x, cue.y)
     end = to_px(*contact.point)
     ux, uy = -shot_dir[0], -shot_dir[1]  # the bar points AWAY from where the ball will go
@@ -246,35 +314,41 @@ def _paint_aim(canvas: pg.Surface, v: View, cue, contact, shot_dir, bar_len, pow
     layer = Aa(canvas, v, box_around(v, pts, 26), ss=2 if v.s <= 1.3 else 1)
     surf = layer.surf
 
-    # pull bar: a straight rectangle, black outline, power-coloured fill, square ends
+    # pull bar: a straight rectangle with square ends, lit in the colour of its power
     if bar_len > 6:
-        outline = _bar_polygon(
-            layer.pt((bar0[0] - ux * BAR_EDGE, bar0[1] - uy * BAR_EDGE)),
-            (ux, uy),
-            layer.n(bar_len + 2 * BAR_EDGE),
-            layer.n(BAR_HALF_W + BAR_EDGE),
-        )
-        poly = _bar_polygon(layer.pt(bar0), (ux, uy), layer.n(bar_len), layer.n(BAR_HALF_W))
-        pg.draw.polygon(surf, C.OUTLINE, outline)
-        pg.draw.polygon(surf, power_color(power), poly)
+        colour = power_color(power)
+        for grow, alpha in ((4.0 * look.reach, 40), (2.0 * look.reach, 90), (0.0, 255)):
+            poly = _bar_polygon(
+                layer.pt(bar0), (ux, uy), layer.n(bar_len), layer.n(BAR_HALF_W + grow)
+            )
+            pg.draw.polygon(surf, (*colour, _alpha(alpha) if grow else alpha), poly)
+        core = _bar_polygon(layer.pt(bar0), (ux, uy), layer.n(bar_len), layer.n(BAR_HALF_W * 0.3))
+        pg.draw.polygon(surf, (*C.lerp(colour, C.WHITE, 0.65), 255), core)  # the hot centre
 
-    # glow line from the ball's rim to the first contact
+    # light line from the ball's rim to the first contact
     ax, ay = end[0] - centre[0], end[1] - centre[1]
     alen = math.hypot(ax, ay)
     if alen > RIM:
         a = layer.pt((centre[0] + ax / alen * RIM, centre[1] + ay / alen * RIM))
         b = layer.pt(end)
-        for width, color in ((13, (*C.AIM_GLOW, 46)), (8, (*C.AIM_GLOW, 96)), (3, (*C.AIM, 255))):
+        lines = (
+            (13 * look.reach, (*C.AIM_GLOW, _alpha(40))),
+            (7 * look.reach, (*C.AIM_GLOW, _alpha(95))),
+            (2.6 * look.line, (*C.AIM, 255)),
+        )
+        for width, color in lines:
             pg.draw.line(surf, color, a, b, max(1, round(layer.n(width))))
             pg.draw.circle(surf, color, a, layer.n(width / 2))
             pg.draw.circle(surf, color, b, layer.n(width / 2))
-    pg.draw.circle(surf, C.AIM, layer.pt(end), layer.n(BALL_PX), max(1, round(layer.n(3))))
+    pg.draw.circle(
+        surf, C.AIM, layer.pt(end), layer.n(BALL_PX), max(1, round(layer.n(2.2 * look.line)))
+    )
 
     if obj is not None:  # arrow showing where the hit ball will go
         sx, sy, dx, dy = obj
         tail, head_base = layer.pt((sx, sy)), layer.pt((sx + dx * 26, sy + dy * 26))
-        pg.draw.line(surf, C.OUTLINE, tail, head_base, max(1, round(layer.n(9))))
-        pg.draw.line(surf, C.ACCENT, tail, head_base, max(1, round(layer.n(4))))
+        pg.draw.line(surf, (*C.ACCENT, _alpha(70)), tail, head_base, max(1, round(layer.n(9))))
+        pg.draw.line(surf, C.ACCENT, tail, head_base, max(1, round(layer.n(3 * look.line))))
         nx, ny = -dy, dx
         hx, hy = sx + dx * 26, sy + dy * 26
         head = [
@@ -283,13 +357,14 @@ def _paint_aim(canvas: pg.Surface, v: View, cue, contact, shot_dir, bar_len, pow
             layer.pt((hx - nx * 8, hy - ny * 8)),
         ]
         pg.draw.polygon(surf, C.ACCENT, head)
-        pg.draw.polygon(surf, C.OUTLINE, head, max(1, round(layer.n(3))))
     return layer
 
 
 __all__ = [
     "Aa",
     "BallSprites",
+    "blit_add",
+    "blit_dot",
     "blit_pm",
     "blit_rrect",
     "build_table",

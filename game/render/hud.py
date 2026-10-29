@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import math
 from functools import cache
 
 import pygame as pg
 
 from game.config import FEEL_ORDER, FEEL_SETS
 from game.i18n import t
-from game.render import fonts
+from game.render import fonts, glow
 from game.render import palette as C
-from game.render.draw import BallSprites, blit_pm, blit_rrect, shrink_pm
+from game.render.draw import BallSprites, blit_add, blit_dot, blit_pm, blit_rrect
 from game.render.layout import PANEL_H, PANEL_W, PANEL_X, PANEL_Y
 from game.render.view import View
 
@@ -71,24 +72,43 @@ def wrap(v: View, s: str, size: int, max_w: float, bold: bool = False) -> list[s
     return [*lines, line] if line else lines
 
 
-def text_outlined(
+@cache
+def _lit_text(
+    s: str, dev_size: int, color: tuple, halo_color: tuple, radius: float, gain: float
+) -> tuple[pg.Surface, pg.Surface]:
+    """(halo, face): the light round a text, and the text itself."""
+    font = fonts.get(dev_size, True)
+    face = font.render(s, True, color)
+    pad = math.ceil(radius * 2) + 2
+    w, h = face.get_size()
+    base = pg.Surface((w + 2 * pad, h + 2 * pad), pg.SRCALPHA)
+    base.blit(font.render(s, True, halo_color), (pad, pad))
+    return glow.halo(base.premul_alpha(), radius, gain), face
+
+
+def glow_text(
     canvas: pg.Surface,
     v: View,
     s: str,
     size: int,
     color: tuple[int, int, int],
-    center: tuple[float, float],
-    outline: float = 4,
+    halo_color: tuple[int, int, int],
+    pos: tuple[float, float],
+    *,
+    strength: float = 1.0,
 ) -> None:
-    """Big title text with the thick cartoon outline."""
-    dark = _text(s, max(6, v.i(size)), True, C.OUTLINE)
-    o = max(1, v.i(outline))
-    cx, cy = v.ipt(center)
-    for dx in range(-o, o + 1):
-        for dy in range(-o, o + 1):
-            if dx * dx + dy * dy <= o * o + 1:
-                canvas.blit(dark, dark.get_rect(center=(cx + dx, cy + dy)))
-    text(canvas, v, s, size, color, center, bold=True, center=True)
+    """Centred text that gives light: the letters, and a soft halo of `halo_color` round them.
+
+    `strength` scales the halo (the menu title breathes between 0.7 and 1.1); it is rounded to
+    tenths so only a handful of halos are ever made.
+    """
+    dev = max(6, v.i(size))
+    radius = dev * 0.16 * C.LOOK.reach
+    gain = round(1.1 * strength * C.LOOK.glow, 1)
+    light, face = _lit_text(s, dev, color, halo_color, radius, gain)
+    x, y = v.ipt(pos)
+    blit_add(canvas, light, (x - light.get_width() / 2, y - light.get_height() / 2))
+    canvas.blit(face, face.get_rect(center=(x, y)))
 
 
 _mini_cache: dict[tuple[float, int, bool], pg.Surface] = {}
@@ -100,7 +120,7 @@ def _mini_ball(sprites: BallSprites, v: View, number: int, gone: bool) -> pg.Sur
         if len(_mini_cache) > 64:
             _mini_cache.clear()
         size = v.i(MINI)
-        surf = pg.transform.smoothscale(sprites.get(number), (size, size))
+        surf = pg.transform.smoothscale(sprites.core(number), (size, size))
         if gone:  # premultiplied: scale every channel together
             surf.fill((55, 55, 55, 55), special_flags=pg.BLEND_RGBA_MULT)
         _mini_cache[key] = surf
@@ -121,11 +141,13 @@ def draw_panel(
     moving: bool,
     sprites: BallSprites,
 ) -> None:
-    """The side panel."""
-    blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 14, C.PANEL, edge=5)
+    """The side panel: a pane of dark glass with a lit edge."""
+    blit_rrect(
+        canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 14, C.PANEL, 1.4, C.CYAN_DIM, glow=0.6
+    )
     x, y = PANEL_X + 16, PANEL_Y + 14
 
-    text(canvas, v, t("app.title"), 20, C.ACCENT, (x, y), bold=True)
+    glow_text_left(canvas, v, t("app.title"), 20, (200, 252, 255), C.CYAN, (x, y))
     y += 40
 
     text(canvas, v, t("hud.shots"), 13, C.TEXT_DIM, (x, y))
@@ -150,17 +172,10 @@ def draw_panel(
 
     text(canvas, v, t("hud.feel"), 13, C.TEXT_DIM, (x, y))
     text(canvas, v, t(FEEL_SETS[feel_key].name_key), 20, C.ACCENT, (x, y + 16), bold=True)
-    dots = pg.Surface((v.i(60), v.i(14)), pg.SRCALPHA)
-    big = pg.Surface((dots.get_width() * 4, dots.get_height() * 4), pg.SRCALPHA)
     for i, key in enumerate(FEEL_ORDER):  # three dots, the active one lit
-        cx = v.n(8 + i * 16) * 4
-        pg.draw.circle(
-            big,
-            C.ACCENT if key == feel_key else C.PANEL_EDGE,
-            (cx, big.get_height() / 2),
-            v.n(5) * 4,
-        )
-    blit_pm(canvas, shrink_pm(big, dots.get_size()), v.pt((x + PANEL_W - 32 - 40, y + 23)))
+        lit = key == feel_key
+        centre = (x + PANEL_W - 72 + 8 + i * 16, y + 30)
+        blit_dot(canvas, v, centre, 4.5, C.ACCENT if lit else C.PANEL_EDGE, 0.9 if lit else 0.0)
     y += 50
 
     text(canvas, v, t("hud.moving") if moving else t("hud.ready"), 14, C.TEXT, (x, y))
@@ -177,17 +192,32 @@ def draw_panel(
         text(canvas, v, t(k), 12, C.TEXT_DIM, (x, ky + i * KEY_STEP))
 
 
+def glow_text_left(canvas, v, s, size, color, halo_color, pos) -> None:
+    """Like glow_text but `pos` is the top-left corner of the text."""
+    w = text_width(v, s, size, True)
+    glow_text(canvas, v, s, size, color, halo_color, (pos[0] + w / 2, pos[1] + size * 0.62))
+
+
 # --- buttons, the table banner and the result card -----------------------------------------
+# state -> (fill, edge colour, glow, text colour)
+BUTTON_STATES = {
+    "normal": (C.PANEL, C.CYAN_DIM, 0.0, C.TEXT),
+    "hover": (C.PANEL_HOT, C.CYAN, 0.8, C.WHITE),
+    "primary": (C.PANEL_HOT, C.MAGENTA, 1.0, C.WHITE),
+    "off": (C.BG, C.PANEL_EDGE, 0.0, C.TEXT_DIM),
+}
+
+
 def button(
     canvas: pg.Surface,
     v: View,
     rect: pg.Rect,
     label: str,
-    fill: tuple[int, int, int],
-    color: tuple[int, int, int],
+    state: str = "normal",
     size: int = 18,
 ) -> None:
-    blit_rrect(canvas, v, rect.x, rect.y, rect.w, rect.h, 12, fill, edge=4)
+    fill, edge, glow_k, color = BUTTON_STATES[state]
+    blit_rrect(canvas, v, rect.x, rect.y, rect.w, rect.h, 12, fill, 1.6, edge, glow_k)
     text(canvas, v, label, size, color, rect.center, bold=True, center=True)
 
 
@@ -197,16 +227,18 @@ def banner(
     lines: list[tuple[str, tuple[int, int, int]]],
     top_centre: tuple[float, float],
 ) -> None:
-    """A short notice (dark pill, one or two lines) hanging from `top_centre`.
+    """A short notice (dark glass pill, one or two lines) hanging from `top_centre`.
 
-    It sits OUTSIDE the table, below it: on the cloth it would hide balls rolling near a cushion.
+    The edge is lit in the colour of the first line (red for a foul). It sits OUTSIDE the table,
+    below it: on the cloth it would hide balls rolling near a cushion.
     """
     if not lines:
         return
     size, step = 16, 24
     w = max(text_width(v, s, size, True) for s, _ in lines) + 40
     x, y = top_centre[0] - w / 2, top_centre[1]
-    blit_rrect(canvas, v, x, y, w, BANNER_PAD + step * len(lines), 12, C.PANEL, edge=4)
+    edge = lines[0][1] if lines[0][1] != C.TEXT else C.CYAN_DIM
+    blit_rrect(canvas, v, x, y, w, BANNER_PAD + step * len(lines), 12, C.PANEL, 1.5, edge, 0.7)
     for i, (s, color) in enumerate(lines):
         pos = (top_centre[0], y + BANNER_PAD / 2 + step * (i + 0.5))
         text(canvas, v, s, size, color, pos, bold=True, center=True)
@@ -234,14 +266,15 @@ def draw_result(
     if size not in _dim_cache:
         _dim_cache.clear()
         dim = pg.Surface(size, pg.SRCALPHA)
-        dim.fill((6, 8, 14, 170))
+        dim.fill((4, 5, 14, 175))
         _dim_cache[size] = dim
     canvas.blit(_dim_cache[size], (0, 0))
     c = RESULT_CARD
-    blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 16, C.PANEL, edge=5)
+    mood = C.OK if won else C.ERROR
+    blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 16, C.PANEL, 1.8, mood, glow=1.0)
     cx = c.centerx
     title = t("result.won") if won else t("result.lost")
-    text(canvas, v, title, 36, C.OK if won else C.ERROR, (cx, c.y + 44), bold=True, center=True)
+    glow_text(canvas, v, title, 36, C.WHITE, mood, (cx, c.y + 44))
     if reason:
         text(canvas, v, reason, 15, C.TEXT_DIM, (cx, c.y + 82), center=True)
     for i, (label, value) in enumerate(rows):
@@ -257,8 +290,5 @@ def draw_result(
             bold=True,
         )
     for key, rect in RESULT_BUTTONS.items():
-        primary = key == "new"
-        lit = hover == key
-        fill = C.ACCENT if primary else C.PANEL_EDGE if lit else C.BG
-        color = C.OUTLINE if primary else C.TEXT
-        button(canvas, v, rect, t(f"result.{key}"), fill, color)
+        state = "primary" if key == "new" else "hover" if hover == key else "normal"
+        button(canvas, v, rect, t(f"result.{key}"), state)

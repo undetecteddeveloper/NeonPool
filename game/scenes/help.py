@@ -8,11 +8,12 @@ import pygame as pg
 
 from game import i18n
 from game.i18n import t
-from game.render import hud
+from game.render import backdrop, hud
 from game.render import palette as C
-from game.render.draw import blit_rrect
+from game.render.draw import blit_dot, blit_rrect
 from game.render.guide_art import Annot
 from game.render.view import View
+from game.render.waves import HELP, Waves
 from game.scenes import help_pictures
 from game.scenes.help_pictures import ART_H
 
@@ -39,18 +40,19 @@ class HelpScene:
         self.page = 0
         self.back = None  # the scene Esc returns to (set by App.go_help)
         self._hover: object = None
+        self._clock = 0.0
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
         self.view = v
         self._pictures: dict[tuple, pg.Surface] = {}
-        self._markers: dict[int, pg.Surface] = {}
+        self.waves = Waves(v, HELP, strength=0.55)
 
     def shake_offset(self) -> tuple[float, float]:
         return 0.0, 0.0
 
     def update(self, dt: float) -> None:
-        pass
+        self._clock += dt
 
     def _picture(self, index: int) -> pg.Surface:
         """The picture of a topic: made when first shown, and again after a language change."""
@@ -95,21 +97,22 @@ class HelpScene:
     # --- drawing -----------------------------------------------------------------------------
     def draw(self, canvas: pg.Surface) -> None:
         v, i = self.view, self.page
-        canvas.fill(C.BG)
-        hud.text(canvas, v, t("guide.title"), 34, C.WHITE, (60, 30), bold=True)
+        canvas.blit(backdrop.night(canvas.get_size()), (0, 0))
+        self.waves.draw(canvas, self._clock)
+        hud.glow_text_left(canvas, v, t("guide.title"), 34, C.WHITE, C.CYAN, (60, 30))
         hint = t("guide.back")
         hud.text(canvas, v, hint, 15, C.TEXT_DIM, (1220 - hud.text_width(v, hint, 15), 42))
-        blit_rrect(canvas, v, CARD.x, CARD.y, CARD.w, CARD.h, 16, C.PANEL, edge=4)
+        blit_rrect(canvas, v, CARD.x, CARD.y, CARD.w, CARD.h, 16, C.PANEL, 1.6, C.CYAN_DIM, 0.5)
         canvas.blit(self._picture(i), v.ipt(ART_POS))
         hud.text(canvas, v, t(f"{TOPICS[i][0]}.title"), 30, C.ACCENT, (TEXT_X, 134), bold=True)
         self._sentences(canvas, i)
         for key, rect, label in (("prev", PREV, "guide.prev"), ("next", NEXT, "guide.next")):
             off = (key == "prev" and i == 0) or (key == "next" and i == len(TOPICS) - 1)
-            fill = C.BG if off else C.PANEL_EDGE if self._hover == key else C.PANEL
-            hud.button(canvas, v, rect, t(label), fill, C.TEXT_DIM if off else C.TEXT)
+            state = "off" if off else "hover" if self._hover == key else "normal"
+            hud.button(canvas, v, rect, t(label), state)
         for k, r in enumerate(DOTS):
-            colour = C.ACCENT if k == i else C.PANEL_EDGE
-            blit_rrect(canvas, v, r.centerx - 5, r.centery - 5, 10, 10, 5, colour, edge=0)
+            lit = k == i
+            blit_dot(canvas, v, r.center, 5, C.ACCENT if lit else C.PANEL_EDGE, 0.9 if lit else 0.0)
 
     def _sentences(self, canvas: pg.Surface, topic: int, size: int = 19) -> None:
         """The topic's sentences, each behind its step number (or a small dot)."""
@@ -124,14 +127,8 @@ class HelpScene:
             y += step * 0.45
 
     def _marker(self, canvas: pg.Surface, n: int | None, c: tuple[float, float]) -> None:
-        key = n if n is not None else 0
-        if key not in self._markers:
-            surf = pg.Surface(self.view.rect(0, 0, 30, 30).size)
-            surf.fill(C.PANEL)
-            a = Annot(surf, self.view)
-            if n is None:
-                a.disc((15, 15), 4, C.ACCENT)
-            else:
-                a.step(n, (15, 15))
-            self._markers[key] = surf
-        canvas.blit(self._markers[key], self.view.ipt((c[0] - 15, c[1] - 15)))
+        a = Annot(canvas, self.view)
+        if n is None:
+            a.disc(c, 4, C.ACCENT)
+        else:
+            a.step(n, c)

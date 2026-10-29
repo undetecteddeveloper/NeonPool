@@ -71,25 +71,25 @@ class Annot:
 
     def panel(self, x: float, y: float, w: float, h: float, fill=C.BG, radius: float = 8) -> None:
         tx, ty = self._t((x, y))
-        blit_rrect(self.surf, self.v, tx, ty, w, h, radius, fill, edge=2)
+        blit_rrect(self.surf, self.v, tx, ty, w, h, radius, fill, 1.2, C.CYAN_DIM)
 
     def text(self, s: str, pos: Point, size: int = 14, color=C.TEXT, bold=False, center=False):
         text(self.surf, self.v, s, size, color, self._t(pos), bold=bold, center=center)
 
     # --- marks -----------------------------------------------------------------------------
     def arrow(self, a: Point, b: Point, fill=C.ACCENT, dashed: bool = False) -> None:
-        """Arrow from a to b with a black outline (the look of the game's own arrows)."""
+        """Arrow from a to b, lit like the game's own arrows (a soft halo under a bright core)."""
         length = math.dist(a, b)
         dx, dy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
         base = (b[0] - dx * 11, b[1] - dy * 11)
         if dashed:
-            self.dashed(a, base, 4, fill)
+            self.dashed(a, base, 3, fill)
         else:
-            self.line(a, base, 8, C.OUTLINE)
-            self.line(a, base, 4, fill)
+            self.line(a, base, 9, (*fill, 70))
+            self.line(a, base, 3, fill)
         nx, ny = -dy, dx
         head = [b, (base[0] + nx * 8, base[1] + ny * 8), (base[0] - nx * 8, base[1] - ny * 8)]
-        self.polygon(head, fill)
+        self.polygon(head, fill, outline=None)
 
     def cursor(self, c: Point) -> None:
         """A mouse pointer with its tip at `c`."""
@@ -98,13 +98,13 @@ class Annot:
 
     def step(self, n: int, c: Point) -> None:
         """A numbered marker; the same number stands in front of the matching sentence."""
-        self.disc(c, 12, C.OUTLINE)
+        self.disc(c, 13, (*C.ACCENT, 80))
         self.disc(c, 10, C.ACCENT)
         self.text(str(n), c, 15, C.OUTLINE, bold=True, center=True)
 
     def mark(self, c: Point, ok: bool, r: float = 11) -> None:
-        """A green tick (right) or a red cross (wrong)."""
-        self.disc(c, r + 2, C.OUTLINE)
+        """A mint tick (right) or a red cross (wrong), each in a soft halo."""
+        self.disc(c, r + 3, (*(C.OK if ok else C.ERROR), 80))
         self.disc(c, r, C.OK if ok else C.ERROR)
         k = r * 0.46
         if ok:
@@ -122,7 +122,7 @@ class Annot:
             dx, dy = centre[0] - target[0], centre[1] - target[1]
             n = math.hypot(dx, dy) or 1.0
             rim = (target[0] + dx / n * 13, target[1] + dy / n * 13)
-            self.line(centre, rim, 2, C.WHITE)
-            self.disc(rim, 3.5, C.WHITE)
+            self.line(centre, rim, 2, C.CYAN)
+            self.disc(rim, 3.5, C.CYAN)
         self.panel(centre[0] - w / 2, centre[1] - 14, w, 28, C.BG, 10)
         self.text(s, centre, 15, C.TEXT, bold=True, center=True)

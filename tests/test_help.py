@@ -152,9 +152,9 @@ def test_the_shot_picture_is_a_real_frame_the_ball_the_bar_and_the_step_marks_ar
     cue = _px(pic, (cx - crop_x, cy - crop_y))
     assert min(cue) > 225  # the white ball, drawn by the game
     bar = _px(pic, (cx - 60 - crop_x, cy - crop_y))
-    assert bar[0] > 220 and bar[2] < 90  # the yellow/orange pull bar, drawn by the game
+    assert min(bar) > 150  # the lit pull bar, drawn by the game (a hot white-ish centre)
     step_one = _px(pic, (cx - crop_x - 4, cy - 46 - crop_y - 6))
-    assert step_one[0] > 200 and step_one[1] > 180 and step_one[2] < 120  # the yellow number badge
+    assert step_one[0] > 200 and step_one[1] < 140 and step_one[2] > 160  # the pink-violet badge
 
 
 def test_the_cue_ball_in_hand_picture_shows_the_real_pulsing_ring():
@@ -162,9 +162,9 @@ def test_the_cue_ball_in_hand_picture_shows_the_real_pulsing_ring():
     pic = pics.picture_hand(v)
     cx, cy = to_px(0.62, 0.64)
     crop_x, crop_y = 60, 250  # the crop used by picture_hand
-    # walk right from the ball's centre: the yellow ring is a few px outside its outline
+    # walk right from the ball's centre: the pink-violet ring is a few px outside the ball
     run = [_px(pic, (cx - crop_x + dx, cy - crop_y)) for dx in range(12, 24)]
-    assert any(r > 180 and b < 140 for r, _, b in run)  # yellow, not table green
+    assert any(r > 180 and g < 120 and b > 140 for r, g, b in run)  # pink-violet, not night blue
 
 
 def test_the_result_pictures_are_the_game_s_own_cards(app):
