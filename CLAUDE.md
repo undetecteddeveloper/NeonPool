@@ -6,7 +6,7 @@
 
 ## 1. Bất biến của dự án (vi phạm = lỗi, kể cả khi test xanh)
 1. `game/physics/` và `game/rules/` KHÔNG import pygame: chỉ toán thuần, để test không cần cửa sổ.
-2. Mọi cách nhập (kéo thả hôm nay, công thức toán sau này) chỉ tạo ra MỘT thứ: `Shot(angle, power, spin)`. Vật lý không biết cú đánh đến từ đâu.
+2. Mọi cách nhập (hôm nay là kéo thả; sau này thêm cách nào cũng vậy) chỉ tạo ra MỘT thứ: `Shot(angle, power, spin)`. Vật lý không biết cú đánh đến từ đâu.
 3. Vật lý chạy bước thời gian CỐ ĐỊNH (`PHYSICS_DT`), đơn vị mét–giây; đổi sang pixel CHỈ ở lớp vẽ (`PX_PER_M`).
 4. Mọi hằng số vật lý và cảm giác (ma sát, độ nảy, lực đánh) nằm trong `game/config.py` hoặc bộ thông số có tên — không số "ma thuật" trong code.
 5. Mọi chữ hiện lên màn hình đi qua `i18n.t("khoa")` (vi + en). Khoá hay chuỗi cứng lộ ra màn hình là lỗi.

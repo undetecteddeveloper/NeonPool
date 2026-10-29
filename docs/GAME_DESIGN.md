@@ -8,7 +8,7 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Thể loại | Bida pool 2D nhìn từ trên xuống, pygame-ce, một người chơi |
 | Luật | 8-ball (15 bi + bi trắng; bi nguyên 1–7, bi sọc 9–15, bi 8 đánh cuối) |
 | Chế độ | Tập một mình: không đối thủ, không lượt; đếm số cú, lỗi chỉ bị phạt nhẹ |
-| Chế độ chơi | HAI chế độ (người dùng đổi định hướng 2026-10-28, trước đó là "bản đầu kéo thả, bản sau công thức"): (1) kéo thả kiểu truyền thống; (2) nhập công thức toán để đánh. Cả hai cùng sinh ra `Shot` (ARCHITECTURE.md). Chi tiết chế độ công thức: xem mục "Chế độ công thức" bên dưới |
+| Chế độ chơi | MỘT chế độ: kéo thả kiểu truyền thống. Chế độ nhập công thức toán (y = ax + b) đã làm thử rồi BỎ HẲN (người dùng chốt 2026-10-29 sau khi chơi: khó chơi, ít thú vị hơn chơi thường). Mọi cách nhập vẫn chỉ sinh ra `Shot` (ARCHITECTURE.md) |
 | Kéo thả | Hướng kéo ngược = hướng đánh; độ dài thanh kéo = lực, CÓ GIỚI HẠN (kéo quá mức tối đa thì thanh không dài thêm) |
 | Vật lý | Có xoáy cơ bản: đánh cao/thấp (bi trắng chạy tới/lùi sau va chạm). CHƯA có xoáy ngang |
 | Ngôn ngữ | Tiếng Việt + tiếng Anh, đổi được; mặc định tiếng Việt |
@@ -24,11 +24,10 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Bàn | Bida chuẩn 6 lỗ (4 góc + 2 giữa), hình chữ nhật, KHÔNG vật cản |
 | Vạch ngắm | Sáng, đi từ bi trắng tới điểm chạm ĐẦU TIÊN (bi hoặc băng), kèm mũi tên nhỏ cho hướng bi bị đụng; không dự đoán nảy băng |
 | Kéo thả | Kéo lùi từ bi trắng như kéo dây cung; kéo càng xa lực càng mạnh; thanh kéo là một thanh THẲNG, bề rộng đều, hai đầu vuông góc (không thon, không bo tròn) |
-| Lưới toạ độ | Ẩn mặc định, phím G bật/tắt (hệ toạ độ cho chế độ công thức về sau). Tạm: gốc ở TÂM bàn, x sang phải, y hướng LÊN (quy ước toán), đơn vị mét, vạch mờ mỗi 0,1 m — chốt lại khi làm chế độ công thức |
 | Âm thanh | Hiệu ứng cơ bản: gậy đánh, bi va (mạnh/nhẹ theo lực), nảy băng, rơi lỗ; KHÔNG nhạc nền; tự tạo bằng mã (nghe hơi "máy", thay file thật được); có tắt tiếng |
 | Hiệu ứng | Vừa đủ, tinh tế: bi co nhỏ biến mất khi vào lỗ, vòng gợn nhẹ khi va chạm mạnh, rung rất nhẹ khi phá bi |
 | Cửa sổ | Mở ~1280×720, kéo to/nhỏ được, F11 toàn màn hình; hình co theo, giữ đúng tỉ lệ bàn |
-| MVP | Menu mở đầu (Chơi / Ngôn ngữ / Thoát) + bàn chơi tự do (15 bi tam giác, kéo thả, va chạm, nảy băng, vào lỗ, bi trắng rơi lỗ thì đặt lại) + bảng bên (số cú, bi còn lại) + phím R chơi lại, M tắt tiếng, G lưới. CHƯA có luật thắng thua, xoáy, công thức |
+| MVP | Menu mở đầu (Chơi / Ngôn ngữ / Thoát) + bàn chơi tự do (15 bi tam giác, kéo thả, va chạm, nảy băng, vào lỗ, bi trắng rơi lỗ thì đặt lại) + bảng bên (số cú, bi còn lại) + phím R chơi lại, M tắt tiếng. (Phím G lưới toạ độ có ở bản đầu, đã bỏ 2026-10-29 cùng chế độ công thức.) Luật thắng/thua làm sau (mục "Luật tập một mình"); CHƯA có xoáy |
 
 ## Phản hồi sau khi người dùng chơi thử MVP (2026-10-28)
 - Đồ họa: phải là vector thật, mịn ở mọi cỡ cửa sổ (laptop HD 1280×720 của người dùng; cửa sổ mở đầu tự vừa màn hình). Đã chuyển sang vẽ ở độ phân giải thật.
@@ -37,13 +36,19 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 - Lực tối đa giảm ~28%: `TRON` 8,0 → 5,8 · `VUA` 7,0 → 5,0 · `CHAM` 6,0 → 4,3 m/s. Âm thanh và kéo to/nhỏ cửa sổ: người dùng hài lòng.
 
 ## Phản hồi lần 2 (2026-10-28, người dùng sau khi test)
-- Bỏ ô ca-rô trên mặt nỉ. 
+- Bỏ ô ca-rô trên mặt nỉ.
 - Bóng đổ của bi: từ trên xuống (thẳng xuống dưới bi), thay cho bóng nghiêng chéo.
 - Thanh kéo: thanh thẳng góc cạnh, bỏ đầu bo tròn và bỏ độ thon.
 - Bàn vẽ lại theo ảnh tham chiếu `ban-bida-anh-tham-chieu.webp` (ảnh của bên thứ ba, chỉ để tham khảo, KHÔNG đưa vào git): khung gỗ nâu có vân, tấm đồng/kem ở 4 góc và 2 lỗ giữa, nỉ xanh sáng ở giữa và tối dần ra mép, băng đệm xanh đậm có vạch sáng ở mép nỉ, lỗ đen có viền xám, chấm kim cương vàng trên khung (mỗi 1/8 cạnh dài, mỗi 1/4 cạnh ngắn). Hình học vật lý và vị trí lỗ KHÔNG đổi (mép nỉ = mặt băng). Mã: `game/render/table.py`.
 
 
-## Luật tập một mình (đề xuất theo WPA 8-ball, rút gọn — người dùng duyệt khi làm tính năng luật)
+## Phản hồi lần 3 (2026-10-29, người dùng sau khi chơi chế độ công thức)
+- Bỏ chế độ công thức khỏi dự án: vừa khó chơi vừa không tạo nhiều cảm giác thích thú so với chơi thường. Kéo theo: bỏ mức toán Dễ/Vừa/Khó, nút Gợi ý, lưới toạ độ (phím G), đường cong y = f(x) khỏi kế hoạch. Menu còn Chơi / Ngôn ngữ / Thoát.
+- Giữ: bàn vẽ lại, bóng thẳng xuống, thanh kéo vuông (lần 2) và luật 8-ball (mục dưới).
+- CHƯA quyết (hỏi người dùng khi tới lúc): tên game "MathofPool" và dòng phụ "Bida và những con số" còn nhắc đến toán; yếu tố "toán" nếu muốn giữ thì nằm ở đâu.
+- Việc kế tiếp theo thứ tự đã chọn: xoáy cao/thấp.
+
+## Luật tập một mình (đề xuất theo WPA 8-ball, rút gọn; người dùng đã duyệt và đã làm 2026-10-28, chi tiết ở docs/plans/20261028-8ball.md)
 - Bàn "mở" sau cú phá. Bi đầu tiên vào lỗ hợp lệ (nguyên hoặc sọc) quyết định nhóm của người chơi.
 - LỖI: bi trắng rơi lỗ; bi nhảy khỏi bàn; cú đánh không chạm bi nào; chạm bi nhóm khác trước; sau khi chạm không có bi nào vào lỗ hay chạm băng.
 - Hậu quả lỗi (tập một mình): +1 lỗi trên bảng điểm, bi trắng được đặt lại TỰ DO trên bàn (luật WPA cho "ball in hand" sau lỗi).
