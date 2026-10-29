@@ -191,6 +191,21 @@ def cushion_strips() -> list[tuple[tuple[float, float], tuple[float, float], tup
     return strips
 
 
+def cushion_bands() -> list[tuple[float, float, float, float]]:
+    """(x, y, w, h) of the four bands the cushions sit in, between the cloth and the wood.
+
+    The corner squares are left out: there the plate belongs.
+    """
+    right, bottom = FIELD_X + FIELD_W, FIELD_Y + FIELD_H
+    t = CUSHION_PX
+    return [
+        (FIELD_X, FIELD_Y - t, FIELD_W, t),
+        (FIELD_X, bottom, FIELD_W, t),
+        (FIELD_X - t, FIELD_Y, t, FIELD_H),
+        (right, FIELD_Y, t, FIELD_H),
+    ]
+
+
 def _strip_points(a, b, out, e: float = 0.0) -> list[tuple[float, float]]:
     """cushion_outline mapped onto the table: s runs from a to b, d goes towards `out`."""
     length = math.dist(a, b)
@@ -204,6 +219,10 @@ def _strip_points(a, b, out, e: float = 0.0) -> list[tuple[float, float]]:
 def _paint_cushions(s: pg.Surface, v: View) -> None:
     """Rubber strips along the cloth edge (the face is the cloth edge), rounded at both ends."""
     strips = cushion_strips()
+    # the brass plates reach over the cushion band: cover that band first, so no brass peeks out
+    # next to the rounded ends and the plates only show on the wood (as in the reference)
+    for x, y, w, h in cushion_bands():
+        s.fill(C.CUSHION_BASE, v.rect(x, y, w, h))
     # the soft shadow on the cloth follows the rounded outline: widest ring first, then narrower
     ox, oy = OUTER_X, OUTER_Y
     shade = pg.Surface(v.rect(0, 0, OUTER_W, OUTER_H).size, pg.SRCALPHA)

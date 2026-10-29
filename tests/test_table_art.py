@@ -227,3 +227,25 @@ def test_notices_never_cover_the_table(scene, lang):
         with_notice.subsurface(below), "RGB"
     )  # ... and the notice is there, under the table
     assert hud.BANNER_PAD + 24 * 2 + OUTER_Y + OUTER_H + 12 < config.LOGICAL_SIZE[1]
+
+
+def _wedge_points(px: float, py: float, pr: float) -> list[tuple[float, float]]:
+    """Points in the little wedge between a rounded cushion end and the pocket lip: 1 px past the
+    lip along each rail that meets the pocket, and 3 px into the cushion band."""
+    ux, uy = table.pocket_outward(px, py)
+    cx, cy = to_px(px, py)
+    reach = pr * PX_PER_M + table.LIP_PX + 1.0
+    wood_y, wood_x = math.copysign(3.0, uy), math.copysign(3.0, ux)
+    if ux == 0:  # a middle pocket: the rail runs left and right of it
+        return [(cx - reach, cy + wood_y), (cx + reach, cy + wood_y)]
+    return [
+        (cx - math.copysign(reach, ux), cy + wood_y),
+        (cx + wood_x, cy - math.copysign(reach, uy)),
+    ]
+
+
+def test_no_brass_or_wood_peeks_out_next_to_the_rounded_cushion_ends(surf):
+    for px, py, pr in POCKETS:
+        for p in _wedge_points(px, py, pr):
+            r, g, b = _px(surf, p)
+            assert g > r + 20 and g > b, (px, py, (r, g, b))  # cushion green, not brass/wood
