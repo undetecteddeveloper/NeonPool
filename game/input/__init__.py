@@ -1,1 +1,1 @@
-"""Input -> Shot. Drag today, formulas later. Pure (no pygame)."""
+"""Input -> Shot. Dragging back from the cue ball today. Pure (no pygame)."""

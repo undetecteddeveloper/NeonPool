@@ -1,4 +1,4 @@
-"""Shot: the ONLY way anything acts on the cue ball (drag today, formulas later)."""
+"""Shot: the ONLY way anything acts on the cue ball (whatever the input is)."""
 
 from __future__ import annotations
 

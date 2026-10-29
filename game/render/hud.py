@@ -41,6 +41,11 @@ def text(
     return rect
 
 
+def text_width(v: View, s: str, size: int, bold: bool = False) -> float:
+    """Width in LOGICAL units of `s` at logical `size`."""
+    return _text(s, max(6, v.i(size)), bold, C.TEXT).get_width() / v.s
+
+
 def text_outlined(
     canvas: pg.Surface,
     v: View,
@@ -82,12 +87,16 @@ def draw_panel(
     v: View,
     *,
     shots: int,
+    fouls: int,
     pocketed: set[int],
+    group: str | None,
+    eight_next: bool,
     feel_key: str,
     muted: bool,
     moving: bool,
     sprites: BallSprites,
 ) -> None:
+    """The side panel."""
     blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 14, C.PANEL, edge=5)
     x, y = PANEL_X + 16, PANEL_Y + 14
 
@@ -96,11 +105,17 @@ def draw_panel(
 
     text(canvas, v, t("hud.shots"), 13, C.TEXT_DIM, (x, y))
     text(canvas, v, str(shots), 38, C.TEXT, (x, y + 14), bold=True)
+    text(canvas, v, t("hud.fouls"), 13, C.TEXT_DIM, (x + 86, y))
+    text(canvas, v, str(fouls), 38, C.ERROR if fouls else C.TEXT, (x + 86, y + 14), bold=True)
     y += 66
 
-    text(canvas, v, t("hud.balls_left"), 13, C.TEXT_DIM, (x, y))
-    text(canvas, v, str(15 - len(pocketed)), 38, C.TEXT, (x, y + 14), bold=True)
-    y += 66
+    text(canvas, v, t("hud.group"), 13, C.TEXT_DIM, (x, y))
+    if eight_next:
+        text(canvas, v, t("hud.eight_next"), 18, C.ACCENT, (x, y + 16), bold=True)
+    else:
+        label = t(f"group.{group}") if group else t("group.open")
+        text(canvas, v, label, 18, C.TEXT if group else C.TEXT_DIM, (x, y + 16), bold=True)
+    y += 46
 
     for i, number in enumerate(range(1, 16)):  # 5 per row
         bx = x + (i % 5) * (MINI + 8)
@@ -125,15 +140,7 @@ def draw_panel(
 
     text(canvas, v, t("hud.moving") if moving else t("hud.ready"), 14, C.TEXT, (x, y))
     text(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), 13, C.TEXT_DIM, (x, y + 20))
-
-    keys = (
-        "hud.key_restart",
-        "hud.key_mute",
-        "hud.key_grid",
-        "hud.key_feel",
-        "hud.key_full",
-        "hud.key_menu",
-    )
+    keys = ("hud.key_restart", "hud.key_mute", "hud.key_feel", "hud.key_full", "hud.key_menu")
     ky = PANEL_Y + PANEL_H - 14 - len(keys) * 17
     pg.draw.line(
         canvas,
@@ -144,3 +151,89 @@ def draw_panel(
     )
     for i, k in enumerate(keys):
         text(canvas, v, t(k), 12, C.TEXT_DIM, (x, ky + i * 17))
+
+
+# --- buttons, the table banner and the result card -----------------------------------------
+def button(
+    canvas: pg.Surface,
+    v: View,
+    rect: pg.Rect,
+    label: str,
+    fill: tuple[int, int, int],
+    color: tuple[int, int, int],
+    size: int = 18,
+) -> None:
+    blit_rrect(canvas, v, rect.x, rect.y, rect.w, rect.h, 12, fill, edge=4)
+    text(canvas, v, label, size, color, rect.center, bold=True, center=True)
+
+
+def banner(
+    canvas: pg.Surface,
+    v: View,
+    lines: list[tuple[str, tuple[int, int, int]]],
+    center: tuple[float, float],
+) -> None:
+    """A short notice on the cloth: dark pill with one or two lines of text."""
+    if not lines:
+        return
+    size, step = 16, 24
+    w = max(text_width(v, s, size, True) for s, _ in lines) + 40
+    h = 16 + step * len(lines)
+    x, y = center[0] - w / 2, center[1] - h / 2
+    blit_rrect(canvas, v, x, y, w, h, 12, C.PANEL, edge=4)
+    for i, (s, color) in enumerate(lines):
+        text(
+            canvas, v, s, size, color, (center[0], y + 8 + step * (i + 0.5)), bold=True, center=True
+        )
+
+
+RESULT_CARD = pg.Rect(334, 207, 400, 300)  # between the head spot and the rack (logical px)
+RESULT_BUTTONS = {
+    "new": pg.Rect(RESULT_CARD.x + 30, RESULT_CARD.y + 236, 160, 48),
+    "menu": pg.Rect(RESULT_CARD.right - 190, RESULT_CARD.y + 236, 160, 48),
+}
+_dim_cache: dict[tuple[int, int], pg.Surface] = {}
+
+
+def draw_result(
+    canvas: pg.Surface,
+    v: View,
+    *,
+    won: bool,
+    reason: str | None,
+    rows: list[tuple[str, str]],
+    hover: str | None,
+) -> None:
+    """The end-of-game card: dims the table, title, why, the numbers and two buttons."""
+    size = canvas.get_size()
+    if size not in _dim_cache:
+        _dim_cache.clear()
+        dim = pg.Surface(size, pg.SRCALPHA)
+        dim.fill((6, 8, 14, 170))
+        _dim_cache[size] = dim
+    canvas.blit(_dim_cache[size], (0, 0))
+    c = RESULT_CARD
+    blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 16, C.PANEL, edge=5)
+    cx = c.centerx
+    title = t("result.won") if won else t("result.lost")
+    text(canvas, v, title, 36, C.OK if won else C.ERROR, (cx, c.y + 44), bold=True, center=True)
+    if reason:
+        text(canvas, v, reason, 15, C.TEXT_DIM, (cx, c.y + 82), center=True)
+    for i, (label, value) in enumerate(rows):
+        row = c.y + 112 + i * 26
+        text(canvas, v, label, 15, C.TEXT_DIM, (c.x + 40, row + 2))
+        text(
+            canvas,
+            v,
+            value,
+            18,
+            C.TEXT,
+            (c.right - 40 - text_width(v, value, 18, True), row),
+            bold=True,
+        )
+    for key, rect in RESULT_BUTTONS.items():
+        primary = key == "new"
+        lit = hover == key
+        fill = C.ACCENT if primary else C.PANEL_EDGE if lit else C.BG
+        color = C.OUTLINE if primary else C.TEXT
+        button(canvas, v, rect, t(f"result.{key}"), fill, color)

@@ -88,27 +88,16 @@ def test_cannot_start_aiming_while_balls_move(app):
     assert not app.play.drag.active
 
 
-def test_keys_restart_mute_grid_and_feel(app):
+def test_keys_restart_mute_and_feel(app):
     app.go_play()
     app.play.rules.shots = 5
     app.handle_event(key(pg.K_r))
     assert app.play.rules.shots == 0
-    app.handle_event(key(pg.K_g))
-    assert app.play.show_grid
     app.handle_event(key(pg.K_m))
     assert app.audio.muted
     for k, name in ((pg.K_1, "TRON"), (pg.K_2, "VUA"), (pg.K_3, "CHAM")):
         app.handle_event(key(k))
         assert app.play.feel_key == name and app.play.world.feel.key == name
-
-
-def test_pocketed_cue_ball_comes_back_once_everything_stops(app):
-    app.go_play()
-    play = app.play
-    play.world.balls[0].in_play = False
-    play.rules.cue_pocketed = True
-    app.update(1 / 60)
-    assert play.world.balls[0].in_play
 
 
 def test_every_screen_draws_in_both_languages(app):
@@ -117,7 +106,6 @@ def test_every_screen_draws_in_both_languages(app):
         app.go_menu()
         app.draw()
         app.go_play()
-        app.play.show_grid = True
         app.draw()
 
 

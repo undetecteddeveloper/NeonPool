@@ -14,6 +14,7 @@ from game.config import LOGICAL_SIZE
 from game.render import palette as C
 from game.render.view import View
 from game.render.viewport import window_to_logical
+from game.rules.eight_ball import PLAYING
 from game.scenes.menu import MenuScene
 from game.scenes.play import PlayScene
 
@@ -45,7 +46,7 @@ class App:
         self.scene = self.menu
 
     def game_in_progress(self) -> bool:
-        return self.play.rules.shots > 0
+        return self.play.rules.shots > 0 and self.play.rules.phase == PLAYING
 
     # --- contract used by tools/smoke.py and tools/shot.py ---------------------------------
     def handle_event(self, e: pg.event.Event) -> None:

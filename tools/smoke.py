@@ -56,6 +56,7 @@ def main() -> int:
     from game import config
     from game.app import App
     from game.render.layout import to_px
+    from game.rules.eight_ball import LOST
 
     pg.init()
     screen = pg.display.set_mode(config.LOGICAL_SIZE)
@@ -80,9 +81,23 @@ def main() -> int:
         print("smoke: cú phá KHÔNG xảy ra (kéo thả không tạo cú đánh) — đo vô nghĩa")
         return 1
     breaking = measure(app, args.frames)
+
+    # after a foul: the pulsing ring and the notice; at the end of a game: the dimmed result card
+    app.play.new_game()
+    app.play.rules.cue_in_hand = True
+    in_hand = measure(app, 60)
+    app.play.new_game()
+    app.play.rules.phase = LOST
+    card = measure(app, 60)
     pg.quit()
 
-    ok = report("đứng yên", idle) & report("đang ngắm", aiming) & report("cú phá", breaking)
+    ok = (
+        report("đứng yên", idle)
+        & report("đang ngắm", aiming)
+        & report("cú phá", breaking)
+        & report("bi trắng trong tay", in_hand)
+        & report("bảng kết quả", card)
+    )
     return 0 if ok else 1
 
 

@@ -75,6 +75,7 @@ POCKET_ANIM_S = 0.25  # a pocketed ball shrinks toward the pocket over this time
 BREAK_SHAKE_SPEED = 2.5  # m/s: the first hard hit after a rack shakes the screen
 SHAKE_PX = 4.0
 SHAKE_S = 0.30
+NOTICE_S = 4.0  # how long a foul / group notice stays on the cloth
 SAMPLE_RATE = 44100
 SFX_MAX_PER_FRAME = 6  # cap sounds started per frame so a break is not a wall of noise
 SFX_REF_SPEED = 6.0  # m/s that maps to full volume

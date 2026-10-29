@@ -73,6 +73,21 @@ def test_toggle_cycles_and_rejects_unknown():
         i18n.set_lang("fr")
 
 
+def test_keys_built_at_run_time_exist():
+    """t(f"group.{g}") and the rules' foul/result keys cannot be found by the literal-call scan."""
+    dynamic = [
+        "group.open",
+        "group.solid",
+        "group.stripe",
+        "notice.group_solid",
+        "notice.group_stripe",
+    ]
+    dynamic += ["foul.scratch", "foul.no_hit", "foul.wrong_ball", "foul.no_cushion"]
+    dynamic += ["result.lost_early", "result.lost_foul", "result.won", "result.lost"]
+    for lang in i18n.LANGS:
+        assert set(dynamic) <= set(i18n.table(lang)), lang
+
+
 def test_format_arguments():
     i18n.table("vi")["_test"] = "Còn {n} bi"
     try:
