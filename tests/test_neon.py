@@ -139,15 +139,30 @@ def test_a_pulse_of_light_runs_both_ways_along_the_strands():
     assert st.glow_at(synth.PULSE_S + 0.1).max() < light.max()  # and it fades
 
 
-def test_a_ball_landing_on_the_ribbon_makes_it_dip_there():
-    calm, hit = _strands(), _strands()
-    hit.dip(640.0)
-    _run(calm, 0.2)
-    _run(hit, 0.2)
-    centre = np.abs(hit.x - 640.0).argmin()
-    far = np.abs(hit.x - 100.0).argmin()
-    assert (hit.y[:, centre] - calm.y[:, centre]).mean() > 3  # pushed down (screen y grows down)
-    assert abs((hit.y[:, far] - calm.y[:, far]).mean()) < 0.5
+def test_a_ball_landing_on_the_ribbon_leaves_it_alone():
+    with_balls = synth.Synthwave(V, 405, floaters=True)
+    without = synth.Synthwave(V, 405)
+    landed = False
+    for _ in range(12 * 60):
+        with_balls.update(1 / 60)
+        without.update(1 / 60)
+        landed = landed or any(b[3] for b in with_balls.floaters.balls)
+    assert landed
+    assert np.array_equal(with_balls.strands.y, without.strands.y)  # no dip, no ripple
+
+
+def test_the_balls_are_drawn_over_the_ribbons_so_that_nothing_dims_them():
+    sw = synth.Synthwave(V, 405, floaters=True)
+    fl = sw.floaters
+    x = 600.0
+    y = sw.strands.surface(x) + fl.r * synth.FLOAT_SINK
+    fl.balls = [[3, x, y, True]]
+    fl._next = 1e9  # no other ball
+    sw._draw_strands = lambda layer, clock: layer.fill((255, 255, 255))  # ribbon light everywhere
+    canvas = _canvas()
+    sw.draw(canvas, 0.0)
+    px, py = V.pt((x + 0.45 * fl.r, y))  # the dark body of the ball, clear of its number
+    assert sum(canvas.get_at((round(px), round(py)))[:3]) < 300  # not the white light behind it
 
 
 def test_balls_float_up_one_by_one_land_on_the_ribbon_and_drift_away():

@@ -38,7 +38,7 @@ GRID_ROWS = 14  # cross lines of the floor grid on screen at once
 FLOAT_ORDER = (*range(1, 16), 0)  # which ball comes up next: 1 to 15, then the cue ball
 FLOAT_EVERY_S = 2.4  # a new ball comes up this often ...
 FLOAT_MAX = 5  # ... while fewer than this many are on screen
-FLOAT_SCALE = 2.2  # the balls are this many times their size on the table
+FLOAT_SCALE = 1.43  # the balls are this many times their size on the table (2.2 less 35%)
 FLOAT_RISE = 150.0  # rising speed far from the surface (logical px/s); it slows on arrival
 FLOAT_DRIFT = 34.0  # drifting speed along the ribbons, the way the waves run (logical px/s)
 FLOAT_SINK = 0.35  # a floating ball sits this much of its radius below the surface
@@ -104,10 +104,6 @@ class Strands:
         sign = np.where(np.arange(STRANDS) % 2 == 0, 1.0, -0.7)[:, None]
         self.vy += strength * 900.0 * sign * _gauss(self.x, x, 38.0)[None, :]
 
-    def dip(self, x: float, strength: float = 1.0) -> None:
-        """Something landed on the strands at x: they dip there, and the ripple runs both ways."""
-        self.vy += strength * 260.0 * _gauss(self.x, x, 30.0)[None, :]
-
     def surface(self, x: float) -> float:
         """The logical y of the ribbon (the middle of its strands) at x."""
         return self.base_y + float(np.interp(x, self.x, self.y.mean(axis=0)))
@@ -141,8 +137,9 @@ class Strands:
 
 
 class Floaters:
-    """Balls rising out of the floor one after another; arriving at the ribbon each makes a small
-    dip, then bobs on it and drifts away with the waves until it leaves the screen."""
+    """Balls rising out of the floor one after another; arriving at the ribbon each slows down,
+    then bobs on it and drifts away with the waves until it leaves the screen. They never touch
+    the ribbons' motion: the ribbons are the same with or without them."""
 
     def __init__(self, v: View, strands: Strands, left: float, right: float, bottom: float) -> None:
         self.v, self.strands = v, strands
@@ -171,9 +168,7 @@ class Floaters:
             if not floating:
                 gap = y - surface
                 y -= (35.0 + (FLOAT_RISE - 35.0) * min(1.0, gap / 120.0)) * dt  # slows on arrival
-                if y <= surface:
-                    floating = True
-                    self.strands.dip(x, 0.9)
+                floating = y <= surface
             if floating:
                 x += FLOAT_DRIFT * dt
                 y = self.strands.surface(x) + self.r * FLOAT_SINK
@@ -336,12 +331,12 @@ class Synthwave:
         if self.sun is not None:
             self._draw_sun(canvas, clock)
         self._draw_grid(canvas, clock)
-        if self.floaters is not None:  # under the ribbons: the light of the water is in front
-            self.floaters.draw(canvas)
         layer = self.layer
         layer.fill((0, 0, 0))
         self._draw_strands(layer, clock)
         canvas.blit(layer, (0, self.layer_top), special_flags=pg.BLEND_RGB_ADD)
+        if self.floaters is not None:  # over the ribbons: their light added over a ball dims it
+            self.floaters.draw(canvas)
 
     def _draw_stars(self, canvas: pg.Surface, clock: float) -> None:
         v = self.v
