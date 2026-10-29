@@ -20,7 +20,7 @@ game/
     collide.py           #   bi–bi, bi–băng, bi–lỗ
   rules/                 # THUẦN: eight_ball.py nhận Event -> trạng thái ván (nhóm, lỗi, thắng/thua)
   input/                 # drag.py -> trả Shot (cách nhập nào thêm sau này cũng chỉ trả Shot)
-  render/                # vẽ bàn (table.py), bi, thanh kéo, HUD; PX_PER_M chỉ dùng ở đây
+  render/                # vẽ: bàn (table.py), bi + thanh kéo + kính (draw.py), HUD (hud.py), ánh sáng (glow.py), nền (backdrop.py), sóng menu (waves.py), vệt sáng viền (rim.py), vòng sóng (fx.py), màu + bộ "Đèn ống" (palette.py); PX_PER_M chỉ dùng ở đây
   scenes/                # menu, play, help (+ help_pictures: ảnh thật chụp từ PlayScene), ...
 lang/vi.json, en.json
 tests/                   # pytest; conftest.py đặt SDL dummy
@@ -37,7 +37,8 @@ tools/                   # gate.py (cổng), smoke.py, shot.py, _out/ (git bỏ 
 - Vẽ: mã game và layout dùng đơn vị LOGIC (1280×720); chỉ lúc vẽ mới nhân với `View.s` để ra pixel thật, và canvas của App có kích thước ĐÚNG khung hình trong cửa sổ (không phóng/thu). Khi đổi cỡ cửa sổ, App chờ `RESIZE_SETTLE_S` rồi gọi `set_view` cho từng scene để dựng lại bàn/bi đúng độ phân giải (trong lúc chờ chỉ kéo giãn tạm). Hình mịn: vẽ lớn (`View.scaled(k)`) rồi thu bằng `shrink_pm`/`Aa`.
 - Chuột: App đổi toạ độ cửa sổ → toạ độ canvas logic 1280×720 (`render/viewport.py`) TRƯỚC khi giao cho scene; scene chỉ biết toạ độ logic.
 - `i18n.t("khoa")`: `lang/vi.json` và `lang/en.json` phải cùng bộ khoá (test); khoá thiếu → thử ngôn ngữ kia → trả chính khoá + log cảnh báo. `render/fonts.get(size, bold)` tự tạo lại phông nếu pygame đã tắt/bật lại.
-- `Audio` (`game/audio.py`): tổng hợp âm bằng numpy, không có thiết bị thì im lặng; `on_events` chỉ phát tối đa `SFX_MAX_PER_FRAME` tiếng mạnh nhất mỗi khung (tiếng rơi lỗ luôn được phát). `Fx` (`render/fx.py`): vòng gợn, bi co vào lỗ, rung — chỉ phụ thuộc thời gian, không ngẫu nhiên.
+- `Audio` (`game/audio.py`): tổng hợp âm bằng numpy, không có thiết bị thì im lặng; `on_events` chỉ phát tối đa `SFX_MAX_PER_FRAME` tiếng mạnh nhất mỗi khung (tiếng rơi lỗ luôn được phát). `Fx` (`render/fx.py`): vòng sóng ánh sáng (màu và độ lan theo loại: bi, băng, lỗ), bi co vào lỗ, rung — chỉ phụ thuộc thời gian, không ngẫu nhiên.
+- Neon (ánh sáng): mọi thứ sáng là hình premultiplied + quầng từ `render/glow.py` (`halo`, `lit`; làm mờ bằng thu rồi phóng, KHÔNG dùng `pg.transform.gaussian_blur` vì chậm ~500 ms/lớp lớn). Cộng sáng lên nền tối bằng `BLEND_RGB_ADD` (`draw.blit_add`): dải sóng (`waves.Waves`: dựng sẵn một lần rồi chỉ cuộn), vệt sáng viền (`rim.RimRunner`: chỉ xoá và cộng vùng nhỏ quanh hai vệt), chữ phát sáng (`hud.glow_text`). Mức sáng đọc từ `palette.LOOK` lúc dựng. `table.build_table(v)` được nhớ theo độ phân giải (màn Hướng dẫn dùng chung bàn với ván): KHÔNG vẽ lên kết quả, chỉ blit. `view.CropView` cho lớp vẽ lớn chỉ rộng bằng bàn. Đồng hồ hiệu ứng là `_clock` của scene (không phải đồng hồ máy), nên ảnh chụp lặp lại được.
 
 ## Quy ước chống lỗi (chi tiết kiểm thử: workflow/physics.md)
 - Bi tốc độ cao có thể xuyên băng/xuyên bi giữa hai bước: bước cố định nhỏ + chia bước con theo vận tốc tối đa, hoặc phát hiện va chạm liên tục. Không dựa vào "tốc độ chắc không tới mức đó".
