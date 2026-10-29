@@ -9,24 +9,24 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Luật | 8-ball (15 bi + bi trắng; bi nguyên 1–7, bi sọc 9–15, bi 8 đánh cuối) |
 | Chế độ | Tập một mình: không đối thủ, không lượt; đếm số cú, lỗi chỉ bị phạt nhẹ |
 | Chế độ chơi | MỘT chế độ: kéo thả kiểu truyền thống. Chế độ nhập công thức toán (y = ax + b) đã làm thử rồi BỎ HẲN (người dùng chốt 2026-10-29 sau khi chơi: khó chơi, ít thú vị hơn chơi thường). Mọi cách nhập vẫn chỉ sinh ra `Shot` (ARCHITECTURE.md) |
-| Kéo thả | Hướng kéo ngược = hướng đánh; độ dài thanh kéo = lực, CÓ GIỚI HẠN (kéo quá mức tối đa thì thanh không dài thêm) |
+| Kéo thả | Hướng kéo ngược = hướng đánh; độ dài kéo = lực, CÓ GIỚI HẠN (kéo quá mức tối đa thì không mạnh thêm) |
 | Vật lý | Có xoáy cơ bản: đánh cao/thấp (bi trắng chạy tới/lùi sau va chạm). CHƯA có xoáy ngang |
 | Ngôn ngữ | Tiếng Việt + tiếng Anh, đổi được; mặc định tiếng Việt |
-| Chỉnh cảm giác | Claude đề xuất 2–3 bộ thông số CÓ TÊN, người dùng chơi thử và chọn |
+| Chỉnh cảm giác | Claude đề xuất 2–3 bộ thông số CÓ TÊN, người dùng chơi thử và chọn. Người chơi KHÔNG còn đổi được cảm giác bàn trong game (bỏ phím 1/2/3 và cụm "Cảm giác bàn", 2026-10-29): luôn là "Vừa" |
 
-## Đồ họa, âm thanh, giao diện (chốt 2026-10-28; PHONG CÁCH ĐỔI SANG NEON 2026-10-29, xem "Phản hồi lần 5")
-Âm thanh, bố cục, hình học bàn giữ nguyên. Phong cách vẽ cũ (hoạt hình viền đen dày, nỉ xanh lá, khung gỗ, tấm đồng) đã THAY bằng neon: các dòng Phong cách / Màu / Bi / Hiệu ứng dưới đây là bản mới.
+## Đồ họa, âm thanh, giao diện (bản hiện hành: ARCADE 80 / SYNTHWAVE, 2026-10-29, xem "Phản hồi lần 5" và "lần 6")
+Hình học bàn và luật giữ nguyên. Hai phong cách trước đã bị THAY: hoạt hình viền đen (2026-10-28), rồi neon xanh đêm (bản đầu 2026-10-29). Các dòng dưới đây là bản hiện hành.
 | Hạng mục | Quyết định |
 |---|---|
-| Phong cách | Neon nền tối: mọi thứ là nét sáng + quầng sáng trên nền xanh đêm; KHÔNG còn viền đen. Mức sáng là bộ thông số có tên "Đèn ống" (nét mảnh, quầng hẹp) trong `render/palette.py` (`LOOK`) |
-| Màu | Hai ánh sáng có vai trò rõ: xanh lơ `#2EF2FF` là đường nét (viền bàn, tiêu đề, vạch ngắm), hồng tím `#FF4FD8` là thứ đang được chọn hoặc đang xảy ra (nút chọn, lỗ, phụ đề, cú đánh mạnh); tím sâu `#7A4CFF` nối hai màu. Nền Đêm `#080A18`; nỉ xanh đêm `#14224E` sáng ở giữa, tối dần ra mép (không ca-rô) |
+| Phong cách | Arcade thập niên 80 (synthwave), neon trên nền đêm chàm: mặt trời sọc, lưới chân trời, bảng điểm máy xèng, chữ thông báo arcade, vệt quét CRT rất nhẹ. KHÔNG viền đen. Mức sáng: bộ "Đèn ống" (nét mảnh, quầng hẹp) trong `render/palette.py` (`LOOK`). Chữ: Tilt Neon (ống neon) cho tiêu đề, Chakra Petch (góc cạnh) cho chữ thường, cả hai đủ dấu tiếng Việt; số trên bảng điểm vẽ kiểu đèn 7 đoạn, đoạn tắt vẫn mờ thấy. Chữ đặt theo chiều cao chữ hoa nên dấu không đẩy chữ lệch; chữ luôn nằm trên mảng nền đặc |
+| Màu | Xanh lơ `#28F0FF` là đường nét (viền bàn, biên băng, vạch ngắm, số), hồng `#FF2EC4` là thứ đang chọn hoặc đang xảy ra (nút chọn, lỗ, tiêu đề), tím `#8E40FF` nối hai màu; mặt trời vàng → cam → hồng. Nền đêm chàm `#0B051C`; mặt bàn một mảng phẳng `#150A32` |
 | Bi | Như bóng đèn: thân tối, vòng và số phát sáng đúng màu bi (1 vàng, 2 xanh dương, 3 đỏ, 4 tím, 5 cam, 6 xanh lục, 7 hồng đậm, 8 bạc); bi sọc có hai đường sáng ngang thân và số trắng; bi trắng là một đĩa sáng. Quầng sáng đều quanh bi, KHÔNG còn bóng đổ (bản cũ: bóng rơi thẳng xuống) |
-| Bàn | Bida chuẩn 6 lỗ (4 góc + 2 giữa), hình chữ nhật, KHÔNG vật cản. Vẽ: viền ngoài lơ có quầng, băng tối có mép sáng bo cong hai đầu sát lỗ, lỗ là hố đen lún ra ngoài có vòng hồng tím, kim cương nhỏ sáng trên viền |
+| Bàn | Bida chuẩn 6 lỗ (4 góc + 2 giữa), hình chữ nhật, KHÔNG vật cản. Vẽ TỐI GIẢN bằng nét neon (người dùng chốt 2026-10-29: chỉ đủ để chơi và nhận biết): một mảng tối phẳng, một vòng lơ ở mép ngoài, một đường lơ ở mép băng (biên chơi, hai đầu cong vào miệng lỗ), sáu vòng hồng là lỗ (trong đen). KHÔNG gỗ, kim cương, bóng băng, độ sâu lỗ |
 | Vạch ngắm | Vạch sáng màu lơ đi từ bi trắng tới điểm chạm ĐẦU TIÊN (bi hoặc băng), kèm mũi tên hồng tím nhỏ cho hướng bi bị đụng; không dự đoán nảy băng |
-| Kéo thả | Kéo lùi từ bi trắng như kéo dây cung; kéo càng xa lực càng mạnh; thanh kéo là một thanh THẲNG, bề rộng đều, hai đầu vuông góc (không thon, không bo tròn) |
-| Âm thanh | Hiệu ứng cơ bản: gậy đánh, bi va (mạnh/nhẹ theo lực), nảy băng, rơi lỗ; KHÔNG nhạc nền; tự tạo bằng mã (nghe hơi "máy", thay file thật được); có tắt tiếng |
-| Hiệu ứng | Chuyển động ĐÚNG BA CHỖ người dùng chọn, bàn ĐỨNG YÊN khi ngắm: (1) dải sóng ánh sáng trôi chậm ở nền menu và màn Hướng dẫn; (2) vòng sóng lan ra khi bi va chạm (lơ), chạm băng (tím), rơi lỗ (hồng tím, to và lâu hơn); (3) hai vệt sáng (lơ và hồng tím) chạy rất chậm ở viền ngoài bàn, một vòng ~27 giây. Thêm: bi co nhỏ vào lỗ, rung rất nhẹ khi phá bi, quầng chữ tiêu đề "NeonPool" thở nhẹ ở menu |
-| Cửa sổ | Mở ~1280×720, kéo to/nhỏ được, F11 toàn màn hình; hình co theo, giữ đúng tỉ lệ bàn |
+| Kéo thả | Kéo lùi từ bi trắng; kéo càng xa lực càng mạnh. Thấy một CÂY CƠ NEON (thay thanh kéo cũ): rê chuột lên bi trắng thì cơ hiện dần sau bi (0,18 s), rời ra thì mờ dần (0,25 s); khi kéo, cơ lùi theo tay nhưng chỉ 75% quãng kéo (`CUE_SHOW_PULL`; lực KHÔNG đổi); lực thể hiện bằng MÀU, kéo càng căng càng nóng: lơ → tím → hồng → cam → trắng nóng (không vạch); đầu cơ trắng; căng tối đa thì cơ rung nhẹ; thả tay thì cơ lao tới chỗ bi rồi tắt |
+| Âm thanh | Tiếng bi: gậy đánh, bi va (mạnh/nhẹ theo lực), nảy băng, rơi lỗ. Tiếng giao diện kiểu arcade (2026-10-29): bíp khi rê sang nút khác, hai nốt khi bấm, chuông nhẹ khi chọn nhóm / tới bi 8, tiếng rè khi lỗi, nhạc 8-bit ngắn khi thắng/thua. KHÔNG nhạc nền; tự tạo bằng mã; M tắt tiếng |
+| Hiệu ứng | Bàn ĐỨNG YÊN khi ngắm. (1) Menu và Hướng dẫn: các sợi sóng ở chân trời là mô phỏng sợi dây thật (chuỗi điểm nối lò xo): tự thở, nghiêng theo con trỏ, có nhịp sáng chạy dọc khi chọn nút khác, bật lên như mặt nước khi bấm; lưới chân trời trôi về phía người chơi; sao lấp lánh; sọc mặt trời trượt xuống; tiêu đề chập chờn lúc vào menu rồi thở nhẹ. (2) Vòng sóng khi bi va chạm (lơ), chạm băng (tím), rơi lỗ (hồng, to và lâu hơn). (3) Hai vệt sáng (lơ, hồng) chạy rất chậm ở viền ngoài bàn. (4) Khi bi đã dừng: chữ arcade lớn ("LỖI!", "NHÓM SỌC!", "TỚI BI 8!") bật giữa bàn rồi thu về dải thông báo dưới bàn; bấm chuột là tắt ngay. (5) Bảng điểm: số nháy sáng khi đổi; bi vào lỗ bị gạch bằng nhịp sáng. (6) Bảng kết quả nở ra. Thêm: bi co nhỏ vào lỗ, rung rất nhẹ khi phá bi |
+| Cửa sổ | Mở TOÀN MÀN HÌNH; F11 chuyển sang cửa sổ (kéo to/nhỏ được) và ngược lại. Không còn dải đen ở mọi tỉ lệ màn hình: nền và ánh sáng phủ kín, khung 1280×720 giữ đúng tỉ lệ ở giữa (màn siêu rộng: bàn + bảng bên ở giữa, nền trải hai bên) |
 | MVP | Menu mở đầu (Chơi / Ngôn ngữ / Thoát) + bàn chơi tự do (15 bi tam giác, kéo thả, va chạm, nảy băng, vào lỗ, bi trắng rơi lỗ thì đặt lại) + bảng bên (số cú, bi còn lại) + phím R chơi lại, M tắt tiếng, H hướng dẫn. (Phím G lưới toạ độ có ở bản đầu, đã bỏ 2026-10-29 cùng chế độ công thức.) Luật thắng/thua làm sau (mục "Luật tập một mình"); CHƯA có xoáy |
 
 ## Phản hồi sau khi người dùng chơi thử MVP (2026-10-28)
@@ -56,6 +56,13 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 - Đổi tên game thành NeonPool, dòng phụ "Mỗi cú đánh một vệt sáng" / "Every shot leaves a glow". Tên thư mục dự án giữ `MathofPool` (đổi giữa phiên làm hỏng đường dẫn phiên).
 - Mức sáng: chọn "Đèn ống" (nét mảnh, quầng hẹp) trong hai bộ đã phác; bộ "Quầng mờ" (nét dày, quầng rộng) bị loại vì bi nhoè, số bi sọc khó đọc ở cỡ 20 px. Ảnh (thư mục `tools/_out/`, git bỏ qua): `neon_a_*.png` (chọn), `neon_b_*.png` (loại), `neon_so_sanh_chi_tiet.png`.
 - Hệ quả đã báo: bóng đổ của bi (phản hồi lần 2) bị thay bằng quầng sáng đều; thanh kéo đổi từ vàng → cam sang lơ → hồng tím (lõi sáng, hai đầu vuông như cũ).
+
+## Phản hồi lần 6 (2026-10-29, người dùng: "UI trông rởm, phông tạm bợ, chưa có chất riêng"; muốn lấp đầy màn hình, bỏ cụm "Cảm giác bàn")
+Yêu cầu: UI hoàn chỉnh để DÙNG chứ không để test; chữ và số không được lệch (đã gửi ảnh số trong vòng đánh số bị lệch, ba chấm cảm giác bàn không thẳng hàng); sóng menu phải sống chứ không phải ảnh ghép trôi qua. Người dùng chọn (hai vòng câu hỏi):
+- Chất: arcade thập niên 80 (synthwave). Sóng menu: phản ứng với người chơi. Màn hình: nền tràn hết mép, mở là toàn màn hình. Phông: tiêu đề ống neon, chữ thường gọn sắc, số thẳng hàng.
+- Thanh kéo → gậy neon (lần đầu có vạch nạp). Cảm giác bàn: bỏ hẳn, luôn "Vừa". Nét arcade: cả bốn (lưới chân trời + mặt trời sọc, bảng điểm máy xèng, chữ thông báo arcade, vệt quét CRT rất nhẹ). Âm thanh: thêm tiếng bíp arcade.
+- Tinh chỉnh sau khi xem: cơ chỉ lùi 75% quãng kéo (lực giữ nguyên), hiện dần khi rê chuột lên bi trắng và mờ dần khi rời, BỎ vạch nạp, lực thể hiện bằng màu (căng → nóng); bàn vẽ lại tối giản bằng nét neon.
+- Còn để ngỏ: trên màn siêu rộng bảng bên đứng cạnh bàn (giữa màn), không bám sát mép phải.
 
 ## Phản hồi lần 4 (2026-10-29, người dùng chơi bản 8-ball; ảnh tham chiếu thứ hai `ban-bida.png`, của bên thứ ba, KHÔNG đưa vào git)
 - Thông báo (lỗi, chọn nhóm, "kéo bi trắng…") KHÔNG được che bàn: trước đây nằm trên nỉ ngay dưới lỗ giữa nên che bi lăn sát băng trên. Nay treo ở dải trống DƯỚI bàn (tối đa hai dòng; vừa cả ở cửa sổ 1050×590, cả vi và en).
