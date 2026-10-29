@@ -17,6 +17,8 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 ROOT = Path(__file__).resolve().parent.parent
+# the default settings, never the player's own file
+os.environ.setdefault("NEONPOOL_SETTINGS", str(ROOT / "tools" / "_out" / "tool-settings.json"))
 sys.path.insert(0, str(ROOT))
 
 
@@ -69,6 +71,7 @@ def main() -> int:
     if args.scene == "help":
         app.go_help()
         app.help.page = args.page
+    app.skip_transition()  # photograph the scene itself, not the switch
     if args.lang:
         from game import i18n
 

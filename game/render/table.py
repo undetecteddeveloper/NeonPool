@@ -1,7 +1,7 @@
 """The table, painted once per resolution, drawn with as few neon strokes as can still be played:
 
 - one flat dark plate (the table), so the balls stand out from the night;
-- one cyan line round the outside (the two lights of rim.py run along it);
+- one cyan line round the outside (a wave runs along it when a ball drops, see fx.py);
 - one cyan line where the cloth meets the cushions: the edge the balls bounce off, its ends
   curling into the pocket mouths;
 - six pink rings with black inside: the pockets, exactly where the physics has them.
@@ -83,6 +83,42 @@ def cushion_line(a, b, out) -> list[tuple[float, float]]:
     tx, ty = (b[0] - a[0]) / length, (b[1] - a[1]) / length
     pts = cushion_outline(length)[1:-1]
     return [(a[0] + s * tx + d * out[0], a[1] + s * ty + d * out[1]) for s, d in pts]
+
+
+RIM_STEP = 3.0  # distance between the points of the rim path (logical px)
+
+
+def _sample(a: tuple[float, float], b: tuple[float, float]) -> list[tuple[float, float]]:
+    n = max(1, round(math.dist(a, b) / RIM_STEP))
+    return [(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n) for i in range(n)]
+
+
+def _arc(cx: float, cy: float, r: float, a0: float, a1: float) -> list[tuple[float, float]]:
+    n = max(2, round(r * math.radians(a1 - a0) / RIM_STEP))
+    angles = [math.radians(a0 + (a1 - a0) * i / n) for i in range(n)]
+    return [(cx + r * math.cos(a), cy + r * math.sin(a)) for a in angles]
+
+
+def rim_path() -> list[tuple[float, float]]:
+    """The outer neon line as a closed path, clockwise from the top-left, points RIM_STEP apart."""
+    x0, y0, x1, y1, r = OUTER_X, OUTER_Y, OUTER_X + OUTER_W, OUTER_Y + OUTER_H, FRAME_R
+    return [
+        *_sample((x0 + r, y0), (x1 - r, y0)),
+        *_arc(x1 - r, y0 + r, r, -90, 0),
+        *_sample((x1, y0 + r), (x1, y1 - r)),
+        *_arc(x1 - r, y1 - r, r, 0, 90),
+        *_sample((x1 - r, y1), (x0 + r, y1)),
+        *_arc(x0 + r, y1 - r, r, 90, 180),
+        *_sample((x0, y1 - r), (x0, y0 + r)),
+        *_arc(x0 + r, y0 + r, r, 180, 270),
+        (x0 + r, y0),  # closed
+    ]
+
+
+def neon_paths() -> list[list[tuple[float, float]]]:
+    """Every neon line of the table as a polyline (logical px): the rim, then the six cushions.
+    A wave over the table lights these up where it passes."""
+    return [rim_path()] + [cushion_line(a, b, out) for a, b, out in cushion_strips()]
 
 
 def pocket_outward(px: float, py: float) -> tuple[float, float]:

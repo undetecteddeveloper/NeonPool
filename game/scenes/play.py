@@ -19,9 +19,10 @@ from game.config import (
     PX_PER_M,
     RIPPLE_BALL_SPEED,
     RIPPLE_CUSHION_SPEED,
+    STRONG_HIT_SPEED,
 )
 from game.i18n import t
-from game.input.drag import DragAim
+from game.input.drag import DragAim, Knob
 from game.physics import BallHitBall, BallHitCushion, BallPocketed, Shot, World, first_contact
 from game.render import draw, hud
 from game.render import palette as C
@@ -38,7 +39,6 @@ from game.render.layout import (
     to_m,
     to_px,
 )
-from game.render.rim import RimRunner
 from game.render.view import View
 from game.rules.eight_ball import LOST, PLAYING, RERACK, WON, EightBall
 
@@ -78,8 +78,9 @@ class PlayScene:
         self._ended_at = -99.0  # when the game ended (the result card grows in)
         self._pointer: tuple[float, float] | None = None  # where the mouse is (logical)
         self._cue_alpha = 0.0  # the cue fades in while the pointer is on the cue ball
-        self._cue_dir = (1.0, 0.0)  # the last aim, so the cue appears where it was
+        self.knob = Knob(0.0)  # the cue as a dial round the cue ball: where the shot goes
         self._hover: str | None = None  # hovered button of the result card
+        self.result_fx = hud.ButtonFx()  # how the result card's buttons move
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
@@ -87,7 +88,6 @@ class PlayScene:
         self.view = v
         self.sprites = draw.BallSprites(v)
         self.table = draw.build_table(v)
-        self.rim = RimRunner(v)
 
     # --- game flow -------------------------------------------------------------------
     def new_game(self) -> None:
@@ -122,7 +122,7 @@ class PlayScene:
         self._notice_left = 0.0
         self._callout = None
         self._cue_alpha = 0.0  # the darting cue of the shot takes over
-        self._cue_dir = d
+        self.knob.angle = shot.angle
         self._break_pending = self.rules.is_break
         self.app.audio.play_shot(shot.power)
 
@@ -177,16 +177,31 @@ class PlayScene:
                 cue = self.world.balls[0]
                 cx, cy = to_px(cue.x, cue.y)
                 if math.hypot(e.pos[0] - cx, e.pos[1] - cy) <= GRAB_RADIUS_M * PX_PER_M:
-                    self.drag.begin((cx, cy), e.pos)
+                    self.drag.begin((cx, cy), e.pos, self.knob.angle)  # the dial's angle
             elif e.button == 3:
                 self.drag.cancel()
         elif e.type == pg.MOUSEMOTION:
             self.drag.move(e.pos)
+            if not self.drag.active:
+                self._turn_knob(e.pos)
         elif e.type == pg.MOUSEBUTTONUP and e.button == 1 and self.drag.active:
             self.drag.move(e.pos)
             shot = self.drag.end()
             if shot is not None:
                 self.fire(shot)
+
+    def _turn_knob(self, pos: tuple[float, float]) -> None:
+        """Going round the cue ball with the pointer turns the cue, like a dial."""
+        if self._can_aim() and self._over_cue():
+            cue = self.world.balls[0]
+            self.knob.move(to_px(cue.x, cue.y), pos)
+        else:
+            self.knob.release()
+
+    def _shakes(self) -> bool:
+        """The screen may shake (the "Shake" setting; the how-to-play studio has no settings)."""
+        settings = getattr(self.app, "settings", None)
+        return settings is None or settings.shake
 
     def _hand_event(self, e: pg.event.Event) -> bool:
         """Place the cue ball after a foul: press it, drag, let go. True if the event was used."""
@@ -217,9 +232,11 @@ class PlayScene:
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             if hud.RESULT_BUTTONS["new"].collidepoint(e.pos):
                 self.app.audio.play_click()
+                self.result_fx.press("new", self._clock)
                 self.new_game()
             elif hud.RESULT_BUTTONS["menu"].collidepoint(e.pos):
                 self.app.audio.play_click()
+                self.result_fx.press("menu", self._clock)
                 self.app.go_menu()
         elif e.type == pg.KEYDOWN:
             if e.key in (pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE, pg.K_r):
@@ -254,6 +271,9 @@ class PlayScene:
         if frame_events:
             self.app.audio.on_events(frame_events)
         self.fx.update(dt)
+        if self.rules.phase != PLAYING:
+            chosen = self._hover or "new"  # Enter starts a new game: that button is lit
+            self.result_fx.update(dt, chosen, hud.RESULT_BUTTONS, self._clock)
         if self._live and self.world.at_rest():
             self._end_shot()
         self._fade_cue(dt)
@@ -280,15 +300,25 @@ class PlayScene:
                     a, b = balls[ev.a], balls[ev.b]
                     self.fx.add_ripple((a.x + b.x) / 2, (a.y + b.y) / 2, "ball")
                 if self._break_pending and ev.speed >= BREAK_SHAKE_SPEED:
-                    self.fx.shake()
+                    if self._shakes():
+                        self.fx.shake(1.0)
                     self._break_pending = False
+                elif 0 in (ev.a, ev.b):
+                    self._hard_hit(ev.speed)
             elif isinstance(ev, BallHitCushion):
                 if ev.speed >= RIPPLE_CUSHION_SPEED:
                     self.fx.add_ripple(balls[ev.ball].x, balls[ev.ball].y, "cushion")
+                if ev.ball == 0:
+                    self._hard_hit(ev.speed)
             elif isinstance(ev, BallPocketed):
                 self.fx.add_drop(ev.ball, balls[ev.ball].x, balls[ev.ball].y, ev.pocket)
                 if ev.ball:
                     self.pocket_times[ev.ball] = self._clock
+
+    def _hard_hit(self, speed: float) -> None:
+        """The cue ball hits very hard: a small shake, stronger for a harder hit."""
+        if speed >= STRONG_HIT_SPEED and self._shakes():
+            self.fx.shake(0.35 + 0.4 * min(1.0, (speed - STRONG_HIT_SPEED) / 2.0))
 
     def _banner_lines(self) -> list[tuple[str, tuple[int, int, int]]]:
         lines = []
@@ -311,7 +341,6 @@ class PlayScene:
     def draw(self, canvas: pg.Surface) -> None:
         v = self.view
         canvas.blit(self.table, (0, 0))
-        self.rim.draw(canvas, self._clock)
         draw.draw_balls(canvas, v, self.world.balls, self.sprites)
         self.fx.draw(canvas, v, self.sprites)
         cue = self.world.balls[0]
@@ -325,7 +354,6 @@ class PlayScene:
             d = (math.cos(a), math.sin(a))
             contact = first_contact(self.world.balls, (cue.x, cue.y), d)
             draw.draw_aim(canvas, v, cue, contact, d)
-            self._cue_dir = d
             draw.draw_cue(
                 canvas,
                 v,
@@ -337,7 +365,8 @@ class PlayScene:
             )
         elif self._cue_alpha > 0.01 and cue.in_play and not over:  # resting behind the ball
             centre = to_px(cue.x, cue.y)
-            draw.draw_cue(canvas, v, centre, self._cue_dir, 0.0, 0.0, self._clock, self._cue_alpha)
+            d = (math.cos(self.knob.angle), math.sin(self.knob.angle))
+            draw.draw_cue(canvas, v, centre, d, 0.0, 0.0, self._clock, self._cue_alpha)
         self._draw_lunge(canvas, v)
         hud.draw_panel(
             canvas,
@@ -399,4 +428,6 @@ class PlayScene:
             rows=[(t("hud.shots"), self.rules.shots), (t("hud.fouls"), self.rules.fouls)],
             hover=self._hover,
             age=self._clock - self._ended_at,
+            fx=self.result_fx,
+            clock=self._clock,
         )

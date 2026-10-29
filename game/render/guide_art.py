@@ -91,6 +91,30 @@ class Annot:
         head = [b, (base[0] + nx * 8, base[1] + ny * 8), (base[0] - nx * 8, base[1] - ny * 8)]
         self.polygon(head, fill, outline=None)
 
+    def arc_arrow(self, c: Point, r: float, a0: float, a1: float, color=C.ACCENT) -> None:
+        """A curved arrow round `c` from angle a0 to a1 (degrees, clockwise on screen): "turn"."""
+        steps = 24
+        pts = [
+            (c[0] + r * math.cos(math.radians(a0 + (a1 - a0) * i / steps)),
+             c[1] + r * math.sin(math.radians(a0 + (a1 - a0) * i / steps)))
+            for i in range(steps + 1)
+        ]  # fmt: skip
+        for a, b in zip(pts, pts[1:], strict=False):
+            self.line(a, b, 7, (*color, 60))
+        for a, b in zip(pts, pts[1:], strict=False):
+            self.line(a, b, 2.6, color)
+        end = math.radians(a1)
+        d = 1 if a1 > a0 else -1
+        tx, ty = -math.sin(end) * d, math.cos(end) * d  # along the arc at its end
+        nx, ny = math.cos(end), math.sin(end)
+        tip = (pts[-1][0] + tx * 9, pts[-1][1] + ty * 9)
+        head = [
+            tip,
+            (pts[-1][0] + nx * 6, pts[-1][1] + ny * 6),
+            (pts[-1][0] - nx * 6, pts[-1][1] - ny * 6),
+        ]
+        self.polygon(head, color, outline=None)
+
     def cursor(self, c: Point) -> None:
         """A mouse pointer with its tip at `c`."""
         shape = [(0, 0), (0, 17), (4.2, 13.2), (7.4, 20), (10.2, 18.8), (7.1, 12.4), (12.5, 12.4)]

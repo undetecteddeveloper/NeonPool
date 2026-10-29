@@ -32,11 +32,13 @@ def test_app_opens_on_the_menu_and_play_enters_the_table(app):
     assert app.scene is app.play
 
 
-def test_menu_language_button_switches_language_both_ways(app):
+def test_the_menu_has_settings_where_the_language_now_lives(app):
+    from game.scenes.menu import ITEMS
+
+    assert ITEMS == ("play", "help", "settings", "quit")
     assert i18n.get_lang() == "vi"
-    app.handle_event(key(pg.K_DOWN))
-    app.handle_event(key(pg.K_DOWN))  # play, how to play, then Language
-    app.handle_event(key(pg.K_RETURN))
+    app.menu.settings.open()
+    app.handle_event(key(pg.K_RETURN))  # the first row is the language
     assert i18n.get_lang() == "en"
     app.handle_event(key(pg.K_RETURN))
     assert i18n.get_lang() == "vi"

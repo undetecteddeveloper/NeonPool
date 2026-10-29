@@ -1,8 +1,9 @@
-"""Opening menu: Play / How to play / Language / Quit, on a synthwave night.
+"""Opening menu: Play / How to play / Settings / Quit, on a synthwave night.
 
-The title is a neon tube that stutters on when the menu opens, then hums. The ribbons along the
-horizon lean towards the pointer, carry a pulse of light to each newly chosen button and jump
-where you click.
+The title is a neon tube that stutters on when the menu opens, then hums. Balls float up out of
+the floor one after another, land on the ribbons along the horizon and drift away with them.
+The chosen button is lit, a little bigger, and a lit frame glides to it from the one before.
+Settings open as a panel over the menu.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ import math
 
 import pygame as pg
 
-from game import i18n
 from game.config import LOGICAL_SIZE
 from game.i18n import t
 from game.render import hud
@@ -19,8 +19,9 @@ from game.render import palette as C
 from game.render.draw import blit_rrect
 from game.render.synth import Synthwave
 from game.render.view import View
+from game.scenes.settings import SettingsPanel
 
-ITEMS = ("play", "help", "language", "quit")
+ITEMS = ("play", "help", "settings", "quit")
 BTN_W, BTN_H, BTN_GAP = 300, 46, 12
 FIRST_Y = 446
 HORIZON = 405  # the sun sets on this line; the buttons stand on the floor below it
@@ -48,12 +49,14 @@ class MenuScene:
         self.sel = 0
         self._clock = 0.0
         self._opened = 0.0
+        self.fx = hud.ButtonFx()
+        self.settings = SettingsPanel(app)
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
         """(Re)build everything that depends on the resolution."""
         self.view = v
-        self.synth = Synthwave(v, HORIZON)
+        self.synth = Synthwave(v, HORIZON, floaters=True)
 
     def enter(self) -> None:
         """The menu is shown again: the title stutters on again."""
@@ -64,7 +67,7 @@ class MenuScene:
         return [
             t("menu.resume") if resume else t("menu.play"),
             t("menu.help"),
-            f"{t('menu.language')}: {t('lang.name')}",
+            t("menu.settings"),
             t("menu.quit"),
         ]
 
@@ -79,49 +82,51 @@ class MenuScene:
     def shake_offset(self) -> tuple[float, float]:
         return 0.0, 0.0
 
-    def _choose(self, i: int, x: float) -> None:
+    def _choose(self, i: int) -> None:
         if i != self.sel:
             self.sel = i
             self.app.audio.play_hover()
-            self.synth.pulse(x, self._clock, C.MAGENTA)
 
     def activate(self, i: int) -> None:
         self.app.audio.play_click()
+        self.fx.press(ITEMS[i], self._clock)
         item = ITEMS[i]
         if item == "play":
             self.app.go_play()
         elif item == "help":
             self.app.go_help()
-        elif item == "language":
-            i18n.toggle_lang()
+        elif item == "settings":
+            self.settings.open()
         else:
             self.app.running = False
 
     def handle_event(self, e: pg.event.Event) -> None:
+        if self.settings.is_open:
+            self.settings.handle_event(e)
+            return
         if e.type == pg.MOUSEMOTION:
-            self.synth.point_to(e.pos)
             for i, r in enumerate(self._rects()):
                 if r.collidepoint(e.pos):
-                    self._choose(i, e.pos[0])
+                    self._choose(i)
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
-            self.synth.splash(e.pos[0])
             for i, r in enumerate(self._rects()):
                 if r.collidepoint(e.pos):
                     self.sel = i
                     self.activate(i)
         elif e.type == pg.KEYDOWN:
-            cx = LOGICAL_SIZE[0] / 2
             if e.key in (pg.K_UP, pg.K_w):
-                self._choose((self.sel - 1) % len(ITEMS), cx)
+                self._choose((self.sel - 1) % len(ITEMS))
             elif e.key in (pg.K_DOWN, pg.K_s):
-                self._choose((self.sel + 1) % len(ITEMS), cx)
+                self._choose((self.sel + 1) % len(ITEMS))
             elif e.key in (pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
-                self.synth.splash(cx, 0.7)
                 self.activate(self.sel)
 
     def update(self, dt: float) -> None:
         self._clock += dt
         self.synth.update(dt)
+        rects = dict(zip(ITEMS, self._rects(), strict=True))
+        self.fx.update(dt, ITEMS[self.sel], rects, self._clock)
+        self.settings.update(dt)
 
     def draw(self, canvas: pg.Surface) -> None:
         v = self.view
@@ -134,9 +139,12 @@ class MenuScene:
         hud.text(canvas, v, t("app.subtitle").upper(), 17, C.CYAN, (cx, SUBTITLE_Y), bold=True,
                  center=True, track=3.0)  # fmt: skip
 
-        for i, (rect, label) in enumerate(zip(self._rects(), self._labels(), strict=True)):
-            hud.button(canvas, v, rect, label, "primary" if i == self.sel else "normal", 20)
+        for item, rect, label in zip(ITEMS, self._rects(), self._labels(), strict=True):
+            hud.live_button(canvas, v, rect, label, self.fx, item, self._clock, frame_glides=True,
+                            size=20)  # fmt: skip
+        hud.glide_frame(canvas, v, self.fx)
         hint = t("menu.hint")  # on a dark strip: never read text against the grid
         w = hud.text_width(v, hint, 14) + 36
         blit_rrect(canvas, v, cx - w / 2, LOGICAL_SIZE[1] - 36, w, 26, 13, C.BG, 0)
         hud.text(canvas, v, hint, 14, C.TEXT_DIM, (cx, LOGICAL_SIZE[1] - 23), center=True)
+        self.settings.draw(canvas, v)

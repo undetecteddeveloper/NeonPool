@@ -32,36 +32,48 @@ KEY_STEP = 21
 KEYS_Y = PANEL_Y + PANEL_H - 18 - len(PANEL_KEYS) * KEY_STEP  # top of the first key row
 BANNER_PAD = 16  # vertical padding of a notice (logical px), two lines make it 64 tall
 FLASH_S = 0.6  # a number that just changed glows this long
+ROLL_S = 0.32  # ... and rolls to its new value like a slot machine in this long
+SHRINK_S = 0.3  # a ball that just went in shrinks in the list before it is struck off
 POCKET_FLASH_S = 0.7  # a ball that just went in is struck off with a pulse this long
 
 
 # --- text ------------------------------------------------------------------------------------
+# A capital with two marks (an O with a hat and a tilde, ...) reaches above the font ascent:
+# the font makes its surface TALLER AT THE TOP, so the baseline is not at a fixed row. Every
+# placement here goes through the baseline, measured from the bottom (font descent).
+def _baseline(surf: pg.Surface, font: pg.font.Font) -> int:
+    """Row of the baseline inside a surface rendered by `font`."""
+    return surf.get_height() + font.get_descent()
+
+
 @cache
-def _render(s: str, dev: int, name: str, color: tuple, track: int) -> pg.Surface:
+def _render(s: str, dev: int, name: str, color: tuple, track: int) -> tuple[pg.Surface, int]:
+    """(surface, baseline row). With `track` the letters are spaced out, each on the baseline."""
     font = fonts.face(dev, name)
     if not track:
-        return font.render(s, True, color)
+        surf = font.render(s, True, color)
+        return surf, _baseline(surf, font)
     glyphs = [font.render(ch, True, color) for ch in s]
+    base = max([_baseline(g, font) for g in glyphs] or [font.get_ascent()])
     w = sum(g.get_width() for g in glyphs) + track * max(0, len(glyphs) - 1)
-    out = pg.Surface((max(1, w), font.get_height()), pg.SRCALPHA)
+    out = pg.Surface((max(1, w), base - font.get_descent()), pg.SRCALPHA)
     x = 0
     for g in glyphs:
-        out.blit(g, (x, 0))
+        out.blit(g, (x, base - _baseline(g, font)))  # every letter on the same baseline
         x += g.get_width() + track
-    return out
+    return out, base
 
 
 @cache
-def _cap(dev: int, name: str) -> tuple[int, int]:
-    """(ascent, capital height) of a font in device px."""
-    font = fonts.face(dev, name)
-    return font.get_ascent(), font.metrics("H")[0][3]
+def _cap(dev: int, name: str) -> int:
+    """Height of the capitals (the top of an H above the baseline) in device px."""
+    return fonts.face(dev, name).metrics("H")[0][3]
 
 
 @cache
 def _ink_x(s: str, dev: int, name: str, track: int) -> tuple[int, int]:
     """(left, width) of the ink of `s` inside its rendered surface."""
-    r = _render(s, dev, name, (255, 255, 255), track).get_bounding_rect()
+    r = _render(s, dev, name, (255, 255, 255), track)[0].get_bounding_rect()
     return r.x, r.w
 
 
@@ -87,17 +99,17 @@ def text(
     name = face or ("bold" if bold else "body")
     dev = max(6, v.i(size))
     tr = v.i(track)
-    surf = _render(s, dev, name, tuple(color), tr)
-    ascent, cap = _cap(dev, name)
+    surf, base = _render(s, dev, name, tuple(color), tr)
+    cap = _cap(dev, name)
     x, y = v.pt(pos)
     if center:
         ink_left, ink_w = _ink_x(s, dev, name, tr)
         left = x - ink_left - ink_w / 2
-        top = y + cap / 2 - ascent
+        top = y + cap / 2 - base
     else:
         w = surf.get_width()
         left = x - w if align == "right" else x - w / 2 if align == "center" else x
-        top = y - (ascent - cap)
+        top = y + cap - base
     rect = surf.get_rect(topleft=(round(left), round(top)))
     canvas.blit(surf, rect)
     return rect
@@ -106,7 +118,7 @@ def text(
 def text_width(v: View, s: str, size: float, bold: bool = False, face: str | None = None) -> float:
     """Width in LOGICAL units of `s` at logical `size`."""
     name = face or ("bold" if bold else "body")
-    return _render(s, max(6, v.i(size)), name, C.TEXT, 0).get_width() / v.s
+    return _render(s, max(6, v.i(size)), name, C.TEXT, 0)[0].get_width() / v.s
 
 
 def wrap(v: View, s: str, size: float, max_w: float, bold: bool = False) -> list[str]:
@@ -164,13 +176,13 @@ def glow_text(
     dev = max(6, v.i(size))
     radius = dev * 0.16 * C.LOOK.reach
     gain = round(1.1 * strength * C.LOOK.glow, 1)
-    ascent, cap = _cap(dev, face)
+    cap = _cap(dev, face)
     x, y = v.pt(pos)
-    top = y + cap / 2 - ascent
     if gain > 0:
         light, face_s, pad = _lit_text(s, dev, face, tuple(color), tuple(halo_color), radius, gain)
     else:
-        face_s, pad, light = _render(s, dev, face, tuple(color), 0), 0, None
+        (face_s, _), pad, light = _render(s, dev, face, tuple(color), 0), 0, None
+    top = y + cap / 2 - _baseline(face_s, fonts.face(dev, face))
     left = x - face_s.get_width() / 2 if align == "center" else x
     if light is not None:
         blit_add(canvas, light, (left - pad, top - pad))
@@ -284,9 +296,10 @@ def seg_number(
 # --- the side panel: an arcade score board --------------------------------------------------
 @dataclass
 class Scoreboard:
-    """Remembers when each number last changed, so it can flash (time from the scene's clock)."""
+    """Remembers when each number last changed, so it can flash and roll (scene clock)."""
 
     values: dict[str, int] = field(default_factory=dict)
+    previous: dict[str, int] = field(default_factory=dict)
     changed: dict[str, float] = field(default_factory=dict)
 
     def flash(self, name: str, value: int, clock: float) -> float:
@@ -294,9 +307,34 @@ class Scoreboard:
         if self.values.get(name) != value:
             if name in self.values:
                 self.changed[name] = clock
+                self.previous[name] = self.values[name]
             self.values[name] = value
         age = clock - self.changed.get(name, -99.0)
         return max(0.0, 1.0 - age / FLASH_S) if age >= 0 else 0.0
+
+    def roll(self, name: str, clock: float) -> tuple[int | None, float]:
+        """(the old value, how far the roll to the new one has got 0..1); (None, 1) when still."""
+        age = clock - self.changed.get(name, -99.0)
+        if 0 <= age < ROLL_S and name in self.previous:
+            return self.previous[name], 1 - (1 - age / ROLL_S) ** 3
+        return None, 1.0
+
+
+def rolling_number(canvas, v: View, board: Scoreboard, name: str, value: int, n: int, pos,
+                   height: float, color, glow_k: float, clock: float) -> None:  # fmt: skip
+    """An arcade counter that rolls: the old number slides up and out, the new one in from below."""
+    old, k = board.roll(name, clock)
+    if old is None:
+        seg_number(canvas, v, value, n, pos, height, color, glow_k=glow_k)
+        return
+    pad = height * 0.35
+    clip = v.rect(pos[0] - pad, pos[1] - 2, digits_width(n, height) + 2 * pad, height + 4)
+    before = canvas.get_clip()
+    canvas.set_clip(clip.clip(before) if before else clip)
+    step = height * 1.25
+    seg_number(canvas, v, old, n, (pos[0], pos[1] - k * step), height, color, glow_k=glow_k)
+    seg_number(canvas, v, value, n, (pos[0], pos[1] + (1 - k) * step), height, color, glow_k=glow_k)
+    canvas.set_clip(before)
 
 
 _mini_cache: dict[tuple[float, int, bool], pg.Surface] = {}
@@ -366,8 +404,10 @@ def draw_panel(
     f_fouls = board.flash("fouls", fouls, clock)
     shot_col = C.lerp(C.CYAN, C.WHITE, f_shots)
     foul_col = C.lerp(C.ERROR if fouls else C.CYAN, C.WHITE, f_fouls)
-    seg_number(canvas, v, shots, 3, (x0, y), 32, shot_col, glow_k=0.6 + 0.8 * f_shots)
-    seg_number(canvas, v, fouls, 2, (col2, y), 32, foul_col, glow_k=0.6 + 0.8 * f_fouls)
+    rolling_number(canvas, v, board, "shots", shots, 3, (x0, y), 32, shot_col,
+                   0.6 + 0.8 * f_shots, clock)  # fmt: skip
+    rolling_number(canvas, v, board, "fouls", fouls, 2, (col2, y), 32, foul_col,
+                   0.6 + 0.8 * f_fouls, clock)  # fmt: skip
     y += 32 + 24
 
     label(canvas, v, t("hud.group"), (x0, y))
@@ -387,10 +427,18 @@ def draw_panel(
     for i, number in enumerate(range(1, 16)):  # 5 per row
         bx, by = x0 + (i % 5) * step_x, y + (i // 5) * step_y
         gone = number in pocketed
+        age = clock - pocket_times.get(number, -99.0)
+        if gone and 0 <= age < SHRINK_S:  # just went in: it shrinks first, still lit
+            k = 1 - 0.4 * (1 - (1 - age / SHRINK_S) ** 2)
+            spr = _mini_ball(sprites, v, number, False)
+            size = max(2, round(spr.get_width() * k))
+            small = pg.transform.smoothscale(spr, (size, size))
+            c = v.pt((bx + MINI / 2, by + MINI / 2))
+            blit_pm(canvas, small, (c[0] - size / 2, c[1] - size / 2))
+            continue
         blit_pm(canvas, _mini_ball(sprites, v, number, gone), v.pt((bx, by)))
         if gone:
-            age = clock - pocket_times.get(number, -99.0)
-            _strike(canvas, v, (bx + MINI / 2, by + MINI / 2), age)
+            _strike(canvas, v, (bx + MINI / 2, by + MINI / 2), age - SHRINK_S)
     y += 3 * step_y + 22
 
     pulse = 0.5 + 0.5 * math.sin(clock * (9.0 if moving else 3.0))
@@ -560,6 +608,8 @@ def draw_result(
     rows: list[tuple[str, int]],
     hover: str | None,
     age: float = 1.0,
+    fx: ButtonFx | None = None,
+    clock: float = 0.0,
 ) -> None:
     """The end-of-game card: dims the table, a big lit title, why, the score in arcade digits and
     two buttons. `age` (s since the game ended) lets the card grow in."""
@@ -590,6 +640,118 @@ def draw_result(
         row = c.y + 146 + i * 46
         label(canvas, v, name, (c.x + 44, row + 12), size=12)
         seg_number(canvas, v, value, 3, (c.right - 44, row), 30, C.CYAN, align="right")
+    fx = fx or ButtonFx(lit={"new": 1.0}, chosen="new")
     for key, rect in RESULT_BUTTONS.items():
-        state = "primary" if key == "new" else "hover" if hover == key else "normal"
-        button(canvas, v, rect, t(f"result.{key}"), state)
+        live_button(canvas, v, rect, t(f"result.{key}"), fx, key, clock, primary=key == "new")
+
+
+# --- buttons that move: lit, pressed, a light running round, a frame that glides ----------------
+BTN_EASE_S = 0.12  # a button lights up / goes out in this long
+PRESS_S = 0.18  # a pressed button dips and flashes this long
+SWEEP_S = 0.45  # a light runs once round a button that has just been chosen
+GLIDE_RATE = 16.0  # the highlight frame catches up with the chosen button this fast (1/s)
+
+
+@dataclass
+class ButtonFx:
+    """How a group of buttons moves: how lit each one is, when it was pressed, where the
+    highlight frame is on its way to the chosen one. Driven by the scene's clock."""
+
+    lit: dict = field(default_factory=dict)
+    pressed: dict = field(default_factory=dict)
+    chosen_at: dict = field(default_factory=dict)
+    chosen: object = None
+    frame: list | None = None  # [x, y, w, h] of the gliding highlight (logical)
+
+    def update(self, dt: float, chosen, rects: dict, clock: float) -> None:
+        if chosen != self.chosen:
+            self.chosen = chosen
+            if chosen is not None:
+                self.chosen_at[chosen] = clock
+        for key in rects:
+            cur = self.lit.get(key, 0.0)
+            target = 1.0 if key == chosen else 0.0
+            step = dt / BTN_EASE_S
+            self.lit[key] = min(target, cur + step) if target > cur else max(target, cur - step)
+        if chosen in rects:
+            r = rects[chosen]
+            goal = [r.x, r.y, r.w, r.h]
+            if self.frame is None:
+                self.frame = goal
+            else:
+                k = 1 - math.exp(-GLIDE_RATE * dt)
+                self.frame = [a + (b - a) * k for a, b in zip(self.frame, goal, strict=True)]
+        else:
+            self.frame = None
+
+    def press(self, key, clock: float) -> None:
+        self.pressed[key] = clock
+
+    def press_k(self, key, clock: float) -> float:
+        """1 just after a press, 0 after PRESS_S."""
+        age = clock - self.pressed.get(key, -99.0)
+        return max(0.0, 1.0 - age / PRESS_S) if age >= 0 else 0.0
+
+
+def _sweep(canvas: pg.Surface, v: View, rect: pg.Rect, t: float, colour) -> None:
+    """A short bright light running once round the edge of `rect` (t: 0 -> 1)."""
+    x, y, w, h = rect.x, rect.y, rect.w, rect.h
+    per = 2 * (w + h)
+
+    def at(d: float) -> tuple[float, float]:
+        d %= per
+        if d < w:
+            return x + d, y
+        if d < w + h:
+            return x + w, y + d - w
+        if d < 2 * w + h:
+            return x + w - (d - w - h), y + h
+        return x, y + h - (d - 2 * w - h)
+
+    head = per * t + w * 0.5
+    layer = Aa(canvas, v, v.rect(x - 6, y - 6, w + 12, h + 12), ss=2)
+    fade = math.sin(math.pi * t)
+    for i in range(18):  # the tail behind the head
+        f = 1 - i / 18
+        a, b = layer.pt(at(head - i * 5)), layer.pt(at(head - (i + 1) * 5))
+        pg.draw.line(
+            layer.surf, (*colour, round(230 * f * fade)), a, b, max(1, round(layer.n(2.2)))
+        )
+    layer.done()
+
+
+def live_button(canvas: pg.Surface, v: View, rect: pg.Rect, label_s: str, fx: ButtonFx, key,
+                clock: float, *, primary: bool = True, enabled: bool = True,
+                frame_glides: bool = False, size: float = 18) -> None:  # fmt: skip
+    """A button that answers the player: lit and a little bigger while chosen, an arrow slides in,
+    a light runs round it once; pressed, it dips and flashes. With `frame_glides` the lit edge is
+    left to the gliding frame (draw it with `glide_frame`)."""
+    lit = fx.lit.get(key, 0.0) if enabled else 0.0
+    press = fx.press_k(key, clock)
+    accent = C.MAGENTA if primary else C.CYAN
+    grow = 1.0 + 0.03 * lit - 0.05 * press
+    w, h = round(rect.w * grow * 2) / 2, round(rect.h * grow * 2) / 2
+    x, y = rect.centerx - w / 2, rect.centery - h / 2
+    fill = C.lerp(C.lerp(C.PANEL, C.PANEL_HOT, lit), C.lerp(accent, C.WHITE, 0.3), 0.35 * press)
+    if not enabled:
+        fill = C.BG
+    edge = C.lerp(C.PANEL_EDGE, accent, 0.0 if frame_glides else lit)
+    if not enabled:
+        edge = C.scale(C.PANEL_EDGE, 0.6)
+    blit_rrect(canvas, v, x, y, w, h, 6, fill, 1.6, edge, 0.0 if frame_glides else lit)
+    if lit > 0.02:  # the arrow slides in from the left as the button lights up
+        arrow(canvas, v, (rect.x + 18 - 10 * (1 - lit), rect.centery), C.lerp(fill, accent, lit))
+        age = clock - fx.chosen_at.get(key, -99.0)
+        if 0 <= age < SWEEP_S and fx.chosen == key:
+            _sweep(canvas, v, pg.Rect(round(x), round(y), round(w), round(h)), age / SWEEP_S,
+                   C.lerp(accent, C.WHITE, 0.5))  # fmt: skip
+    colour = C.lerp(C.TEXT, C.WHITE, lit) if enabled else C.scale(C.TEXT_DIM, 0.6)
+    text(canvas, v, label_s, size, colour, rect.center, bold=True, center=True)
+
+
+def glide_frame(canvas: pg.Surface, v: View, fx: ButtonFx, colour=C.MAGENTA) -> None:
+    """The lit frame that slides from the button chosen before to the one chosen now."""
+    if fx.frame is None:
+        return
+    x, y, w, h = fx.frame
+    blit_rrect(canvas, v, x, y, w, h, 6, None, 1.8, colour, 1.0)

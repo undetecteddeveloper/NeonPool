@@ -62,17 +62,21 @@ PX_PER_M = 350  # render only (invariant 3): metres -> logical pixels
 RAIL_PX = 40  # visual rail thickness around the cloth
 MAX_DRAG_PX = 220  # pull-back distance (logical px) that means full power
 MIN_PULL_PX = 12  # releasing with a shorter pull than this cancels the shot
+VOLUME_STEP = 0.1  # the volume setting moves in steps of 10%
 CUE_SHOW_PULL = 0.75  # the neon cue travels 75% of the pull (the power is unchanged)
 POWER_CURVE = 2.0  # power = (pull / MAX_DRAG_PX) ** POWER_CURVE: gentle at first, strong at the end
 GRAB_RADIUS_M = BALL_R * 2.6  # how close to the cue ball a press must be to start aiming
 AIM_MIN_PX = 4  # pointer closer than this to the cue ball: no direction yet
+KNOB_DEAD_PX = 3.0  # turning the cue: the pointer this close to the ball centre is ignored
 
 # --- Effects (subtle) and sound ---
 RIPPLE_BALL_SPEED = 1.2  # m/s: ball-ball impact at least this hard shows a ripple
 RIPPLE_CUSHION_SPEED = 1.6
 RIPPLE_S = 0.5  # a ripple of light spreads and fades over this time
-POCKET_WAVE_S = 0.9  # a pocketed ball sends a wave out of the pocket
-POCKET_WAVE_PX = 64  # ... that spreads this far past the pocket rim (logical px)
+TABLE_WAVE_SPEED = 820.0  # a ball drops: a wave in its colour runs over the table (logical px/s)
+TABLE_WAVE_S = 1.5  # ... and has died out after this long (it has crossed the whole table)
+TABLE_WAVE_BAND = 22.0  # the table's lines light up this close to the passing ring (logical px)
+STRONG_HIT_SPEED = 3.2  # m/s: a hit at least this hard shakes the screen a little (setting)
 BALL_RIPPLE_PX = 30  # how far a collision ripple spreads past the balls (logical px)
 MAX_RIPPLES = 14
 POCKET_ANIM_S = 0.25  # a pocketed ball shrinks toward the pocket over this time

@@ -136,6 +136,7 @@ class Audio:
     def __init__(self) -> None:
         self.available = False
         self.muted = False
+        self.volume = 1.0  # the player's volume (0..1), from the settings
         self._sounds: dict[str, pg.mixer.Sound] = {}
         try:
             if not pg.mixer.get_init():
@@ -170,12 +171,12 @@ class Audio:
         return self.muted
 
     def _play(self, name: str, volume: float) -> bool:
-        if not self.available or self.muted:
+        if not self.available or self.muted or self.volume <= 0.0:
             return False
         channel = self._sounds[name].play()
         if channel is None:  # all channels busy: drop this sound
             return False
-        channel.set_volume(max(0.0, min(1.0, volume)))
+        channel.set_volume(max(0.0, min(1.0, volume * self.volume)))
         return True
 
     def play_click(self) -> None:

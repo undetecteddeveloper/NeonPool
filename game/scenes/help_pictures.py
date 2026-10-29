@@ -8,6 +8,7 @@ always match the game, at any window size and in the current language.
 
 from __future__ import annotations
 
+import math
 from types import SimpleNamespace
 
 import pygame as pg
@@ -68,7 +69,9 @@ def _pose(
     scene._clock = 0.0  # a fixed pulse for the ring
     if pull is not None:
         cx, cy = to_px(scene.world.balls[0].x, scene.world.balls[0].y)
-        scene.drag.begin((cx, cy), (cx, cy))
+        angle = math.atan2(-pull[1], -pull[0])  # the shot goes away from the pull
+        scene.knob.angle = angle
+        scene.drag.begin((cx, cy), (cx, cy), angle)
         scene.drag.move((cx + pull[0], cy + pull[1]))
     return scene
 
@@ -107,6 +110,7 @@ def picture_cue(v: View) -> pg.Surface:
     pic = _photo(scene, v, crop)
     a = Annot(pic, v, crop.topleft)
     cx, cy = _m(*cue)
+    a.arc_arrow((cx, cy), 26, -150, -30)  # 1: go round the ball to turn the cue
     a.cursor((cx - 150, cy))
     a.step(1, (cx, cy - 46))
     a.step(2, (cx - 85, cy - 46))

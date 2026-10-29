@@ -17,6 +17,8 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 ROOT = Path(__file__).resolve().parent.parent
+# the default settings, never the player's own file
+os.environ.setdefault("NEONPOOL_SETTINGS", str(ROOT / "tools" / "_out" / "tool-settings.json"))
 sys.path.insert(0, str(ROOT))
 
 FRAME_BUDGET_MS = 1000 / 60

@@ -16,6 +16,8 @@ import pygame as pg
 
 from game.render import crt
 from game.render import palette as C
+from game.render.draw import BallSprites
+from game.render.layout import BALL_PX
 from game.render.view import View
 
 # --- the strands -------------------------------------------------------------------------------
@@ -32,6 +34,14 @@ PULSE_S = 1.6
 SUN_STRIPE_S = 2.4  # a stripe of the sun takes this long to slide down one step
 BAND_UP, BAND_DOWN = 110.0, 190.0  # the strands' band: this far above / below the horizon
 GRID_ROWS = 14  # cross lines of the floor grid on screen at once
+# balls that float up out of the floor and drift away on the ribbons (menu)
+FLOAT_ORDER = (*range(1, 16), 0)  # which ball comes up next: 1 to 15, then the cue ball
+FLOAT_EVERY_S = 2.4  # a new ball comes up this often ...
+FLOAT_MAX = 5  # ... while fewer than this many are on screen
+FLOAT_SCALE = 2.2  # the balls are this many times their size on the table
+FLOAT_RISE = 150.0  # rising speed far from the surface (logical px/s); it slows on arrival
+FLOAT_DRIFT = 34.0  # drifting speed along the ribbons, the way the waves run (logical px/s)
+FLOAT_SINK = 0.35  # a floating ball sits this much of its radius below the surface
 GRID_LEVELS = 8  # brightness steps of a cross line (made once, then only placed)
 
 Point = tuple[float, float]
@@ -94,6 +104,14 @@ class Strands:
         sign = np.where(np.arange(STRANDS) % 2 == 0, 1.0, -0.7)[:, None]
         self.vy += strength * 900.0 * sign * _gauss(self.x, x, 38.0)[None, :]
 
+    def dip(self, x: float, strength: float = 1.0) -> None:
+        """Something landed on the strands at x: they dip there, and the ripple runs both ways."""
+        self.vy += strength * 260.0 * _gauss(self.x, x, 30.0)[None, :]
+
+    def surface(self, x: float) -> float:
+        """The logical y of the ribbon (the middle of its strands) at x."""
+        return self.base_y + float(np.interp(x, self.x, self.y.mean(axis=0)))
+
     def update(self, dt: float) -> None:
         self._acc += min(dt, 0.05)
         while self._acc >= SUBSTEP:
@@ -122,17 +140,73 @@ class Strands:
         return light
 
 
+class Floaters:
+    """Balls rising out of the floor one after another; arriving at the ribbon each makes a small
+    dip, then bobs on it and drifts away with the waves until it leaves the screen."""
+
+    def __init__(self, v: View, strands: Strands, left: float, right: float, bottom: float) -> None:
+        self.v, self.strands = v, strands
+        self.left, self.right, self.bottom = left, right, bottom
+        self.sprites = BallSprites(v.scaled(FLOAT_SCALE))
+        self.r = BALL_PX * FLOAT_SCALE  # logical radius
+        self.balls: list[list] = []  # [number, x, y, floating]
+        self._spawned = 0
+        self._next = 0.6  # the first ball comes up soon after the menu opens
+        self._t = 0.0
+
+    def update(self, dt: float) -> None:
+        self._t += dt
+        if self._t >= self._next:
+            self._next = self._t + FLOAT_EVERY_S
+            if len(self.balls) < FLOAT_MAX:
+                i = self._spawned
+                number = FLOAT_ORDER[i % len(FLOAT_ORDER)]
+                span = self.right - self.left
+                x = self.left + span * (0.06 + 0.7 * _hash(i, 7))  # drifts right: start leftish
+                self.balls.append([number, x, self.bottom + self.r, False])
+                self._spawned += 1
+        for ball in self.balls:
+            number, x, y, floating = ball
+            surface = self.strands.surface(x) + self.r * FLOAT_SINK
+            if not floating:
+                gap = y - surface
+                y -= (35.0 + (FLOAT_RISE - 35.0) * min(1.0, gap / 120.0)) * dt  # slows on arrival
+                if y <= surface:
+                    floating = True
+                    self.strands.dip(x, 0.9)
+            if floating:
+                x += FLOAT_DRIFT * dt
+                y = self.strands.surface(x) + self.r * FLOAT_SINK
+            ball[1:] = [x, y, floating]
+        self.balls = [b for b in self.balls if b[1] - self.r * 2 < self.right]
+
+    def draw(self, canvas: pg.Surface) -> None:
+        half = self.sprites.size / 2
+        for number, x, y, _ in self.balls:
+            px, py = self.v.pt((x, y))
+            canvas.blit(self.sprites.get(number), (round(px - half), round(py - half)),
+                        special_flags=pg.BLEND_PREMULTIPLIED)  # fmt: skip
+
+
 class Synthwave:
     """The whole backdrop for one view. `horizon` is a logical y; `sun` False hides the sun."""
 
     def __init__(
-        self, v: View, horizon: float, *, sun: bool = True, sun_r: float = 150.0, dim: float = 1.0
+        self,
+        v: View,
+        horizon: float,
+        *,
+        sun: bool = True,
+        sun_r: float = 150.0,
+        dim: float = 1.0,
+        floaters: bool = False,
     ) -> None:
         self.v, self.horizon, self.has_sun, self.sun_r, self.dim = v, horizon, sun, sun_r, dim
         left, top, right, bottom = v.logical_bounds()
         self.left, self.top, self.right, self.bottom = left, top, right, bottom
         self.cx = 640.0
         self.strands = Strands(left - 20, right + 20, horizon)
+        self.floaters = Floaters(v, self.strands, left, right, bottom) if floaters else None
         self.bg = self._bake_sky()
         self.sun = self._bake_sun() if sun else None
         self.stars = [
@@ -252,6 +326,8 @@ class Synthwave:
 
     def update(self, dt: float) -> None:
         self.strands.update(dt)
+        if self.floaters is not None:
+            self.floaters.update(dt)
 
     # --- drawing -----------------------------------------------------------------------------
     def draw(self, canvas: pg.Surface, clock: float) -> None:
@@ -260,6 +336,8 @@ class Synthwave:
         if self.sun is not None:
             self._draw_sun(canvas, clock)
         self._draw_grid(canvas, clock)
+        if self.floaters is not None:  # under the ribbons: the light of the water is in front
+            self.floaters.draw(canvas)
         layer = self.layer
         layer.fill((0, 0, 0))
         self._draw_strands(layer, clock)

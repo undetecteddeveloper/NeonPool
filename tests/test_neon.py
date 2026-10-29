@@ -2,25 +2,22 @@
 of light, the arcade digits and the glow text.
 All time-driven: the same clock gives the same picture (a photo of a scene is repeatable)."""
 
+import math
+
 import numpy as np
 import pygame as pg
 import pytest
 
 from game import config, i18n
-from game.render import crt, hud, rim, synth
+from game.render import crt, hud, synth, table
 from game.render import palette as C
 from game.render.fx import KINDS, Fx
 from game.render.layout import (
-    FIELD_H,
-    FIELD_W,
-    FIELD_X,
-    FIELD_Y,
     OUTER_H,
     OUTER_W,
     OUTER_X,
     OUTER_Y,
 )
-from game.render.table import FRAME_R
 from game.render.view import View
 
 V = View(1.0)
@@ -36,51 +33,55 @@ def _bytes(surf: pg.Surface) -> bytes:
     return pg.image.tobytes(surf, "RGB")
 
 
-# --- the rim runner -------------------------------------------------------------------------
-def test_the_rim_path_is_closed_evenly_spaced_and_hugs_the_rim():
-    path = rim.rim_path()
-    assert len(path) > 600  # about 3000 px of rim, a point every 3 px
-    gaps = [
-        ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
-        for a, b in zip(path, [*path[1:], path[0]], strict=True)
-    ]
-    assert max(gaps) < rim.STEP * 1.6  # no jump anywhere, also where the path closes
-    for x, y in path:
-        assert (
-            OUTER_X - 1 <= x <= OUTER_X + OUTER_W + 1 and OUTER_Y - 1 <= y <= OUTER_Y + OUTER_H + 1
-        )
-        on_edge = min(x - OUTER_X, OUTER_X + OUTER_W - x, y - OUTER_Y, OUTER_Y + OUTER_H - y)
-        assert on_edge < FRAME_R * 0.3 + 1.5  # on the rim (a corner arc cuts in by at most this)
+# --- the wave over the table when a ball drops ----------------------------------------------
+def test_the_table_lines_form_one_closed_rim_and_six_cushions():
+    paths = table.neon_paths()
+    assert len(paths) == 7
+    rim_path = paths[0]
+    assert math.dist(rim_path[0], rim_path[-1]) < 1e-6  # closed
+    gaps = [math.dist(a, b) for a, b in zip(rim_path, rim_path[1:], strict=False)]
+    assert max(gaps) < table.RIM_STEP * 1.6  # evenly spaced, no jump
+    for x, y in rim_path:
+        assert OUTER_X - 1 <= x <= OUTER_X + OUTER_W + 1
+        assert OUTER_Y - 1 <= y <= OUTER_Y + OUTER_H + 1
 
 
-def test_the_runner_is_repeatable_moves_and_leaves_the_cloth_alone():
-    a, b = _canvas(), _canvas()
-    rim.RimRunner(V).draw(a, 3.0)
-    rim.RimRunner(V).draw(b, 3.0)
-    assert _bytes(a) == _bytes(b)  # the same clock, the same picture
-    later = _canvas()
-    rim.RimRunner(V).draw(later, 9.0)
-    assert _bytes(later) != _bytes(a)  # it moves
-    assert any(a.get_at((x, OUTER_Y)) != (0, 0, 0, 255) for x in range(OUTER_X, OUTER_X + OUTER_W))
-    centre = (FIELD_X + FIELD_W // 2, FIELD_Y + FIELD_H // 2)
-    assert tuple(a.get_at(centre))[:3] == (0, 0, 0)  # nothing on the cloth
+def test_a_dropped_ball_sends_a_wave_of_its_colour_over_the_table_that_dies_out():
+    fx = Fx()
+    fx.add_drop(11, 0.3, 0.3, 0)  # a stripe: the wave is the colour of its band
+    assert len(fx.waves) == 1 and fx.waves[0].colour == C.BALL_COLORS[3]
+    assert not fx.ripples  # no small ripple at the pocket any more: the big wave replaces it
+    fx.update(config.TABLE_WAVE_S * 0.5)
+    assert fx.waves and fx.waves[0].radius() > 300  # it has run a long way over the table
+    fx.update(config.TABLE_WAVE_S)
+    assert not fx.waves and not fx.drops
 
 
-def test_the_runner_leaves_no_trail_when_it_moves_on():
-    runner, fresh = rim.RimRunner(V), rim.RimRunner(V)
-    first = _canvas()
-    runner.draw(first, 1.0)
-    second, expected = _canvas(), _canvas()
-    runner.draw(second, 20.0)  # the same runner, after drawing elsewhere ...
-    fresh.draw(expected, 20.0)  # ... must look like one that never drew there
-    assert _bytes(second) == _bytes(expected)
+def test_the_wave_lights_the_table_and_nothing_outside_it():
+    fx = Fx()
+    fx.add_drop(5, 2.5, 1.2, 3)  # bottom-right corner pocket, orange
+    fx.update(0.4)
+    canvas = _canvas()
+    fx.draw(canvas, V, type("S", (), {"size": 10})())
+    lit = sum(
+        1
+        for x in range(0, 1280, 6)
+        for y in range(0, 720, 6)
+        if sum(canvas.get_at((x, y))[:3]) > 40
+    )
+    assert lit > 150  # a big ring of light
+    box = pg.Rect(OUTER_X - 8, OUTER_Y - 8, OUTER_W + 16, OUTER_H + 16)
+    outside = [(5, 5), (box.right + 20, box.centery), (box.centerx, box.bottom + 30)]
+    assert all(tuple(canvas.get_at(p))[:3] == (0, 0, 0) for p in outside)
 
 
-def test_the_two_lights_run_half_a_lap_apart_in_two_colours():
-    assert len(rim.LIGHTS) == 2
-    (head_a, mid_a, _), (head_b, mid_b, _) = rim.LIGHTS
-    assert mid_a == C.CYAN and mid_b == C.MAGENTA
-    assert head_a != head_b
+def test_a_harder_hit_shakes_the_screen_harder():
+    soft, hard = Fx(), Fx()
+    soft.shake(0.35)
+    hard.shake(1.0)
+    soft.update(0.02)
+    hard.update(0.02)
+    assert abs(hard.shake_offset()[1]) > abs(soft.shake_offset()[1])
 
 
 # --- the living ribbons and the synthwave night -----------------------------------------------
@@ -136,6 +137,51 @@ def test_a_pulse_of_light_runs_both_ways_along_the_strands():
     gone = synth.PULSE_SPEED * 0.5
     assert abs((640 - peak_left) - gone) < 30 and abs((peak_right - 640) - gone) < 30
     assert st.glow_at(synth.PULSE_S + 0.1).max() < light.max()  # and it fades
+
+
+def test_a_ball_landing_on_the_ribbon_makes_it_dip_there():
+    calm, hit = _strands(), _strands()
+    hit.dip(640.0)
+    _run(calm, 0.2)
+    _run(hit, 0.2)
+    centre = np.abs(hit.x - 640.0).argmin()
+    far = np.abs(hit.x - 100.0).argmin()
+    assert (hit.y[:, centre] - calm.y[:, centre]).mean() > 3  # pushed down (screen y grows down)
+    assert abs((hit.y[:, far] - calm.y[:, far]).mean()) < 0.5
+
+
+def test_balls_float_up_one_by_one_land_on_the_ribbon_and_drift_away():
+    sw = synth.Synthwave(V, 405, floaters=True)
+    fl = sw.floaters
+    seen, landed = set(), False
+    for _ in range(30 * 60):  # half a minute of menu
+        sw.update(1 / 60)
+        assert len(fl.balls) <= synth.FLOAT_MAX
+        for number, x, y, floating in fl.balls:
+            seen.add(number)
+            if floating:
+                landed = True
+                assert abs(y - (sw.strands.surface(x) + fl.r * synth.FLOAT_SINK)) < 1e-6
+    assert landed
+    assert seen == set(range(1, len(seen) + 1)) and len(seen) >= synth.FLOAT_MAX  # 1, 2, 3 ...
+    first = synth.Synthwave(V, 405, floaters=True)
+    second = synth.Synthwave(V, 405, floaters=True)
+    for _ in range(300):
+        first.update(1 / 60)
+        second.update(1 / 60)
+    assert first.floaters.balls == second.floaters.balls  # no randomness
+
+
+def test_a_floating_ball_drifts_the_way_the_waves_run_and_leaves_the_screen():
+    sw = synth.Synthwave(V, 405, floaters=True)
+    fl = sw.floaters
+    fl.balls = [[3, 600.0, sw.strands.surface(600.0), True]]
+    fl._next = 1e9  # no new balls
+    sw.update(1.0)
+    assert fl.balls[0][1] > 600.0  # to the right
+    for _ in range(60 * 40):
+        sw.update(1 / 60)
+    assert fl.balls == []  # gone off the right edge
 
 
 @pytest.mark.parametrize("window", [(1280, 720), (1920, 1200), (2560, 1080)])
@@ -240,20 +286,9 @@ def test_the_scoreboard_flashes_a_number_that_changed():
 
 
 # --- rings of light ------------------------------------------------------------------------
-def test_a_ball_in_a_pocket_sends_a_pocket_wave_that_dies_down():
-    fx = Fx()
-    fx.add_drop(5, 0.3, 0.3, 0)
-    assert [r.kind for r in fx.ripples] == ["pocket"]
-    fx.update(config.POCKET_WAVE_S * 0.5)
-    assert fx.ripples
-    fx.update(config.POCKET_WAVE_S)
-    assert not fx.ripples and not fx.drops
-
-
-def test_each_kind_of_hit_has_its_own_colour_and_lasts_its_own_time():
+def test_each_kind_of_hit_has_its_own_colour():
     colours = {kind: spec[0] for kind, spec in KINDS.items()}
-    assert len(set(colours.values())) == 3
-    assert KINDS["pocket"][2] > KINDS["ball"][2]  # the pocket wave lingers longer
+    assert set(KINDS) == {"ball", "cushion"} and len(set(colours.values())) == 2
 
 
 def test_ripples_are_capped_and_drawn_where_the_hit_was():

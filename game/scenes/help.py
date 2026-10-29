@@ -42,6 +42,7 @@ class HelpScene:
         self.back = None  # the scene Esc returns to (set by App.go_help)
         self._hover: object = None
         self._clock = 0.0
+        self.fx = hud.ButtonFx()
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
@@ -55,6 +56,8 @@ class HelpScene:
     def update(self, dt: float) -> None:
         self._clock += dt
         self.synth.update(dt)
+        chosen = self._hover if self._hover in ("prev", "next") else None
+        self.fx.update(dt, chosen, {"prev": PREV, "next": NEXT}, self._clock)
 
     def _picture(self, index: int) -> pg.Surface:
         """The picture of a topic: made when first shown, and again after a language change."""
@@ -86,10 +89,9 @@ class HelpScene:
             self._hover = target
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             target = self._target(e.pos)
-            if target == "prev":
-                self.go(self.page - 1)
-            elif target == "next":
-                self.go(self.page + 1)
+            if target in ("prev", "next"):
+                self.fx.press(target, self._clock)
+                self.go(self.page + (1 if target == "next" else -1))
             elif isinstance(target, int):
                 self.go(target)
 
@@ -117,8 +119,8 @@ class HelpScene:
         self._sentences(canvas, i)
         for key, rect, label in (("prev", PREV, "guide.prev"), ("next", NEXT, "guide.next")):
             off = (key == "prev" and i == 0) or (key == "next" and i == len(TOPICS) - 1)
-            state = "off" if off else "hover" if self._hover == key else "normal"
-            hud.button(canvas, v, rect, t(label), state)
+            hud.live_button(canvas, v, rect, t(label), self.fx, key, self._clock,
+                            primary=False, enabled=not off)  # fmt: skip
         for k, r in enumerate(DOTS):
             lit = k == i
             colour = C.ACCENT if lit else C.PANEL_EDGE

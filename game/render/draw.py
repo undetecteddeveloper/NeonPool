@@ -82,7 +82,7 @@ def box_around(v: View, points: list[tuple[float, float]], pad: float) -> pg.Rec
 # --- glass panels and dots ---------------------------------------------------------------
 _rr_cache: dict[tuple, tuple[pg.Surface, int]] = {}
 _dot_cache: dict[tuple, tuple[pg.Surface, int]] = {}
-FILL_ALPHA = 250  # solid panels: text is never read against a busy background
+FILL_ALPHA = 255  # solid panels: nothing behind ever shows through the text
 
 
 def _halo_px(glow: float) -> int:
@@ -99,7 +99,7 @@ def rrect_sprite(
     """
     key = (round(v.s, 4), w, h, radius, fill, edge, edge_color, round(glow, 3))
     if key not in _rr_cache:
-        if len(_rr_cache) > 96:
+        if len(_rr_cache) > 320:
             _rr_cache.clear()
         pad = _halo_px(glow) + math.ceil(edge) + 1
         bv = v.framed().scaled(v.ss())
@@ -107,7 +107,8 @@ def rrect_sprite(
         body = bv.rect(pad, pad, w, h)
         r = bv.i(radius)
         plate = pg.Surface((bv.i(ow), bv.i(oh)), pg.SRCALPHA)
-        pg.draw.rect(plate, (*fill, FILL_ALPHA), body, border_radius=r)
+        if fill is not None:  # None: only the lit edge (a frame that glides over buttons)
+            pg.draw.rect(plate, (*fill, FILL_ALPHA), body, border_radius=r)
         out = plate.premul_alpha()
         if edge > 0:
             line = pg.Surface(plate.get_size(), pg.SRCALPHA)

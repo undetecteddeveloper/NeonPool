@@ -2,6 +2,8 @@
 
 The game opens full screen; F11 switches between full screen and a window. The 1280x720 frame
 sits in the middle at the right shape and every scene paints its background to all four edges.
+Changing scene looks like an old tube switching off and on: the old picture folds into a bright
+line, the new one opens out of it. The player's settings are loaded at start and saved on change.
 """
 
 from __future__ import annotations
@@ -13,9 +15,11 @@ import time
 
 import pygame as pg
 
+from game import i18n, settings
 from game.audio import Audio
 from game.config import LOGICAL_SIZE
-from game.render import crt
+from game.i18n import t
+from game.render import crt, hud
 from game.render import palette as C
 from game.render.view import View
 from game.render.viewport import window_to_logical
@@ -29,43 +33,75 @@ _MOUSE_EVENTS = (pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP, pg.MOUSEMOTION)
 RESIZE_SETTLE_S = 0.2  # rebuild the sharp assets once the window stops changing size
 MAX_START_SCALE = 1.5
 WINDOW_MARGIN = (40, 130)  # room for the title bar, borders and taskbar
+TUBE_OFF_S = 0.14  # changing scene: the old picture folds into a line ...
+TUBE_ON_S = 0.2  # ... and the new one opens out of it
+FPS_SMOOTH = 0.1  # the FPS counter follows the frame time this quickly (0..1 per frame)
 
 
 class App:
     def __init__(self, screen: pg.Surface) -> None:
         self.screen = screen
+        self.settings = settings.load()
+        i18n.set_lang(self.settings.lang)
         self.view = View.for_window(screen.get_size())
         self.canvas = pg.Surface(self.view.canvas)
         self.audio = Audio()
+        self.audio.volume = self.settings.volume
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.menu = MenuScene(self)
         self.help = HelpScene(self)
         self.scene = self.menu
         self.running = True
+        self.fps = 60.0
         self._window = screen.get_size()
         self._window_changed_at = float("-inf")
+        self._old_frame: pg.Surface | None = None  # the picture that is switching off
+        self._tube = TUBE_OFF_S  # time into the switch; past TUBE_OFF_S + TUBE_ON_S: done
+
+    # --- scenes ----------------------------------------------------------------------------
+    def _switch(self, scene) -> None:
+        if scene is self.scene:
+            return
+        screen = pg.display.get_surface() or self.screen
+        self._old_frame = screen.copy()
+        self._tube = 0.0
+        self.scene = scene
+
+    def skip_transition(self) -> None:
+        """Show the current scene at once (tools that photograph a scene use this)."""
+        self._tube = TUBE_OFF_S + TUBE_ON_S
+        self._old_frame = None
 
     def go_play(self) -> None:
-        self.scene = self.play
+        self._switch(self.play)
 
     def go_help(self) -> None:
         """Open the how-to-play screen; Esc returns to the scene that opened it."""
         self.play.drag.cancel()
         self.play.placing = False
         self.help.back = self.scene
-        self.scene = self.help
+        self._switch(self.help)
 
     def leave_help(self) -> None:
-        self.scene = self.help.back or self.menu
+        self._switch(self.help.back or self.menu)
 
     def go_menu(self) -> None:
         self.play.drag.cancel()
         if self.scene is not self.menu:
             self.menu.enter()
-        self.scene = self.menu
+        self._switch(self.menu)
 
     def game_in_progress(self) -> bool:
         return self.play.rules.shots > 0 and self.play.rules.phase == PLAYING
+
+    # --- settings ----------------------------------------------------------------------------
+    def change_settings(self, **changes) -> None:
+        """Change some settings, apply them now and save them for the next time."""
+        for name, value in changes.items():
+            setattr(self.settings, name, value)
+        i18n.set_lang(self.settings.lang)
+        self.audio.volume = self.settings.volume
+        settings.save(self.settings)
 
     # --- contract used by tools/smoke.py and tools/shot.py ---------------------------------
     def handle_event(self, e: pg.event.Event) -> None:
@@ -85,6 +121,9 @@ class App:
         self.scene.handle_event(e)
 
     def update(self, dt: float) -> None:
+        if dt > 0:
+            self.fps += (1.0 / dt - self.fps) * FPS_SMOOTH
+        self._tube = min(TUBE_OFF_S + TUBE_ON_S, self._tube + dt)
         self.scene.update(dt)
 
     def sync_view(self, force: bool = False) -> None:
@@ -99,6 +138,7 @@ class App:
         ):
             self.view = target
             self.canvas = pg.Surface(target.canvas)
+            self._old_frame = None
             self.play.set_view(target)
             self.menu.set_view(target)
             self.help.set_view(target)
@@ -108,18 +148,58 @@ class App:
         self.sync_view()
         target = View.for_window(screen.get_size())
         shake_x, shake_y = self.scene.shake_offset()
-        if not (shake_x or shake_y) and self.canvas.get_size() == screen.get_size():
+        switching = self._tube < TUBE_OFF_S + TUBE_ON_S
+        same_size = self.canvas.get_size() == screen.get_size()
+        if not (shake_x or shake_y or switching) and same_size:
             self.scene.draw(screen)  # the usual case: straight onto the screen, no copy
         else:
-            # shaking, or the window is being resized and the assets are for the old size:
-            # draw on the canvas, then shift it / stretch it for a moment
-            self.scene.draw(self.canvas)
+            # shaking, switching scene, or the window is being resized and the assets are for
+            # the old size: draw on the canvas, then shift / fold / stretch it for a moment
+            folding_old = switching and self._tube < TUBE_OFF_S and self._old_frame is not None
+            if not folding_old:  # while the old picture folds away the new one is not seen yet
+                self.scene.draw(self.canvas)
             frame = self.canvas
-            if frame.get_size() != screen.get_size():
+            if not same_size and not folding_old:
                 frame = pg.transform.smoothscale(self.canvas, screen.get_size())
-            screen.fill(C.BG)
-            screen.blit(frame, (round(shake_x * target.s), round(shake_y * target.s)))
+            if switching:
+                self._draw_tube(screen, frame)
+            else:
+                screen.fill(C.BG)
+                screen.blit(frame, (round(shake_x * target.s), round(shake_y * target.s)))
+        if self.settings.show_fps:
+            self._draw_fps(screen, target)
         crt.scanlines(screen, target.s)
+
+    def _draw_tube(self, screen: pg.Surface, frame: pg.Surface) -> None:
+        """An old tube switching: the old picture folds to a bright line, the new opens out."""
+        w, h = screen.get_size()
+        screen.fill(C.OUTLINE)
+        if self._tube < TUBE_OFF_S:
+            k = self._tube / TUBE_OFF_S
+            picture, open_k = self._old_frame, (1 - k) ** 2
+        else:
+            k = (self._tube - TUBE_OFF_S) / TUBE_ON_S
+            picture, open_k = frame, 1 - (1 - k) ** 3
+        rows = max(2, round(h * open_k))
+        if picture is not None and picture.get_size() == (w, h):
+            screen.blit(pg.transform.scale(picture, (w, rows)), (0, (h - rows) // 2))
+        line = max(0.0, 1.0 - open_k * 1.6)  # the bright line is strongest when folded
+        if line > 0:
+            glow = max(2, round(h * 0.012))
+            for thick, kk in ((glow * 3, 0.25), (glow, 0.6), (max(1, glow // 3), 1.0)):
+                colour = C.scale(C.lerp(C.CYAN, C.WHITE, 0.6), kk * line)
+                rect = pg.Rect(0, h // 2 - thick // 2, w, thick)
+                screen.fill(colour, rect, special_flags=pg.BLEND_RGB_ADD)
+
+    def _draw_fps(self, screen: pg.Surface, v: View) -> None:
+        """Frames per second, small and dim, in the top-left corner of the screen."""
+        left, top, _, _ = v.logical_bounds()
+        fps = round(self.fps)
+        colour = C.CYAN_DIM if fps >= 50 else C.AMBER if fps >= 30 else C.ERROR
+        n = len(str(fps))  # no unlit digits in front: a dim 8 would read as part of the number
+        hud.seg_number(screen, v, fps, n, (left + 14, top + 12), 13, colour, glow_k=0.3)
+        label_x = left + 14 + hud.digits_width(n, 13) + 8
+        hud.label(screen, v, t("hud.fps"), (label_x, top + 14), colour, 10)
 
     def _window_size(self) -> tuple[int, int]:
         return (pg.display.get_surface() or self.screen).get_size()
