@@ -58,11 +58,20 @@ process.stdin.on("end", () => {
         const sub = g[1].toLowerCase();
         const rest = (g[2] || "").toLowerCase();
         if (sub === "push") {
-          deny("Dự án này chỉ dùng git cục bộ, không có GitHub/remote (CLAUDE.md §6). Không push. 'Đưa lên main' = gộp nhánh vào main cục bộ khi người dùng nói.");
+          deny("Dự án này chỉ dùng git cục bộ, không có GitHub/remote (CLAUDE.md §6). Không push. Khi người dùng nói push/gộp = gộp nhánh vào main cục bộ rồi xoá nhánh bằng `git branch -d` (CLAUDE.md §6b).");
           return finish();
         }
         if (sub === "remote" && /^(add|set-url)\b/.test(rest)) {
           deny("Dự án này không dùng remote/GitHub (CLAUDE.md §6). Không thêm remote.");
+          return finish();
+        }
+        const raw = g[2] || ""; // giữ nguyên hoa/thường: `-D` khác `-d`
+        const forceDelete =
+          sub === "branch" &&
+          (/(^|\s)-[a-zA-Z]*D[a-zA-Z]*(\s|$)/.test(raw) ||
+            (/(^|\s)(-[a-zA-Z]*d[a-zA-Z]*|--delete)(\s|$)/.test(raw) && /(^|\s)(-f|--force)(\s|$)/.test(raw)));
+        if (forceDelete) {
+          deny("`git branch -D` xoá nhánh dù còn commit chưa gộp, không khôi phục dễ (CLAUDE.md §6b). Dùng `git branch -d`: nó tự từ chối nếu nhánh chưa gộp vào main.");
           return finish();
         }
         const destructive =

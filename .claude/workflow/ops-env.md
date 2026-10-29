@@ -11,7 +11,7 @@
 - PowerShell 5.1: không có `&&`/`||`; nối bằng `;` hoặc dùng Bash tool. Đường dẫn có dấu cách phải bọc nháy (`E:\pygame projects\MathofPool`).
 
 ## Git (chỉ cục bộ, không GitHub)
-- Nhánh làm việc `chore/...`, `feat/...`, `fix/...`; `main` chỉ nhận bằng "gộp" khi người dùng nói. Không có remote nên không push, không CI; cổng kiểm tra = `tools\gate.py` chạy tay.
+- Nhánh làm việc `chore/...`, `feat/...`, `fix/...`; `main` chỉ nhận khi người dùng nói push/gộp/merge/đưa lên main; sau khi gộp nhánh bị xoá bằng `git branch -d` (quy trình đầy đủ: CLAUDE.md §6b). Không có remote nên không push, không CI; cổng kiểm tra = `tools\gate.py` chạy tay.
 - Trước mọi lệnh có thể xoá thay đổi chưa commit: `git status`. Hook chặn `reset --hard`, `clean -f`, `checkout -- `, `restore` (không `--staged`), `stash drop/clear`.
 - Ảnh chụp, profile: `tools/_out/` (git bỏ qua).
 

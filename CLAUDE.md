@@ -18,6 +18,7 @@ Người dùng không chuyên kỹ thuật. Mọi câu hỏi (AskUserQuestion) l
 ## 2. Đầu phiên (hook SessionStart đã in sẵn; Claude PHẢI làm)
 1. Báo MỘT dòng `Công cụ: đủ` hoặc `THIẾU: <tên> — <cách khắc phục>` dựa trên dữ liệu hook (venv, pygame-ce, pytest, ruff, nhánh git).
 2. Báo ≤3 dòng việc dang dở từ "Đang mở" của PROGRESS.md, hỏi có tiếp không. Không tự nối việc cũ.
+3. Hook in dòng "Nhánh chưa gộp quá 1 ngày": có nhánh thì thêm MỘT dòng `Còn n nhánh chưa gộp: ...` và hỏi có gộp + dọn không (§6b); không có thì không nói gì.
 
 ## 3. Phân loại — mọi yêu cầu bắt đầu ở đây
 Nói MỘT dòng: "Tôi coi đây là <loại>: <việc>". Chắc chắn thì làm; không chắc thì hỏi một câu. Rồi ĐỌC file đường TRƯỚC khi làm:
@@ -49,9 +50,17 @@ Theo luật chung (thử lại 1 lần → báo ngay → CHƯA LÀM). Riêng d�
    - Việc vặt: `gate.py --quick` (ruff check + format + pytest).
    - Bug / tính năng / giao diện / vật lý / refactor chạm code: `gate.py` đầy đủ (thêm smoke headless: bật game 300 khung hình, báo ms/khung). Chỉ sửa tài liệu hoặc luật: bỏ cổng.
 2. Commit trên nhánh làm việc (không bao giờ commit thẳng `main`/`master`), message tiếng Việt `type(scope): ...`, rồi DỪNG. Mỗi commit một việc.
-3. Dự án này CHỈ dùng git cục bộ: không GitHub, không remote, không push (hook chặn `git push` và `git remote add`). "Đưa lên main" = gộp nhánh làm việc vào `main` cục bộ, chỉ khi người dùng nói "gộp"/"merge"/"đưa vào main" (hook chặn mọi `commit`/`merge` đang đứng trên main nếu lượt nhắn gần nhất không có ý đó).
+3. Dự án này CHỈ dùng git cục bộ: không GitHub, không remote, không push (hook chặn `git push` và `git remote add`). "Đưa lên main" = gộp nhánh làm việc vào `main` cục bộ, chỉ khi người dùng nói "push"/"gộp"/"merge"/"đưa lên main" (hook chặn mọi `commit`/`merge` đang đứng trên main nếu lượt nhắn gần nhất không có từ nào trong số đó). Quy trình gộp và dọn nhánh: §6b.
 4. Cập nhật PROGRESS.md: số đo và LÝ DO, không chỉ liệt kê việc.
 5. Đối chiếu §4–§5 một lượt, rồi viết dòng đầu `ĐỦ BƯỚC` / `THIẾU …`.
+
+## 6b. Vòng đời nhánh (người dùng chốt 2026-10-29: không để nhánh tồn đọng)
+1. Mỗi việc một nhánh, tách từ `main` mới nhất (`git switch -c feat/<tên> main`). KHÔNG tách chồng lên nhánh chưa gộp.
+2. Trước khi tạo nhánh cho việc mới: `git branch --no-merged main`. Còn nhánh chưa gộp → AskUserQuestion MỘT câu: "gộp việc cũ trước (rồi dọn)" hoặc "bỏ qua: tách việc mới từ main, việc cũ để riêng". Không tự chọn thay người dùng.
+3. Người dùng nói push/gộp/merge/đưa lên main: nói một dòng "Tôi hiểu là gộp nhánh X vào main" rồi làm tuần tự: `git status` sạch → `git switch main` (chưa có `main`: `git branch main <nhánh gốc của chuỗi>` trước) → `git merge <nhánh>` (nhánh chồng nhau: gộp từ gốc lên) → chạy `gate.py` trên main nếu không phải fast-forward → xoá nhánh đã gộp bằng `git branch -d` → báo "Đã dọn nhánh X" và nói đang đứng ở nhánh nào.
+4. `git branch -d` (tự từ chối nếu còn commit chưa gộp); `-D` bị hook chặn. Gộp xung đột hoặc gate đỏ trên main: dừng, báo người dùng, KHÔNG xoá nhánh (xung đột chưa hoàn tất: `git merge --abort`).
+5. Worktree tạm (`git worktree add` để chạy cổng trên bản sạch): xoá ngay sau khi dùng (`git worktree remove <thư mục>`). Cuối việc `git worktree list` chỉ còn thư mục chính.
+6. Đầu phiên hook liệt kê nhánh chưa gộp quá 1 ngày → §2.3.
 
 ## 7. Tự học
 Người dùng sửa cùng một lỗi lần thứ hai → Claude sửa luật có sẵn ở đúng file (file này hoặc một file đường): thay luật cũ cùng chủ đề, không thêm file. Báo một dòng "Đã ghi luật: …". KHÔNG ghi luật hay nhật ký sự kiện vào auto-memory. Sự cố môi trường mới → thêm một dòng có ngày vào `ops-env.md`.

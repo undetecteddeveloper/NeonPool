@@ -36,6 +36,42 @@ function branch() {
   }
 }
 
+// Nhánh làm việc chưa gộp vào main mà commit mới nhất đã quá 1 ngày (CLAUDE.md §6b.6).
+// Chưa có `main` thì mọi nhánh khác đều tính là chưa gộp.
+function staleBranches() {
+  const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", timeout: 5000 }).trim();
+  try {
+    let hasMain = true;
+    try {
+      git(["rev-parse", "--verify", "--quiet", "refs/heads/main"]);
+    } catch {
+      hasMain = false;
+    }
+    const rows = git(["for-each-ref", "--format=%(refname:short)|%(committerdate:unix)", "refs/heads"])
+      .split("\n")
+      .filter(Boolean);
+    const now = Date.now() / 1000;
+    const stale = [];
+    for (const row of rows) {
+      const [name, ts] = row.split("|");
+      if (name === "main" || name === "master") continue;
+      if (hasMain) {
+        try {
+          git(["merge-base", "--is-ancestor", name, "main"]);
+          continue; // đã gộp
+        } catch {
+          // chưa gộp: xét tuổi bên dưới
+        }
+      }
+      const days = Math.floor((now - Number(ts)) / 86400);
+      if (days >= 1) stale.push(`${name} (${days} ngày)`);
+    }
+    return stale.length ? stale.join(", ") : "không có";
+  } catch {
+    return "(không kiểm được — chạy `git branch --no-merged main`)";
+  }
+}
+
 const missing = [];
 if (!has(".venv/Scripts/python.exe")) missing.push(".venv (py -3.13 -m venv .venv)");
 else {
@@ -56,6 +92,7 @@ const context = [
   `- Công cụ Python: ${toolsLine}`,
   `- Cổng kiểm tra: ${gateLine}`,
   `- Nhánh git: ${br}${brWarn}`,
+  `- Nhánh chưa gộp quá 1 ngày: ${staleBranches()}`,
   "--- PROGRESS.md ---",
   openProgress(),
 ].join("\n");
