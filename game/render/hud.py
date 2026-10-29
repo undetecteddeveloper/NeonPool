@@ -15,6 +15,16 @@ from game.render.layout import PANEL_H, PANEL_W, PANEL_X, PANEL_Y
 from game.render.view import View
 
 MINI = 20  # side of a small ball in the "balls left" grid (logical px)
+PANEL_KEYS = (  # key list at the bottom of the side panel (the help screen photographs it)
+    "hud.key_restart",
+    "hud.key_mute",
+    "hud.key_feel",
+    "hud.key_help",
+    "hud.key_full",
+    "hud.key_menu",
+)
+KEY_STEP = 17
+KEYS_Y = PANEL_Y + PANEL_H - 14 - len(PANEL_KEYS) * KEY_STEP  # top of the first key line
 BANNER_PAD = 16  # vertical padding of a notice (logical px), two lines make it 64 tall
 
 
@@ -45,6 +55,20 @@ def text(
 def text_width(v: View, s: str, size: int, bold: bool = False) -> float:
     """Width in LOGICAL units of `s` at logical `size`."""
     return _text(s, max(6, v.i(size)), bold, C.TEXT).get_width() / v.s
+
+
+def wrap(v: View, s: str, size: int, max_w: float, bold: bool = False) -> list[str]:
+    """Break `s` into lines no wider than `max_w` logical units (a single long word stays whole)."""
+    lines: list[str] = []
+    line = ""
+    for word in s.split():
+        trial = f"{line} {word}".strip()
+        if line and text_width(v, trial, size, bold) > max_w:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    return [*lines, line] if line else lines
 
 
 def text_outlined(
@@ -141,8 +165,7 @@ def draw_panel(
 
     text(canvas, v, t("hud.moving") if moving else t("hud.ready"), 14, C.TEXT, (x, y))
     text(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), 13, C.TEXT_DIM, (x, y + 20))
-    keys = ("hud.key_restart", "hud.key_mute", "hud.key_feel", "hud.key_full", "hud.key_menu")
-    ky = PANEL_Y + PANEL_H - 14 - len(keys) * 17
+    ky = KEYS_Y
     pg.draw.line(
         canvas,
         C.PANEL_EDGE,
@@ -150,8 +173,8 @@ def draw_panel(
         v.ipt((PANEL_X + PANEL_W - 16, ky - 8)),
         max(1, v.i(1)),
     )
-    for i, k in enumerate(keys):
-        text(canvas, v, t(k), 12, C.TEXT_DIM, (x, ky + i * 17))
+    for i, k in enumerate(PANEL_KEYS):
+        text(canvas, v, t(k), 12, C.TEXT_DIM, (x, ky + i * KEY_STEP))
 
 
 # --- buttons, the table banner and the result card -----------------------------------------

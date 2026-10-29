@@ -15,6 +15,7 @@ from game.render import palette as C
 from game.render.view import View
 from game.render.viewport import window_to_logical
 from game.rules.eight_ball import PLAYING
+from game.scenes.help import HelpScene
 from game.scenes.menu import MenuScene
 from game.scenes.play import PlayScene
 
@@ -33,6 +34,7 @@ class App:
         self.audio = Audio()
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.menu = MenuScene(self)
+        self.help = HelpScene(self)
         self.scene = self.menu
         self.running = True
         self._window = screen.get_size()
@@ -40,6 +42,16 @@ class App:
 
     def go_play(self) -> None:
         self.scene = self.play
+
+    def go_help(self) -> None:
+        """Open the how-to-play screen; Esc returns to the scene that opened it."""
+        self.play.drag.cancel()
+        self.play.placing = False
+        self.help.back = self.scene
+        self.scene = self.help
+
+    def leave_help(self) -> None:
+        self.scene = self.help.back or self.menu
 
     def go_menu(self) -> None:
         self.play.drag.cancel()
@@ -82,6 +94,7 @@ class App:
             self.canvas = pg.Surface(target.size)
             self.play.set_view(target)
             self.menu.set_view(target)
+            self.help.set_view(target)
 
     def draw(self) -> None:
         screen = pg.display.get_surface() or self.screen

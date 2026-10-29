@@ -181,7 +181,7 @@ def draw_ring(
     color: tuple[int, int, int, int],
     width: float = 3,
 ) -> None:
-    """A smooth ring around a logical point (the cue ball in hand, ."""
+    """A smooth ring around a logical point (the cue ball in hand)."""
     pad = radius + width + 2
     layer = Aa(canvas, v, v.rect(centre[0] - pad, centre[1] - pad, 2 * pad, 2 * pad))
     pg.draw.circle(

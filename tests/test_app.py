@@ -35,6 +35,7 @@ def test_app_opens_on_the_menu_and_play_enters_the_table(app):
 def test_menu_language_button_switches_language_both_ways(app):
     assert i18n.get_lang() == "vi"
     app.handle_event(key(pg.K_DOWN))
+    app.handle_event(key(pg.K_DOWN))  # play, how to play, then Language
     app.handle_event(key(pg.K_RETURN))
     assert i18n.get_lang() == "en"
     app.handle_event(key(pg.K_RETURN))

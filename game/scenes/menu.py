@@ -12,7 +12,7 @@ from game.render import palette as C
 from game.render.draw import BallSprites, blit_pm, blit_rrect
 from game.render.view import View
 
-ITEMS = ("play", "language", "quit")
+ITEMS = ("play", "help", "language", "quit")
 BTN_W, BTN_H, BTN_GAP = 320, 58, 18
 FIRST_Y = 330
 DECOR_SCALE = 3  # decorative balls are drawn natively 3x bigger, not stretched
@@ -33,6 +33,7 @@ class MenuScene:
         resume = self.app.game_in_progress()
         return [
             t("menu.resume") if resume else t("menu.play"),
+            t("menu.help"),
             f"{t('menu.language')}: {t('lang.name')}",
             t("menu.quit"),
         ]
@@ -53,6 +54,8 @@ class MenuScene:
         item = ITEMS[i]
         if item == "play":
             self.app.go_play()
+        elif item == "help":
+            self.app.go_help()
         elif item == "language":
             i18n.toggle_lang()
         else:

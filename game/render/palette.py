@@ -11,6 +11,7 @@ ACCENT = (250, 222, 60)
 # table, after the reference picture: bright cloth fading to deep green at the edges
 CLOTH_CENTRE = (98, 190, 102)
 CLOTH_EDGE = (34, 104, 50)
+MINI_CLOTH = (62, 146, 80)  # the cloth of the small tables in the how-to-play pictures
 CUSHION = (24, 98, 50)
 CUSHION_NOSE = (72, 152, 88)  # the lit edge facing the cloth
 CUSHION_BASE = (14, 62, 32)

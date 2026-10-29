@@ -1,7 +1,7 @@
 """The table: 8-ball practice, played by dragging back from the cue ball.
 
 After a foul the cue ball is "in hand": drag it to where you want it.
-Hotkeys: R restart, 1/2/3 feel, Esc menu.
+Hotkeys: R restart, 1/2/3 feel, H how to play, Esc menu.
 """
 
 from __future__ import annotations
@@ -195,6 +195,8 @@ class PlayScene:
     def _key(self, key: int) -> None:
         if key == pg.K_r:
             self.new_game()
+        elif key == pg.K_h:
+            self.app.go_help()
         elif key == pg.K_ESCAPE:
             if self.drag.active:
                 self.drag.cancel()

@@ -21,7 +21,7 @@ game/
   rules/                 # THUẦN: eight_ball.py nhận Event -> trạng thái ván (nhóm, lỗi, thắng/thua)
   input/                 # drag.py -> trả Shot (cách nhập nào thêm sau này cũng chỉ trả Shot)
   render/                # vẽ bàn (table.py), bi, thanh kéo, HUD; PX_PER_M chỉ dùng ở đây
-  scenes/                # menu, play, ...
+  scenes/                # menu, play, help (+ help_pictures: ảnh thật chụp từ PlayScene), ...
 lang/vi.json, en.json
 tests/                   # pytest; conftest.py đặt SDL dummy
 tools/                   # gate.py (cổng), smoke.py, shot.py, _out/ (git bỏ qua)
@@ -33,7 +33,7 @@ tools/                   # gate.py (cổng), smoke.py, shot.py, _out/ (git bỏ 
 - `Event`: `BallHitBall(a, b, speed)`, `BallHitCushion(ball, speed)`, `BallPocketed(ball, pocket)`; `speed` = vận tốc va theo pháp tuyến (m/s), phát mọi va chạm có tốc độ > `MIN_EVENT_SPEED` (0,001 m/s: luật cần cả cú chạm rất nhẹ); `Audio` tự bỏ tiếng nhỏ hơn `SFX_MIN_SPEED`. `rules` chỉ đọc Event, không đọc trạng thái vật lý.
 - `physics.first_contact(balls, origin, direction) -> Contact(kind, distance, point, ball, object_dir)`: điểm bi trắng chạm đầu tiên (bi hoặc băng) cho vạch ngắm.
 - `rules.eight_ball.EightBall` (thay `FreePlay`; xem docs/plans/20261028-8ball.md): `on_shot()`, `on_events(events)`, `finish_shot() -> ShotResult` (gọi khi mọi bi đã dừng: xét lỗi, chọn nhóm, thắng/thua), `cue_placed()`, `rerack()`, `reset()`; `shots, fouls, pocketed, group (None|'solid'|'stripe'), phase ('playing'|'won'|'lost'), cue_in_hand, is_break, balls_left`, `group_left()`, `eight_is_next()`. `ShotResult.outcome` ∈ {None, WON, LOST, RERACK}; lỗi là khoá `foul.*`. `PlayScene` giữ vòng đời: `fire()` → bi chạy → dừng → `finish_shot()` → thông báo / đặt bi trắng / bảng kết quả.
-- `App`: `__init__(screen)`, `handle_event(e)`, `update(dt)`, `draw()`, `go_play()`, `go_menu()` — tools/smoke.py và tools/shot.py dựa vào các hàm này. App mở ở menu; `PlayScene` được giữ sống để Esc → menu → "Chơi tiếp" vẫn đúng ván cũ. Phím toàn cục (App): F11 toàn màn hình, M tắt/mở tiếng; phím riêng của bàn (R, 1/2/3, Esc) nằm ở `PlayScene`.
+- `App`: `__init__(screen)`, `handle_event(e)`, `update(dt)`, `draw()`, `go_play()`, `go_menu()`, `go_help()`/`leave_help()` (H trong ván, nút ở menu; Esc về cảnh đã mở) — tools/smoke.py và tools/shot.py dựa vào các hàm này. App mở ở menu; `PlayScene` được giữ sống để Esc → menu → "Chơi tiếp" vẫn đúng ván cũ. Phím toàn cục (App): F11 toàn màn hình, M tắt/mở tiếng; phím riêng của bàn (R, 1/2/3, H, Esc) nằm ở `PlayScene`.
 - Vẽ: mã game và layout dùng đơn vị LOGIC (1280×720); chỉ lúc vẽ mới nhân với `View.s` để ra pixel thật, và canvas của App có kích thước ĐÚNG khung hình trong cửa sổ (không phóng/thu). Khi đổi cỡ cửa sổ, App chờ `RESIZE_SETTLE_S` rồi gọi `set_view` cho từng scene để dựng lại bàn/bi đúng độ phân giải (trong lúc chờ chỉ kéo giãn tạm). Hình mịn: vẽ lớn (`View.scaled(k)`) rồi thu bằng `shrink_pm`/`Aa`.
 - Chuột: App đổi toạ độ cửa sổ → toạ độ canvas logic 1280×720 (`render/viewport.py`) TRƯỚC khi giao cho scene; scene chỉ biết toạ độ logic.
 - `i18n.t("khoa")`: `lang/vi.json` và `lang/en.json` phải cùng bộ khoá (test); khoá thiếu → thử ngôn ngữ kia → trả chính khoá + log cảnh báo. `render/fonts.get(size, bold)` tự tạo lại phông nếu pygame đã tắt/bật lại.
