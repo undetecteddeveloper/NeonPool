@@ -19,7 +19,7 @@ game/
     world.py             #   World.step(dt) -> list[Event]; trạng thái bi; rng riêng
     collide.py           #   bi–bi, bi–băng, bi–lỗ
   rules/                 # THUẦN: eight_ball.py nhận Event -> trạng thái ván (nhóm, lỗi, thắng/thua)
-  input/                 # drag.py: Knob (cơ như núm vặn quanh bi trắng) + DragAim (kéo nạp lực, góc khoá) -> trả Shot; cách nhập nào thêm sau này cũng chỉ trả Shot
+  input/                 # drag.py: Knob (cơ như núm vặn quanh bi trắng) + DragAim (kéo ngược hướng muốn đánh: hướng và lực đều theo hướng kéo, tính từ chỗ bấm) -> trả Shot; cách nhập nào thêm sau này cũng chỉ trả Shot
   settings.py            # cài đặt của người chơi (ngôn ngữ, âm lượng, rung, FPS): JSON trong %APPDATA%\NeonPool, biến NEONPOOL_SETTINGS đổi chỗ (test và tools dùng); thuần, không pygame
   render/                # vẽ: bàn tối giản (table.py), bi + cơ neon + nút đặc (draw.py), chữ + số 7 đoạn + bảng điểm (hud.py), nền synthwave + sóng sống + bi trôi ở menu (synth.py), vệt quét CRT (crt.py), ánh sáng (glow.py), vòng sóng (fx.py), phông (fonts.py: assets/fonts, OFL), màu (palette.py); PX_PER_M chỉ dùng ở đây
   scenes/                # menu, play, help (+ help_pictures: ảnh thật chụp từ PlayScene), settings (bảng Cài đặt nổi trên menu)
