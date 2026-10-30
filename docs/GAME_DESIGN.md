@@ -10,7 +10,7 @@ Nguồn sự thật cho NỘI DUNG GAME (người dùng THẤY gì). Cách code:
 | Chế độ | Tập một mình: không đối thủ, không lượt; đếm số cú, lỗi chỉ bị phạt nhẹ |
 | Chế độ chơi | MỘT chế độ: kéo thả kiểu truyền thống. Chế độ nhập công thức toán (y = ax + b) đã làm thử rồi BỎ HẲN (người dùng chốt 2026-10-29 sau khi chơi: khó chơi, ít thú vị hơn chơi thường). Mọi cách nhập vẫn chỉ sinh ra `Shot` (ARCHITECTURE.md) |
 | Kéo thả | Hướng kéo ngược = hướng đánh; độ dài kéo = lực, CÓ GIỚI HẠN (kéo quá mức tối đa thì không mạnh thêm) |
-| Vật lý | Có xoáy cơ bản: đánh cao/thấp (bi trắng chạy tới/lùi sau va chạm). CHƯA có xoáy ngang |
+| Vật lý | Có xoáy cơ bản: đánh cao/thấp (bi trắng chạy tới/lùi sau va chạm). CHƯA có xoáy ngang. Đã làm 2026-10-30 ("Phản hồi lần 12"): chỉnh ở hình bi nhỏ ở bảng bên, về giữa sau mỗi cú; ba bộ độ mạnh có tên chờ người dùng chơi thử chọn |
 | Ngôn ngữ | Tiếng Việt + tiếng Anh, đổi được; mặc định tiếng Việt |
 | Chỉnh cảm giác | Claude đề xuất 2–3 bộ thông số CÓ TÊN, người dùng chơi thử và chọn. Người chơi KHÔNG còn đổi được cảm giác bàn trong game (bỏ phím 1/2/3 và cụm "Cảm giác bàn", 2026-10-29): luôn là "Vừa" |
 
@@ -28,7 +28,7 @@ Hình học bàn và luật giữ nguyên. Hai phong cách trước đã bị TH
 | Cài đặt | Menu: Chơi / Hướng dẫn / Cài đặt / Thoát. Cài đặt là bảng nổi trượt lên trên menu (khi bảng đã mở yên, menu là ảnh đứng yên dưới lớp phủ tối; lúc bảng đang đóng lại thì menu chạy lại — xem "Phản hồi lần 11"). Đóng bằng nút Xong, KHÔNG có nút ✕ như Hướng dẫn (người dùng chốt 2026-10-30: không cần). Gồm: Ngôn ngữ (vi/en), Âm lượng (0–100%, nấc 10%, có bíp thử), Nhạc nền (0–100%, nấc 10%, mặc định 50%; nghe ngay vì nhạc đang chạy), Rung màn hình (bật/tắt), Hiện FPS (bật/tắt; số đèn 7 đoạn nhỏ ở góc trên trái, vàng < 50, đỏ < 30). Mọi thay đổi áp ngay và LƯU NGAY vào %APPDATA%\NeonPool\settings.json, còn nguyên khi mở lại game |
 | Hiệu ứng | Bàn ĐỨNG YÊN khi ngắm. (1) Menu: bi lần lượt (1→15 rồi bi trắng, tối đa 5 bi, ~2,4 s một bi) nổi lên từ đáy màn hình cùng một cỡ (1,43 lần bi trên bàn), đi CHÉO sang phải khoảng 20° do dòng chảy (dòng mạnh dần khi gần dải sóng nên đường đi cong thành trôi ngang), chậm dần khi tới dải sóng rồi dập dềnh; bi KHÔNG làm sóng lõm hay gợn (dải sóng y như khi không có bi); số và vạch sọc xoay qua lại ±90° lúc nổi, ±35° và chậm hơn lúc trôi; bi nằm GIỮA các nét sóng (độ sâu đổi dần: vài nét chạy sau bi bị thân bi che, vài nét chạy trước cắt ngang mặt bi, luôn có ít nhất một nét mỗi phía), và trôi theo sóng sang phải tới khi khuất; sóng menu KHÔNG còn phản ứng với chuột. Hướng dẫn là khung nổi: cảnh phía sau đứng yên và tối ~90% (xem "Màn Hướng dẫn chơi", lần 10–11). Lưới chân trời trôi, sao lấp lánh, sọc mặt trời trượt, tiêu đề chập chờn lúc vào rồi thở nhẹ. (2) Vòng sóng nhỏ khi bi va chạm (lơ) / chạm băng (tím). (3) Bi rơi lỗ: một vòng sóng màu của viên bi lan từ lỗ ra cả mặt bàn, đường viền và biên bàn sáng bừng chỗ sóng đi qua (thay hai vệt sáng chạy quanh bàn, đã bỏ). (4) Bi đã dừng: chữ arcade lớn bật giữa bàn rồi thu về dải thông báo; bấm chuột là tắt. (5) Bảng bên: số lăn như đồng hồ máy xèng khi đổi và nháy sáng; bi vừa vào lỗ thu nhỏ rồi bị gạch bằng nhịp sáng. (6) Nút: chọn thì sáng dần, nở nhẹ, mũi tên trượt vào, một vệt sáng chạy một vòng viền; bấm thì nhún và loé; ở menu khung sáng trượt từ nút cũ sang nút mới. (7) Đổi màn kiểu tắt/bật TV CRT: màn cũ gập thành vệt sáng ngang rồi tắt, màn mới bung ra (~0,34 s). (8) Rung màn hình (tắt được): cú phá và cú bi trắng va rất mạnh, mạnh yếu theo lực. Thêm: bi co vào lỗ |
 | Cửa sổ | Mở TOÀN MÀN HÌNH; F11 chuyển sang cửa sổ (kéo to/nhỏ được) và ngược lại. Không còn dải đen ở mọi tỉ lệ màn hình: nền và ánh sáng phủ kín, khung 1280×720 giữ đúng tỉ lệ ở giữa (màn siêu rộng: bàn + bảng bên ở giữa, nền trải hai bên) |
-| MVP | Menu mở đầu (Chơi / Ngôn ngữ / Thoát) + bàn chơi tự do (15 bi tam giác, kéo thả, va chạm, nảy băng, vào lỗ, bi trắng rơi lỗ thì đặt lại) + bảng bên (số cú, bi còn lại) + phím R chơi lại, M tắt tiếng, H hướng dẫn. (Phím G lưới toạ độ có ở bản đầu, đã bỏ 2026-10-29 cùng chế độ công thức.) Luật thắng/thua làm sau (mục "Luật tập một mình"); CHƯA có xoáy |
+| MVP | Menu mở đầu (Chơi / Ngôn ngữ / Thoát) + bàn chơi tự do (15 bi tam giác, kéo thả, va chạm, nảy băng, vào lỗ, bi trắng rơi lỗ thì đặt lại) + bảng bên (số cú, bi còn lại) + phím R chơi lại, M tắt tiếng, H hướng dẫn. (Phím G lưới toạ độ có ở bản đầu, đã bỏ 2026-10-29 cùng chế độ công thức.) Luật thắng/thua làm sau (mục "Luật tập một mình"); bản MVP CHƯA có xoáy (đã thêm 2026-10-30, xem "Phản hồi lần 12") |
 
 ## Phản hồi sau khi người dùng chơi thử MVP (2026-10-28)
 - Đồ họa: phải là vector thật, mịn ở mọi cỡ cửa sổ (laptop HD 1280×720 của người dùng; cửa sổ mở đầu tự vừa màn hình). Đã chuyển sang vẽ ở độ phân giải thật.
@@ -47,7 +47,7 @@ Hình học bàn và luật giữ nguyên. Hai phong cách trước đã bị TH
 - Bỏ chế độ công thức khỏi dự án: vừa khó chơi vừa không tạo nhiều cảm giác thích thú so với chơi thường. Kéo theo: bỏ mức toán Dễ/Vừa/Khó, nút Gợi ý, lưới toạ độ (phím G), đường cong y = f(x) khỏi kế hoạch. Menu còn Chơi / Ngôn ngữ / Thoát (sau đó thêm Hướng dẫn, xem mục dưới).
 - Giữ: bàn vẽ lại, bóng thẳng xuống, thanh kéo vuông (lần 2) và luật 8-ball (mục dưới).
 - Đã quyết (2026-10-29): game đổi tên thành NeonPool, dòng phụ vi "Mỗi cú đánh một vệt sáng" / en "Every shot leaves a glow"; không còn yếu tố toán trong tên và chữ hiện ra. (Tên cũ là MathofPool.)
-- Việc kế tiếp theo thứ tự đã chọn: xoáy cao/thấp.
+- Việc kế tiếp theo thứ tự đã chọn: xoáy cao/thấp (đã làm 2026-10-30, xem "Phản hồi lần 12").
 
 ## Phản hồi lần 5 (2026-10-29, người dùng yêu cầu: đổi đồ họa sang neon nền tối + hiệu ứng wave, nâng giao diện theo phong cách neon)
 Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng ảnh):
@@ -61,6 +61,20 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 ## Phản hồi lần 8 (2026-10-29, chỉnh cuối sau khi xem bản arcade)
 - Menu: bi nổi trông mờ và hơi giật khi chạm dải sóng. Nguyên nhân mờ: ánh sáng cộng của dải sóng được vẽ ĐÈ lên thân bi (bi vẽ trước dải sóng); nguyên nhân giật: cú đẩy "gợn" lúc bi chạm sóng làm mặt sóng rung theo mà bi bám đúng mặt sóng. Sửa: bi vẽ sau dải sóng, bỏ gợn khi chạm sóng (dải sóng giống hệt khi không có bi), bi nhỏ đi 35% (cỡ 2,2 → 1,43 lần bi trên bàn; người dùng nói "giảm xuống khoảng 35%", hiểu là giảm bớt 35%, như lần giảm biên độ cơ 20–30% ở lượt 6).
 - Kéo cơ: bỏ khoá góc. Bấm giữ rồi kéo NGƯỢC hướng muốn đánh, hướng đánh theo hướng kéo suốt lúc kéo (tính từ chỗ bấm, nên bấm chỗ nào trên bi cũng không làm cơ nhảy). Vặn núm khi rê chỉ còn là bước ngắm trước; kéo dọc theo cơ thì giữ nguyên góc đã vặn.
+
+## Phản hồi lần 12 (2026-10-30, xoáy cao/thấp; người dùng chọn đủ các phương án khuyến nghị; brief: docs/plans/20261030-xoay.md)
+- Nghĩa: đánh vào chỗ nào của bi trắng. Giữa bi (như trước): đụng thẳng bi khác thì bi trắng đứng lại. ĐÁNH CAO: sau va chạm bi trắng chạy tiếp về phía trước. ĐÁNH THẤP: bi trắng lùi về phía người chơi. Trên đường tới bi, đánh cao nhanh hơn chút, đánh thấp chậm hơn chút (như ngoài đời). CHƯA có xoáy ngang; luật và điểm không đổi.
+- Chỉnh (người dùng chọn): hình bi trắng nhỏ ở bảng bên, bên phải dòng trạng thái, tên "XOÁY"/"SPIN"; chấm hồng trên hình là chỗ cơ chạm. Bấm hoặc kéo chấm lên/xuống (giữa dễ trúng), hoặc lăn chuột (±0,25 mỗi nấc). Chỉ chỉnh được khi mọi bi đứng yên (lúc bi chạy hình mờ đi). Sau MỖI cú, và khi ván mới, chấm về giữa (người dùng chọn: khỏi quên). Không có phím tắt.
+- Vạch ngắm KHÔNG đổi: không vẽ bi trắng sẽ đi đâu sau va chạm (người dùng chọn, cùng ý "không dự đoán nảy băng").
+- Chữ: "Bi đang chạy" → "Đang chạy", "Balls rolling" → "Rolling" (nhường chỗ cho hình bi). Hướng dẫn: trang 1 thêm một dòng trỏ sang trang Phím tắt; trang 6 thêm câu giải thích và hình có cả hình bi xoáy; khung chữ của Hướng dẫn cao thêm 24 px cho vừa.
+- Mô hình (tự đặt trên cơ sở Townsend, UIUC; chỉ bi trắng): bi vừa bị đánh trượt trên nỉ rồi mới lăn. Phần trượt mà cú đánh giữa bi không có là "kho xoáy" q (m/s, dọc đường ngắm, dương = cao); ma sát trượt dùng q dần với tốc độ `decay` (m/s²) và đổi mỗi đơn vị q thành 2/7 đơn vị tốc độ dọc q. Cao: đẩy bi trắng tiếp; thấp: kéo bi trắng lùi. q = xoáy × min(`base` + `gain` × tốc độ cú đánh, 3 × tốc độ); q không đổi khi va chạm (nên bi trắng đụng thẳng vẫn "đứng" rồi mới chạy tiếp/lùi), đụng băng thì giữ nguyên. Xoáy 0 chạy Y HỆT bản không xoáy (kiểm bằng dấu vân tay kết quả 15 cú: 5 cú × 3 bộ cảm giác, trước và sau khi sửa). Các bi khác không có xoáy.
+- BA BỘ CÓ TÊN (`SPIN_SETS`, tự đặt; CHƯA chốt, người dùng chơi thử rồi chọn; chọn bằng biến môi trường `NEONPOOL_SPIN_SET` = NHE, VUA hoặc MANH, mặc định VUA; bộ không chọn sẽ xoá). Số đo: bi trắng đụng THẲNG một bi đứng yên cách 80 cm, rồi đi thêm bao nhiêu cm (+ tới, − lùi), theo lực (kéo 120 px ≈ 0,3 · 170 px ≈ 0,6 · 220 px = 1,0):
+  | Bộ | Cảm giác | Đánh cao: lực 0,3 / 0,6 / 1,0 | Đánh thấp: lực 0,3 / 0,6 / 1,0 |
+  |---|---|---|---|
+  | NHE | xoáy nhẹ, hết nhanh theo quãng; cú nhẹ gần như không có | +5 / +28 / +62 cm | 0 / −9 / −16 cm |
+  | VUA | vừa (đang dùng) | +13 / +44 / +82 cm | −3 / −18 / −27 cm |
+  | MANH | rõ cả ở cú nhẹ và quãng xa | +26 / +60 / +101 cm | −12 / −30 / −39 cm |
+  Cách 30 cm (gần): VUA cao +33 / +60 / +95, thấp −20 / −30 / −35. Đánh thấp yếu hơn đánh cao vì bi trắng chậm lại khi chạy tới (đã biết; nếu người dùng thấy yếu thì tăng riêng phần thấp).
 
 ## Phản hồi lần 11 (2026-10-30, tinh chỉnh sau khi người dùng chạy thử lần 10; người dùng chọn đủ các phương án khuyến nghị, riêng thứ tự số chọn phương án 2)
 - LẬT TRANG ở carousel (cả ở menu và khi bấm H lúc chơi): bỏ chớp CRT, thay bằng TRƯỢT + MỜ theo hướng bấm. Bấm mũi tên phải (hoặc →, D, Enter): trang cũ trượt sang trái 72 px và mờ dần, trang mới từ bên phải trượt vào và rõ dần (0,26 s, giảm tốc cuối); bấm trái thì ngược lại; bấm chấm trang thì trượt về phía trang đó (tới gần hơn = trượt trái). Trang không bao giờ tràn ra ngoài chỗ của nó trên khung. MỞ/ĐÓNG khung vẫn là bung từ vệt sáng ngang.
@@ -118,7 +132,7 @@ Yêu cầu: UI hoàn chỉnh để DÙNG chứ không để test; chữ và số
 ## Tham chiếu vật lý (hệ số KHỞI ĐẦU để dựng bộ thông số có tên; chưa kiểm cảm giác)
 - Độ nảy băng ≈ 0,98 và ma sát trượt bi–băng ≈ 0,14; mô hình băng cứng chỉ đúng tới ≈ 2,5 m/s vận tốc vuông góc băng (Loughborough, xem nguồn).
 - Ma sát lăn nhỏ hơn ma sát trượt cỡ chục lần, bậc ≈ 0,01 (Townsend, UIUC).
-- Bi trượt rồi chuyển sang lăn tại một điểm xác định: cần trạng thái trượt/lăn cho từng bi nếu có xoáy (đây là chỗ phức tạp nhất của xoáy cơ bản).
+- Bi trượt rồi chuyển sang lăn tại một điểm xác định: cần trạng thái trượt/lăn cho từng bi nếu có xoáy (đây là chỗ phức tạp nhất của xoáy cơ bản). Lần 12 làm bản RÚT GỌN của mô hình này (chỉ bi trắng, chỉ cao/thấp): xem "Phản hồi lần 12".
 - Hệ số bi–bi, ma sát mặt bàn, khối lượng, bán kính: chưa có số trong tra cứu; chọn khi dựng bộ có tên và ghi nguồn vào đây.
 
 ## Nguồn tra cứu

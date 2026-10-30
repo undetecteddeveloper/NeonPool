@@ -8,12 +8,12 @@ Va chạm, ma sát, xoáy, độ nảy băng, lực đánh, "bi chạy lạ". Đ
 
 ## Bộ test bất biến (có từ ngày đầu của `physics/`; đổi vật lý mà làm đỏ bộ này là sai, không sửa test cho xanh)
 - Không chồng lấn: sau mỗi bước, mọi cặp bi cách tâm ≥ 2R − ε; không bi nào ra ngoài băng trừ khi vào lỗ.
-- Năng lượng động năng tổng không tăng sau cú đánh (trừ va chạm có xoáy được mô hình hoá — nêu rõ trong test).
+- Năng lượng động năng tổng không tăng sau cú đánh (trừ va chạm có xoáy được mô hình hoá — nêu rõ trong test). Với xoáy: đánh cao CÓ tăng nhẹ tốc độ bi trắng trên đường tới (ma sát trượt đổi xoáy thành tốc độ, `world._slide`), nên bất biến này chỉ áp cho cú xoáy 0 (`test_energy_never_increases`); cú có xoáy phải dừng hẳn, ở trong bàn, không chồng lấn (`tests/test_spin.py`).
 - Va chạm bi–bi thẳng, không ma sát, cùng khối lượng: trao nguyên vận tốc.
 - Xác định: cùng seed + `Shot` → trạng thái giống từng bit sau N bước.
 - Không xuyên: `Shot` lực tối đa vào băng/vào bi đứng yên không bao giờ xuyên qua.
 - Mọi bi dừng hẳn trong ≤ T giây (không rung vô hạn).
-- Xoáy: đánh cao → bi trắng chạy tới sau va chạm thẳng; đánh thấp → lùi (kiểm dấu vận tốc).
+- Xoáy: đánh cao → bi trắng chạy tới sau va chạm thẳng; đánh thấp → lùi (kiểm dấu vận tốc); xoáy 0 y hệt bản không xoáy (`tests/test_spin.py`, và dấu vân tay kết quả một loạt cú khi đổi vật lý).
 
 ## Chỉnh cảm giác (người dùng không chuyên: Claude không tự tuyên bố "ổn")
 1. Dựng 2–3 bộ thông số CÓ TÊN trong `config.py` (vd `BAN_TRON`, `BAN_CHAM`), mỗi bộ ghi một dòng "cảm giác thế nào" bằng lời thường.
