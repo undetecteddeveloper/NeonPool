@@ -83,5 +83,8 @@ Kiến trúc `net/` được GIỮ như dự kiến (protocol / transport / sess
 - Chặng 4: trang xem nhanh (số phòng, người, độ trễ), nhật ký có lý do ngắt, cập nhật một lệnh, thông báo khi máy chủ sập.
 - Không bao giờ: tài khoản, xếp hạng, chat tự do, khán giả, 3–4 người, ghép ngẫu nhiên, tự cập nhật, bot, vật lý trên máy chủ.
 
-## Kịch bản đo hai máy thật (người dùng chạy khi nhờ được bạn)
-(điền ở task 4)
+## Kịch bản đo hai máy thật (người dùng chạy khi nhờ được bạn) — CHƯA ĐO
+1. Hai máy cùng wifi, cùng bản (nhánh `feat/multiplayer`). Máy A: Chơi → Chơi đôi → gõ tên → Tạo phòng (Windows hỏi tường lửa lần đầu: cho phép mạng riêng). Máy B: Chơi đôi → Vào phòng → gõ địa chỉ máy A.
+2. Cài đặt → Hiện FPS trên cả hai. Đánh 20 cú mỗi bên; ghi: có thấy cơ đối thủ mượt không, bi hai bên có "nhảy" sau cú không (= điểm kiểm dán lại), thẻ kết quả hai bên có cùng số không.
+3. Số ms: chạy `tools
+etbench.py --tcp` ở MỘT máy (loopback, đã có: p95 0,37 ms khi luồng chính bận); hai máy thật cần thêm bản đo ping/pong giữa hai `Session` (`Session.rtt_s` đã đo mỗi giây; chưa hiện lên màn hình) — việc của chặng 3.
