@@ -15,6 +15,7 @@ import numpy as np
 from game.config import SAMPLE_RATE
 
 MINOR, MAJOR = (0, 3, 7, 12), (0, 4, 7, 12)  # chord tones, in semitones above the root
+MAJOR7, MINOR7 = (0, 4, 7, 11), (0, 3, 7, 10)  # a fourth, brighter note instead of the octave
 TARGET_RMS = 0.14  # every loop is brought to this loudness (so styles can be swapped freely)
 PAD_ATTACK_S, PAD_RELEASE_S = 0.55, 0.9
 
@@ -31,9 +32,13 @@ class Style:
     arp_shape: tuple[int, ...] = (0, 1, 2, 1)  # chord-tone numbers the arpeggio walks through
     bass: float = 0.0
     bass_per_beat: int = 1
+    bass_steps: tuple[int, ...] = (0,)  # semitones above the root, one per bass note, cycled
     kick: float = 0.0
     kick_beats: tuple[int, ...] = (0, 2)  # beats of each bar that get a kick
+    snare: float = 0.0
+    snare_beats: tuple[int, ...] = (1, 3)  # the back-beat
     hat: float = 0.0
+    hat_offsets: tuple[float, ...] = (0.5,)  # where in each beat the hat ticks (0.5 = off-beat)
     bell: float = 0.0
     bell_every: int = 3  # a bell every this many beats
     echo: float = 0.3  # how much of the arpeggio and bells comes back, a dotted eighth later
@@ -52,7 +57,7 @@ class Style:
         return self.bars * 4 * self.beat_s
 
 
-# --- the named styles: the menu's two, and the table's two (docs/GAME_DESIGN.md "round 10") -----
+# --- the named styles: the menu's two, and the table's three (docs/GAME_DESIGN.md "round 11") --
 MENU_DUSK = Style(  # slow and dreamy: long pads, a soft arpeggio, a few bells
     "menu_dusk", 84, ((57, MINOR), (53, MAJOR), (60, MAJOR), (55, MAJOR)),
     pad=0.9, arp=0.5, arp_shape=(0, 1, 2, 3, 2, 1), bass=0.55, bell=0.22, bell_every=5, echo=0.38,
@@ -62,17 +67,24 @@ MENU_CITY = Style(  # a little drive: a soft kick, a ticking hat, a pulsing bass
     pad=0.55, arp=0.45, arp_shape=(0, 2, 1, 3), bass=0.5, bass_per_beat=2, kick=0.45, hat=0.2,
     echo=0.3, seed=11,
 )  # fmt: skip
-PLAY_FOCUS = Style(  # calm and spare, no drums: it must not pull the eye off the aim
-    "play_focus", 68, ((52, MINOR), (48, MAJOR), (55, MAJOR), (50, MAJOR)),
-    pad=0.8, bass=0.3, bell=0.55, bell_every=3, echo=0.5, seed=5,
+PLAY_GROOVE = Style(  # medium tempo, a light kick on 1 and 3, a hopping bass, bright chords
+    "play_groove", 104, ((60, MAJOR7), (55, MAJOR), (57, MINOR7), (53, MAJOR7)),
+    pad=0.45, arp=0.42, arp_shape=(0, 2, 1, 3, 2, 1), bass=0.5, bass_per_beat=2,
+    bass_steps=(0, 0, 12, 0, 0, 7, 12, 0), kick=0.42, hat=0.16, echo=0.3, seed=21,
 )  # fmt: skip
-PLAY_PULSE = Style(  # a light, steady pulse under a quiet arpeggio
-    "play_pulse", 92, ((57, MINOR), (55, MAJOR), (53, MAJOR), (52, MAJOR)),
-    pad=0.5, arp=0.3, arp_shape=(0, 1, 2, 1), bass=0.42, bass_per_beat=2, kick=0.28,
-    kick_beats=(0,), hat=0.14, echo=0.3, seed=3,
+PLAY_GLIDE = Style(  # a shimmer of quick arpeggio notes over an easy beat, a few bells
+    "play_glide", 100, ((57, MINOR7), (53, MAJOR7), (60, MAJOR), (55, MAJOR)),
+    pad=0.5, arp=0.27, arp_per_beat=4, arp_shape=(0, 1, 2, 3, 2, 1), bass=0.45, bass_per_beat=2,
+    bass_steps=(0, 0, 0, 12), kick=0.32, hat=0.13, hat_offsets=(0.25, 0.75), bell=0.2,
+    bell_every=6, echo=0.4, seed=22,
 )  # fmt: skip
-STYLES = {s.name: s for s in (MENU_DUSK, MENU_CITY, PLAY_FOCUS, PLAY_PULSE)}
-TRACKS = {"menu": MENU_DUSK, "play": PLAY_FOCUS}  # what the game plays now
+PLAY_BOUNCE = Style(  # the liveliest of the three: a back-beat clap and a bouncing bass
+    "play_bounce", 108, ((62, MAJOR), (57, MAJOR), (59, MINOR), (55, MAJOR)),
+    pad=0.42, arp=0.45, arp_shape=(0, 1, 2, 1), bass=0.55, bass_per_beat=2,
+    bass_steps=(0, 12, 0, 12, 0, 12, 7, 12), kick=0.45, snare=0.22, hat=0.18, echo=0.28, seed=23,
+)  # fmt: skip
+STYLES = {s.name: s for s in (MENU_DUSK, MENU_CITY, PLAY_GROOVE, PLAY_GLIDE, PLAY_BOUNCE)}
+TRACKS = {"menu": MENU_DUSK, "play": PLAY_GROOVE}  # what the game plays now
 
 
 # --- voices (float32, about one unit loud; the style's level scales them) ---------------------
@@ -114,6 +126,14 @@ def _kick() -> np.ndarray:
     t = _time(0.32)
     phase = 2 * np.pi * np.cumsum(46.0 + 96.0 * np.exp(-t / 0.035)) / SAMPLE_RATE
     return (np.sin(phase) * np.exp(-t / 0.11)).astype(np.float32)
+
+
+def _snare(rng: np.random.Generator) -> np.ndarray:
+    """A soft clap: a burst of noise over a short low body."""
+    t = _time(0.16)
+    noise = rng.uniform(-1.0, 1.0, t.size).astype(np.float32) * np.exp(-t / 0.045)
+    body = np.sin(2 * np.pi * 185 * t) * np.exp(-t / 0.03)
+    return (0.7 * noise + 0.5 * body).astype(np.float32)
 
 
 def _hat(rng: np.random.Generator) -> np.ndarray:
@@ -167,7 +187,8 @@ def render(style: Style) -> np.ndarray:
             per = style.bass_per_beat
             for k in range(chord_beats * per):
                 accent = 1.0 if k % (4 * per) == 0 else 0.7
-                _add(body, at(start + k / per), _bass(_hz(root - 12), beat / per * 0.95),
+                step = style.bass_steps[k % len(style.bass_steps)]
+                _add(body, at(start + k / per), _bass(_hz(root - 12 + step), beat / per * 0.95),
                      style.bass * accent)  # fmt: skip
         if style.arp:
             per = style.arp_per_beat
@@ -185,9 +206,13 @@ def render(style: Style) -> np.ndarray:
         if style.kick:
             for b in style.kick_beats:
                 _add(body, at(bar * 4 + b), _kick(), style.kick)
+        if style.snare:
+            for b in style.snare_beats:
+                _add(body, at(bar * 4 + b), _snare(rng), style.snare)
         if style.hat:
-            for b in range(4):  # the off-beats
-                _add(body, at(bar * 4 + b + 0.5), _hat(rng), style.hat)
+            for b in range(4):
+                for off in style.hat_offsets:
+                    _add(body, at(bar * 4 + b + off), _hat(rng), style.hat)
 
     delay = at(0.75)  # a dotted eighth: the echo lands between the beats
     echoed = wet + style.echo * np.roll(wet, delay) + style.echo**2 * np.roll(wet, 2 * delay)

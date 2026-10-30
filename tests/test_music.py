@@ -16,8 +16,14 @@ def loops():
     return {name: music.render(style) for name, style in music.STYLES.items()}
 
 
-def test_there_are_two_candidates_for_the_menu_and_two_for_the_table():
-    assert set(music.STYLES) == {"menu_dusk", "menu_city", "play_focus", "play_pulse"}
+def test_there_are_two_candidates_for_the_menu_and_three_for_the_table():
+    assert set(music.STYLES) == {
+        "menu_dusk",
+        "menu_city",
+        "play_groove",
+        "play_glide",
+        "play_bounce",
+    }
     assert music.TRACKS["menu"].name.startswith("menu_")
     assert music.TRACKS["play"].name.startswith("play_")
     assert config.MUSIC_CHANNELS == len(music.TRACKS)  # one reserved channel per track
@@ -51,7 +57,18 @@ def test_every_loop_joins_its_own_start_without_a_click(loops, name):
 
 
 def test_the_same_style_always_gives_the_same_samples(loops):
-    assert np.array_equal(music.render(music.PLAY_FOCUS), loops["play_focus"])
+    assert np.array_equal(music.render(music.PLAY_GROOVE), loops["play_groove"])
+
+
+def test_the_music_at_the_table_is_livelier_than_the_sleepy_one_it_replaced():
+    """The old table track: 68 BPM, no drums, only a pad, bells and a faint bass."""
+    for name in ("play_groove", "play_glide", "play_bounce"):
+        style = music.STYLES[name]
+        assert style.bpm >= 98, name  # a walking pace, not a lullaby
+        assert style.kick > 0 and style.bass > 0 and style.hat > 0, name  # a beat under it
+        assert style.bass_per_beat >= 2, name  # the bass moves in eighths
+    assert music.TRACKS["play"].kick > 0  # and what the game plays is one of them
+    assert music.STYLES["play_bounce"].snare > 0  # the liveliest has a back-beat as well
 
 
 def test_the_styles_really_differ(loops):
