@@ -27,7 +27,7 @@ from game.net.transport import Transport
 from game.physics import Event, Shot, World
 from game.physics.world import CUE
 from game.rules.eight_ball import RERACK
-from game.rules.two_player import Match, MatchShot
+from game.rules.two_player import LOST_SURRENDER, Match, MatchShot
 
 log = logging.getLogger("neonpool")
 
@@ -41,6 +41,7 @@ CLOSE_SELF = "self"  # this player went away
 CLOSE_LOST = "lost"  # the connection broke
 CLOSE_TIMEOUT = "timeout"  # the other side said nothing in time
 PING_EVERY_S = 1.0
+EMOTE_QUEUE = 8  # reactions waiting for the screen: more than this are dropped
 
 
 def capture_balls(world: World) -> tuple[p.BallPos, ...]:
@@ -95,7 +96,9 @@ class Session:
         self.token = 0  # the key to this room, made by the host and given to the guest in WELCOME
         self.seq = 0  # the number of the last shot started
         self.remote_cue = RemoteCue()
-        self.emotes: list[int] = []
+        self.game_no = 0  # which game of the room this is (1, 2, ...): a rematch makes a new one
+        self.wins = [0, 0]  # games won in this room, by player (both machines count alike)
+        self.rematch = [False, False]  # who has asked for another game (once this one is over)
         # what is worth knowing about how the game is going (the screens and the tests read these)
         self.desyncs = 0  # checkpoints whose table differed from the local one by > NET_DESYNC_M
         self.max_desync_m = 0.0  # ... and the worst difference seen (m)
@@ -112,6 +115,9 @@ class Session:
         self._fingerprint = p.physics_fingerprint() if fingerprint is None else fingerprint
         self._acc = 0.0
         self._silent = 0.0
+        self._counted = False  # this game's winner is in `wins`
+        self._emotes: list[tuple[int, int]] = []  # (player, code) waiting for the screen
+        self._emote_at = -config.NET_EMOTE_GAP_S
         self._toss_left = 0.0  # the coin is still in the air: no clock yet
         self._turn_used = 0.0  # seconds of the clock spent on the shot being waited for
         self._timeout_sent = False  # (guest) our clock ran out and the host has been told
@@ -228,14 +234,55 @@ class Session:
             self.world.place(number, x, y)
         self._send_checkpoint(p.CHECK_RESYNC)
 
-    def send_emote(self, code: int) -> None:
-        if self.playing:
-            self._send(p.Emote(code))
+    def surrender(self) -> bool:
+        """Give the game up: it is lost, and the other player wins. (The guest asks the referee;
+        the result comes back as a checkpoint.)"""
+        if not self.playing or self.match.over:
+            return False
+        if self.me == HOST:
+            self._end_game(HOST, LOST_SURRENDER)
+        else:
+            self._send(p.Surrender())
+        return True
+
+    def ask_rematch(self) -> bool:
+        """Once the game is over: "again?". The next game starts when both players have asked,
+        and nobody is made to hurry (there is no time limit on the other one's answer)."""
+        if not self.playing or not self.match.over or self.rematch[self.me]:
+            return False
+        self.rematch[self.me] = True
+        self._send(p.Rematch())
+        self._maybe_restart()
+        return True
+
+    def send_emote(self, code: int) -> bool:
+        """A ready-made reaction (a code, shown in the other's language); at most one per
+        `NET_EMOTE_GAP_S`. It is also queued for our own screen."""
+        if not self.playing or not 0 <= code < config.NET_EMOTES:
+            return False
+        if self.time - self._emote_at < config.NET_EMOTE_GAP_S:
+            return False
+        self._emote_at = self.time
+        self._send(p.Emote(code))
+        self._emotes.append((self.me, code))
+        return True
+
+    def take_emotes(self) -> list[tuple[int, int]]:
+        """The reactions (player, code) sent by either player since the last call."""
+        out, self._emotes = self._emotes, []
+        return out
 
     def leave(self) -> None:
-        if self.phase != CLOSED:
-            self._send(p.Bye(p.BYE_LEAVE))
-            self._close(CLOSE_SELF)
+        """Walk out of the room. Doing that in the middle of a game loses it."""
+        if self.phase == CLOSED:
+            return
+        if self.playing and not self.match.over:
+            if self.me == HOST:
+                self._end_game(HOST, LOST_SURRENDER)
+            else:
+                self._send(p.Surrender())
+        self._send(p.Bye(p.BYE_LEAVE))
+        self._close(CLOSE_SELF)
 
     # --- one frame of time ---
     def update(self, dt: float) -> list[Event]:
@@ -258,6 +305,7 @@ class Session:
         events = self._advance_world(dt)
         self._drain_inbox()
         self._tick_clock(dt)
+        self._count_result()
         self.remote_cue.update(dt)
         self._send_due()
         return events
@@ -267,10 +315,9 @@ class Session:
             self._toss_left -= dt
         elif self.clock_running:
             self._turn_used += dt
-            if self.me == HOST:  # the referee calls time (the guest gets a moment longer: its shot
-                late = (
-                    config.NET_TURN_GRACE_S if self.match.turn == GUEST else 0.0
-                )  # is in the post)
+            if self.me == HOST:
+                # the referee calls time; the guest gets a moment longer, its shot is in the post
+                late = config.NET_TURN_GRACE_S if self.match.turn == GUEST else 0.0
                 if self._turn_used >= config.NET_TURN_S + late:
                     self.timeout_turn()
             elif (
@@ -283,6 +330,11 @@ class Session:
 
     def _restart_clock(self) -> None:
         self._turn_used, self._timeout_sent = 0.0, False
+
+    def _count_result(self) -> None:
+        if self.match.over and not self._counted:
+            self._counted = True
+            self.wins[self.match.winner] += 1
 
     # --- receiving ---
     def _pump(self) -> None:
@@ -300,6 +352,7 @@ class Session:
 
     def _handle(self, msg: p.Message) -> None:
         if isinstance(msg, p.Bye):
+            self._take_final_word()
             self._close(CLOSE_LEFT)
         elif isinstance(msg, p.Ping):
             self._send(p.Pong(msg.token))
@@ -327,7 +380,18 @@ class Session:
             if self.me == HOST and msg.player == self.match.turn == GUEST:
                 self.timeout_turn()
         elif isinstance(msg, p.Emote):
-            self.emotes.append(msg.code)
+            if msg.code < config.NET_EMOTES and len(self._emotes) < EMOTE_QUEUE:
+                self._emotes.append((1 - self.me, msg.code))
+        elif isinstance(msg, p.Surrender):
+            if self.me == HOST and not self.match.over:
+                self._end_game(GUEST, LOST_SURRENDER)
+        elif isinstance(msg, p.Rematch):
+            if self.match.over:
+                self.rematch[1 - self.me] = True
+                self._maybe_restart()
+        elif isinstance(msg, p.Start):
+            if self.me == GUEST and self.match.over:  # the host's word for the next game
+                self._accept_start(msg)
 
     def _handle_handshake(self, msg: p.Message) -> None:
         if self.me == HOST and isinstance(msg, p.Hello):
@@ -348,19 +412,52 @@ class Session:
         elif self.me == GUEST and isinstance(msg, p.Reject):
             self._close(CLOSE_BUSY if msg.reason == p.REJECT_BUSY else CLOSE_VERSION)
         elif self.me == GUEST and isinstance(msg, p.Start):
-            if msg.feel not in config.FEEL_SETS or msg.spin not in config.SPIN_SETS:
-                self._send(p.Bye(p.BYE_VERSION))
-                self._close(CLOSE_VERSION)
-                return
-            self._begin(msg.seed, msg.breaker, msg.feel, msg.spin)
+            self._accept_start(msg)
+
+    def _accept_start(self, msg: p.Start) -> None:
+        if msg.feel not in config.FEEL_SETS or msg.spin not in config.SPIN_SETS:
+            self._send(p.Bye(p.BYE_VERSION))
+            self._close(CLOSE_VERSION)
+            return
+        self._begin(msg.seed, msg.breaker, msg.feel, msg.spin)
 
     def _begin(self, seed: int, breaker: int, feel: str, spin: str) -> None:
+        """A game begins (the first one, or a rematch): a new table, a new coin."""
         self.world = World(seed, config.FEEL_SETS[feel], True, config.SPIN_SETS[spin])
         self.match = Match(breaker)
         self.breaker = breaker
         self.phase = PLAYING
+        self.game_no += 1
+        self.seq = 0
+        self.rematch = [False, False]
+        self._counted = False
+        self._live = False
+        self._acc = 0.0
+        self._inbox.clear()
+        self._judged.clear()
+        self._resync_due = False
+        self._aim_want = self._aim_sent = (p.AIM_HIDDEN, 0, 0)
+        self._place_want = None
+        self.remote_cue.state = p.AIM_HIDDEN
         self._toss_left = config.NET_COIN_S
         self._restart_clock()
+
+    def _maybe_restart(self) -> None:
+        """(Referee) both players want another game: toss the coin again."""
+        if self.me != HOST or not all(self.rematch):
+            return
+        seed = self._rng.getrandbits(32) if self._rng else secrets.randbits(32)
+        breaker = self._rng.randrange(2) if self._rng else secrets.randbelow(2)
+        self._send(p.Start(seed, breaker, self._feel, self._spin))
+        self._begin(seed, breaker, self._feel, self._spin)
+
+    def _end_game(self, loser: int, reason: str) -> None:
+        """(Referee) the game ends without a last shot: `loser` gave it up, or was gone too long."""
+        self._live = False
+        for ball in self.world.balls:  # the table stops where it is, here and (by the
+            ball.vx = ball.vy = ball.qx = ball.qy = 0.0  # checkpoint) on the other machine
+        self._judged.append(self.match.surrender(loser, reason))
+        self._send_checkpoint(p.CHECK_END)
 
     # --- the shot ---
     def _host_receives_shot(self, msg: p.ShotMsg) -> None:
@@ -429,7 +526,7 @@ class Session:
         """Apply what is waiting, in order, while this machine's balls are still."""
         while self._inbox:
             msg = self._inbox[0]
-            forced = isinstance(msg, p.Checkpoint) and msg.kind == p.CHECK_RESYNC
+            forced = isinstance(msg, p.Checkpoint) and msg.kind in (p.CHECK_RESYNC, p.CHECK_END)
             if not (forced or self.world.at_rest()):
                 break
             self._inbox.popleft()
@@ -464,6 +561,14 @@ class Session:
         self._restart_clock()
         if cp.kind != p.CHECK_RESYNC and cp.state.last is not None:
             self._judged.append(cp.state.last)
+
+    def _take_final_word(self) -> None:
+        """The other side is leaving: what it said before saying goodbye (the end of a game it
+        gave up) still counts, even though the balls here may not have stopped yet."""
+        while self._inbox:
+            msg = self._inbox.popleft()
+            if isinstance(msg, p.Checkpoint) and msg.kind == p.CHECK_END:
+                self._take_checkpoint(msg)
 
     def _take_place(self, msg: p.Place) -> None:
         """The other player moves, or lets go of, the cue ball they have in hand."""

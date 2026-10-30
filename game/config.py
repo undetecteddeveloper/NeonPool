@@ -154,9 +154,9 @@ NET_REMOTE_CUE_TAU_S = 1 / 60  # the other player's cue closes on its newest pos
 NET_COIN_S = 2.2  # the coin toss at the start of a game: nobody may shoot, the clock waits
 NET_TURN_S = 60.0  # each shot (cue ball in hand included) gets this long, counted while balls rest
 NET_TURN_WARN_S = 10.0  # the clock blinks from here
-NET_TURN_GRACE_S = (
-    1.0  # the host waits this much longer for the guest, whose shot needs time to come
-)
+NET_TURN_GRACE_S = 1.0  # the host waits this much longer for the guest (its shot is in the post)
+NET_EMOTES = 3  # ready-made reactions: Nice!, Too bad, GG (codes 0..2)
+NET_EMOTE_GAP_S = 1.5  # a player can send one reaction per this long
 
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---

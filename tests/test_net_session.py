@@ -12,6 +12,7 @@ from game.net.session import GUEST, HOST, Session, capture_balls
 from game.net.transport import NetSim
 from game.physics import Shot
 from game.rules.eight_ball import FOUL_NO_HIT
+from game.rules.two_player import LOST_SURRENDER
 
 
 def pair(latency=0.0, jitter=0.0, loss=0.0, seed=0, **guest_kw):
@@ -263,6 +264,197 @@ def test_ac11_a_shot_at_the_last_moment_is_not_refused_for_being_late():
     run(sim, (host, guest), 8.0, lambda: host.checkpoints == guest.checkpoints and guest.settled)
     assert host.rejected_shots == 0 and guest.rejected_shots == 0
     assert host.last_shooter == GUEST and same_table(host, guest)
+
+
+# --- AC12: giving the game up, or walking out of it ---
+def finished(sim, host, guest):
+    """Both machines show the same ended game."""
+    return host.match.over and guest.match.over
+
+
+def test_ac12_the_guest_gives_up_and_the_host_wins_on_both_machines():
+    sim, host, guest = started(latency=0.02)
+    assert guest.surrender()
+    assert run(sim, (host, guest), 2.0, lambda: finished(sim, host, guest))
+    for sess in (host, guest):
+        assert sess.match.winner == HOST and sess.match.last.shooter == GUEST
+        assert sess.match.last.reason == LOST_SURRENDER
+        assert sess.wins == [1, 0]
+    assert host.match.score(HOST) == config.SCORE_WIN_BASE and host.match.score(GUEST) == 0
+    assert host.match.snapshot() == guest.match.snapshot()
+    assert not guest.surrender() and not host.surrender()  # it is over: nothing more to give up
+
+
+def test_ac12_the_host_gives_up_and_the_guest_wins_on_both_machines():
+    sim, host, guest = started(latency=0.02)
+    assert host.surrender()
+    assert run(sim, (host, guest), 2.0, lambda: finished(sim, host, guest))
+    assert host.match.winner == guest.match.winner == GUEST
+    assert host.wins == guest.wins == [0, 1]
+
+
+def test_ac12_giving_up_while_the_balls_roll_stops_the_game_at_once():
+    sim, host, guest = started(latency=0.02)
+    shooter = on_turn(host, guest)
+    assert shooter.shoot(Shot(0.0, 0.9, 0.0)) is not None
+    run(sim, (host, guest), 0.4)
+    assert not host.settled  # the break is still rolling
+    assert guest.surrender() if shooter is host else host.surrender()
+    assert run(sim, (host, guest), 2.0, lambda: finished(sim, host, guest))
+    loser = host.match.last.shooter
+    run(sim, (host, guest), 20.0)  # the balls come to rest; the referee does not judge a shot now
+    assert host.match.winner == guest.match.winner == 1 - loser
+    assert host.take_judged()[-1].reason == LOST_SURRENDER
+    assert host.match.snapshot() == guest.match.snapshot()
+
+
+def test_ac12_walking_out_in_the_middle_of_a_game_loses_it():
+    for leaver_is_host in (False, True):
+        sim, host, guest = started(latency=0.02)
+        leaver, stayer = (host, guest) if leaver_is_host else (guest, host)
+        leaver.leave()
+        assert run(sim, (host, guest), 2.0, lambda st=stayer: st.phase == s.CLOSED)
+        assert stayer.close_reason == s.CLOSE_LEFT and leaver.close_reason == s.CLOSE_SELF
+        assert stayer.match.over and stayer.match.winner == stayer.me  # told before the goodbye
+        assert stayer.match.last.reason == LOST_SURRENDER
+
+
+def test_ac12_leaving_after_the_game_is_over_changes_nothing():
+    sim, host, guest = started(latency=0.02)
+    assert host.surrender()
+    assert run(sim, (host, guest), 2.0, lambda: finished(sim, host, guest))
+    guest.leave()
+    run(sim, (host, guest), 1.0, lambda: host.phase == s.CLOSED)
+    assert host.match.winner == GUEST and host.close_reason == s.CLOSE_LEFT
+
+
+def test_ac12_a_stray_surrender_after_the_end_is_ignored():
+    sim, host, guest = started()
+    assert host.surrender()
+    run(sim, (host, guest), 1.0, lambda: finished(sim, host, guest))
+    before = host.match.snapshot()
+    guest._send(p.Surrender())
+    run(sim, (host, guest), 0.5)
+    assert host.match.snapshot() == before and host.wins == [0, 1]
+
+
+# --- AC13: another game, and the score of the room ---
+def end_game(sim, host, guest, loser):
+    """The loser gives up; run until both machines show it."""
+    assert (host if loser == HOST else guest).surrender()
+    assert run(sim, (host, guest), 3.0, lambda: finished(sim, host, guest))
+
+
+def next_game(host, guest):
+    """Both machines have begun the next game."""
+    return host.game_no == guest.game_no and not host.match.over and not guest.match.over
+
+
+def test_ac13_a_rematch_waits_for_the_other_player_for_as_long_as_it_takes():
+    sim, host, guest = started(latency=0.02)
+    end_game(sim, host, guest, GUEST)
+    first = host.match
+    assert host.ask_rematch() and not host.ask_rematch()  # asking twice does nothing new
+    run(sim, (host, guest), 300.0)  # five minutes: no time limit
+    assert host.game_no == guest.game_no == 1 and host.match is first
+    assert guest.rematch == [True, False] and host.rematch == [True, False]  # the guest knows
+    assert guest.ask_rematch()
+    assert run(sim, (host, guest), 2.0, lambda: host.game_no == 2 and guest.game_no == 2)
+    assert not host.match.over and not guest.match.over and host.match is not first
+    assert host.breaker == guest.breaker and host.match.turn == guest.match.turn == host.breaker
+    assert same_table(host, guest) and host.rematch == guest.rematch == [False, False]
+    assert host.seq == guest.seq == 0
+    play_shot(sim, host, guest, Shot(0.0, 0.9, 0.0))  # the new game really is playable
+    assert same_table(host, guest) and host.desyncs == guest.desyncs == 0
+
+
+def test_ac13_the_guest_may_be_the_one_to_ask_first():
+    sim, host, guest = started(latency=0.02)
+    end_game(sim, host, guest, HOST)
+    assert guest.ask_rematch()
+    run(sim, (host, guest), 1.0)
+    assert host.game_no == 1 and host.rematch == [False, True]
+    assert host.ask_rematch()
+    assert run(sim, (host, guest), 2.0, lambda: host.game_no == 2 and guest.game_no == 2)
+
+
+def test_ac13_every_rematch_is_a_new_table_and_a_new_coin():
+    sim, host, guest = started()
+    seeds, coins = {hash(host.world.rng.getstate())}, {host.breaker}
+    for _ in range(6):
+        end_game(sim, host, guest, GUEST)
+        host.ask_rematch(), guest.ask_rematch()
+        assert run(sim, (host, guest), 1.0, lambda: next_game(host, guest))
+        seeds.add(hash(host.world.rng.getstate()))
+        coins.add(host.breaker)
+        assert host.breaker == guest.breaker and same_table(host, guest)
+    assert len(seeds) == 7 and coins == {0, 1}
+
+
+def test_ac13_the_score_of_the_room_is_the_same_on_both_machines():
+    sim, host, guest = started(latency=0.01)
+    for loser in (GUEST, HOST, GUEST):
+        end_game(sim, host, guest, loser)
+        host.ask_rematch(), guest.ask_rematch()
+        assert run(sim, (host, guest), 1.0, lambda: next_game(host, guest))
+    end_game(sim, host, guest, GUEST)
+    assert host.wins == guest.wins == [3, 1]
+    assert host.game_no == guest.game_no == 4
+
+
+def test_ac13_no_rematch_before_the_end_or_after_the_other_player_left():
+    sim, host, guest = started(latency=0.02)
+    assert not host.ask_rematch() and not guest.ask_rematch()  # the game is not over
+    end_game(sim, host, guest, GUEST)
+    assert guest.ask_rematch()
+    host.leave()
+    assert run(sim, (host, guest), 1.0, lambda: guest.phase == s.CLOSED)
+    assert guest.match.over and not guest.ask_rematch()  # the room is gone: the button is dead
+
+
+def test_ac13_a_rematch_message_in_the_middle_of_a_game_is_ignored():
+    sim, host, guest = started()
+    guest._send(p.Rematch())
+    guest._send(p.Start(5, 0, config.DEFAULT_FEEL, config.DEFAULT_SPIN))  # nor may Start be forced
+    run(sim, (host, guest), 0.5)
+    assert host.rematch == [False, False] and host.game_no == guest.game_no == 1
+
+
+# --- AC15: the ready-made reactions ---
+def test_ac15_a_reaction_reaches_both_screens_as_a_code():
+    sim, host, guest = started(latency=0.02)
+    assert guest.send_emote(1)
+    run(sim, (host, guest), 0.5)
+    assert guest.take_emotes() == [(GUEST, 1)] and host.take_emotes() == [(GUEST, 1)]
+    assert host.take_emotes() == []  # taken once
+
+
+def test_ac15_codes_out_of_range_are_never_sent_or_shown():
+    sim, host, guest = started()
+    assert not host.send_emote(config.NET_EMOTES) and not host.send_emote(-1)
+    guest._send(p.Emote(200))  # a hand-made frame
+    run(sim, (host, guest), 0.5)
+    assert host.take_emotes() == [] and guest.take_emotes() == []
+
+
+def test_ac15_reactions_are_rationed():
+    sim, host, guest = started()
+    assert host.send_emote(0)
+    assert not host.send_emote(2)  # at once: too soon
+    run(sim, (host, guest), config.NET_EMOTE_GAP_S - 0.2)
+    assert not host.send_emote(2)
+    run(sim, (host, guest), 0.3)
+    assert host.send_emote(2)
+    run(sim, (host, guest), 0.1)
+    assert [c for _, c in guest.take_emotes()] == [0, 2]
+
+
+def test_ac15_a_flood_from_a_hand_made_client_cannot_pile_up():
+    sim, host, guest = started()
+    for _ in range(200):
+        guest._send(p.Emote(1))
+    run(sim, (host, guest), 0.5)
+    assert len(host.take_emotes()) <= s.EMOTE_QUEUE
 
 
 # --- a shot, the verdict, the checkpoint ---

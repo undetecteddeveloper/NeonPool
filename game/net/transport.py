@@ -40,7 +40,9 @@ class SimEndpoint:
 
     @property
     def connected(self) -> bool:
-        return self._sim.up
+        """Up, or down with frames still to read (a closed TCP link still delivers what was
+        sent before it closed)."""
+        return self._sim.up or bool(self._sim._queues[self._side])
 
     def send(self, frame: bytes, reliable: bool = True) -> None:
         if not self._sim.up:

@@ -268,12 +268,14 @@ def test_the_result_card_button_goes_back_to_the_menu_and_the_other_side_is_told
     assert run(apps, lambda: guest.net.session.phase == net_session.CLOSED)
 
 
-def test_a_connection_that_ends_mid_game_shows_a_card_instead_of_a_frozen_table(apps):
+def test_walking_out_in_the_middle_of_a_game_gives_the_other_player_the_win(apps):
     host, guest = apps
     assert meet(apps) and after_the_toss(apps)
     guest.net.leave()
-    assert run(apps, lambda: host.net._ended_note is not None)
-    assert host.net._ended_note[0] == "net.end.left" and host.net.rules.phase == LOST
+    assert run(apps, lambda: host.net._result_shown)
+    assert host.net._ended_note is None and host.net.rules.phase == WON
+    words, won = host.net._result_words()
+    assert won and words == i18n.t("net.won_surrender", name=host.net._name(1))
     for _ in range(40):
         host.update(1 / 60)
         host.draw()

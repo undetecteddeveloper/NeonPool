@@ -83,10 +83,12 @@ def test_a_cut_link_reports_disconnected_on_both_ends_and_sending_is_harmless():
     assert sim.a.connected and sim.b.connected
     sim.a.send(b"in flight")
     sim.b.close()  # either end can hang up
-    assert not sim.a.connected and not sim.b.connected
+    assert not sim.a.connected
+    assert sim.b.connected  # (like TCP: it can still read what was sent before the hang-up ...)
     sim.a.send(b"into the void")
     sim.advance(1.0)
-    assert sim.b.poll() == [b"in flight"]  # what was already on its way still arrives
+    assert sim.b.poll() == [b"in flight"]  # ... and that arrives
+    assert not sim.b.connected  # then it is over on this end too
 
 
 def test_the_endpoints_count_what_they_send():

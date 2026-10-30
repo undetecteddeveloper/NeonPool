@@ -24,8 +24,8 @@ from game.render import palette as C
 from game.render.draw import blit_rrect
 from game.render.layout import OUTER_W, OUTER_X, to_m, to_px
 from game.render.view import View
-from game.rules.eight_ball import LOST, PLAYING, RERACK, WON
-from game.rules.two_player import MatchShot
+from game.rules.eight_ball import LOST, LOST_EARLY, LOST_FOUL, PLAYING, RERACK, WON
+from game.rules.two_player import LOST_DROPPED, LOST_SURRENDER, MatchShot
 from game.scenes.play import CALLOUT_AT, CALLOUTS, PlayScene
 from game.tally import Tally
 
@@ -37,6 +37,13 @@ GROUP_NOTICES = {
 COIN_S = NET_COIN_S  # the coin toss: it spins for COIN_FLIP_S, then says who breaks
 COIN_FLIP_S = 1.5
 COIN_R = 46.0
+# why the other player lost -> what you are told (the reason is theirs: t(reason) is for the loser)
+WON_REASONS = {
+    LOST_EARLY: "net.won_early",
+    LOST_FOUL: "net.won_foul",
+    LOST_SURRENDER: "net.won_surrender",
+    LOST_DROPPED: "net.won_dropped",
+}
 ESC_AGAIN_S = 3.0  # a second Esc within this long leaves the game
 
 
@@ -379,7 +386,7 @@ class NetPlayScene(PlayScene):
             return None, won
         if last.shooter == self._me:
             return t(last.reason), won
-        key = "net.won_early" if last.reason.endswith("early") else "net.won_foul"
+        key = WON_REASONS.get(last.reason, "net.won_foul")
         return t(key, name=self._name(last.shooter)), won
 
     def _names_row(self) -> tuple[tuple[str, str], tuple[bool, bool]]:
