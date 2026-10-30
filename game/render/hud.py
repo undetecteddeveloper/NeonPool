@@ -1047,6 +1047,30 @@ NOTICE_CARD.center = RESULT_CARD.center
 NOTICE_BUTTON = pg.Rect(NOTICE_CARD.centerx - 90, NOTICE_CARD.bottom - 74, 180, 46)
 
 
+_net_warm = [0.0]  # the view scale the two-player parts were last made for
+
+
+def prewarm_net(v: View) -> None:
+    """Draw the two-player parts once off screen (the result cards growing and whole, the
+    connection card, the name plates) so their sprites exist before the first game ends. The
+    names themselves are not known yet: text is made when it first shows."""
+    if _net_warm[0] == v.s:
+        return
+    _net_warm[0] = v.s
+    probe = pg.Surface(v.canvas)
+    names, zeros = ("", ""), [[0, 0]] * 3
+    for won in (True, False):
+        for age in (RESULT_IN_S / 2, 1.0):
+            both = (won, not won)
+            draw_net_result(probe, v, won=won, reason=None, names=names, won_by=both,
+                            row_names=("", "", ""), values=zeros, flashes=zeros,
+                            age=age)  # fmt: skip
+    for age in (RESULT_IN_S / 2, 1.0):
+        draw_notice(probe, v, "", "", age, None, 0.0)
+    for turn in (True, False):
+        name_plate(probe, v, pg.Rect(0, 0, PLATE_W, PLATE_H), "", "", 7, turn=turn)
+
+
 def draw_notice_frame(canvas: pg.Surface, v: View, title: str, line: str) -> None:
     c = NOTICE_CARD
     blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, C.ERROR, 1.0)

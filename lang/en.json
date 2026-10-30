@@ -137,7 +137,6 @@
   "net.err.port": "Could not open the room — the port is in use",
   "net.you": "{name} (you)",
   "net.left": "LEFT",
-  "net.turn_you": "Your turn",
   "net.turn_them": "{name}'s turn",
   "net.placing_them": "{name} is placing the cue ball",
   "net.coin": "Tossing a coin…",

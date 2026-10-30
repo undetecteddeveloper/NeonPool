@@ -54,6 +54,9 @@ Chặng 1
 | AC9 | vi/en cùng bộ khoá | `tests/test_i18n.py` sẵn có + `test_ac9_net_keys_in_both_languages` |
 | AC10 | ảnh các màn mới đã nhìn | `tools/_out/20261030-multiplayer/` |
 
+## Kết quả phiên này
+Chặng 0 + 1 xong trên nhánh `feat/multiplayer`. Chạy thử trên MỘT máy: `NEONPOOL_NET_PORT=47600` rồi mở hai cửa sổ `main.py`, một bên Chơi → Chơi đôi → Tạo phòng, bên kia Vào phòng và gõ `127.0.0.1:47600`; hoặc `tools\smoke.py` (ván hai máy tới thắng/thua). Ảnh: `tools/_out/20261030-multiplayer/` (phác) và `.../real/` (ảnh thật).
+
 ## Số đo (`tools\netbench.py`; nhãn "giả lập" = thời gian ảo của NetSim + đồng hồ thật cho phần việc của game)
 Một chiều "thả chuột ở A → B áp cú đánh", 4000 cú mỗi dòng, ms, **giả lập (đã đo)**, 2026-10-30:
 | Kịch bản | tới hàng đợi p50/p95/p99 | + chờ khung B p95 | + chờ khung A p95 | phần game p95 |

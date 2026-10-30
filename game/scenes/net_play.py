@@ -105,6 +105,17 @@ class NetPlayScene(PlayScene):
         self._ended_note: tuple[str, str] | None = None  # (title key, words): the link ended
         self._result_shown = False
 
+    def set_view(self, v: View) -> None:
+        """The solo table already made the sprites and the table picture for this size: share
+        them instead of making them again (about 90 ms, right when the game begins)."""
+        solo = getattr(self.app, "play", None)
+        if solo is not None and solo is not self and solo.view.same_as(v):
+            self.view, self.sprites, self.table = v, solo.sprites, solo.table
+            if hasattr(self, "_frozen"):
+                self._frozen.clear()
+        else:
+            super().set_view(v)
+
     # --- who is who ---
     def _name(self, player: int) -> str:
         return self.session.names[player] or t("net.default_name")
@@ -282,7 +293,7 @@ class NetPlayScene(PlayScene):
         if self._holding():
             lines.append((t("notice.hand_drag"), C.TEXT))
         elif self.session.my_turn:
-            lines.append((t("net.turn_you"), C.TEXT))
+            pass  # your plate is lit; under the table the hint of the first shot may stand
         elif self.session.match.cue_in_hand:
             lines.append((t("net.placing_them", name=self._name(self._them)), C.TEXT))
         else:
@@ -333,7 +344,7 @@ class NetPlayScene(PlayScene):
         face = round(theta / math.pi) % 2
         squash = abs(math.cos(theta))
         cx, cy = CALLOUT_AT
-        w = max(6.0, 2 * COIN_R * squash)
+        w = max(6.0, round(2 * COIN_R * squash / 4) * 4.0)  # in steps: a sprite is cached per width
         colour = C.MAGENTA if face == 1 else C.CYAN
         radius = min(w, 2 * COIN_R) / 2
         blit_rrect(canvas, v, cx - w / 2, cy - COIN_R, w, 2 * COIN_R, radius, C.PANEL_HOT, 2.0,

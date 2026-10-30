@@ -45,9 +45,116 @@ def report(name: str, times: list[float]) -> bool:
     return ok
 
 
+def net_smoke(size: tuple[int, int]) -> bool:
+    """Hai game thật (hai App) gặp nhau qua ổ cắm trên 127.0.0.1 bằng chính bảng Chơi, đánh vài cú
+    thật (có cú phá) rồi một ván kịch bản tới thắng/thua; báo ms/khung của từng giai đoạn."""
+    import math
+    import socket
+
+    import pygame as pg
+
+    from game.app import App
+    from game.physics import Shot
+    from game.render import hud
+    from game.rules.eight_ball import LOST, WON
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        os.environ["NEONPOOL_NET_PORT"] = str(probe.getsockname()[1])
+    screen = pg.display.set_mode(size)
+    host, guest = App(screen), App(screen)
+    for a in (host, guest):
+        a.skip_transition()
+        a.menu.play_panel.prewarm(a.view)  # the real game does this once, before the first frame
+        hud.prewarm_net(a.view)
+    apps, times = (host, guest), {}
+
+    def step(done, seconds, stage) -> bool:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            for a in apps:
+                t0 = time.perf_counter()
+                a.update(1 / 60)
+                a.draw()
+                times.setdefault(stage, []).append((time.perf_counter() - t0) * 1000)
+            if done():
+                return True
+            time.sleep(0.001)  # the sockets work in threads: give them the floor
+        return False
+
+    def on_turn():
+        return host.net if host.net.session.my_turn else guest.net
+
+    def settled():
+        return all(a.net.session.settled for a in apps)
+
+    def caught_up():
+        return settled() and host.net.session.checkpoints == guest.net.session.checkpoints
+
+    hp, gp = host.menu.play_panel, guest.menu.play_panel
+    hp.open()
+    hp.name = "Hoa"
+    hp._start_hosting()
+    gp.open()
+    gp.name, gp.addr = "Nam", "127.0.0.1"
+    gp._start_joining()
+    ok = step(lambda: host.net is not None and guest.net is not None, 15, "phòng chờ")
+    ok = ok and step(lambda: all(a.net._toss_done() for a in apps) and settled(), 15, "tung xu")
+    for turn in range(3):  # a real break, then two more shots at the nearest object ball
+        if not ok:
+            break
+        who = on_turn()
+        if who.session.can_place:
+            who.session.place_cue(0.9, 0.6)
+            who.session.release_cue()
+            step(lambda w=who: w.session.can_shoot, 5, "đặt bi trắng")
+        cue = who.world.balls[0]
+        near = min((b for b in who.world.in_play() if b.number), key=lambda b: math.dist(
+            (b.x, b.y), (cue.x, cue.y)))  # fmt: skip
+        count = host.net.session.checkpoints + 1
+        who.fire(Shot(math.atan2(near.y - cue.y, near.x - cue.x), 0.9 if turn == 0 else 0.5, 0.0))
+        ok = step(lambda c=count: host.net.session.checkpoints >= c and caught_up(), 90,
+                  "cú phá" if turn == 0 else "đang chạy")  # fmt: skip
+    for _ in range(3):  # the 8 sunk early: whoever is on turn loses (a break would only re-rack)
+        if not ok or host.net.session.match.over:
+            break
+        balls = host.net.world.in_play()
+        aside = {b.number: (0.35 + 0.09 * i, 1.15) for i, b in enumerate(balls) if b.number}
+        aside.update({8: (0.2, 0.2), 0: (0.6, 0.6)})
+        host.net.session.reset_table(aside)
+        step(caught_up, 10, "đặt bàn")
+        who = on_turn()
+        if who.session.can_place:
+            who.session.release_cue()
+            step(lambda w=who: w.session.can_shoot, 5, "đặt bi trắng")
+        who.fire(Shot(-3 * math.pi / 4, 0.7, 0.0))
+        step(lambda: host.net.session.match.over, 60, "đang chạy")
+    ok = ok and step(lambda: host.net._result_shown and guest.net._result_shown, 30, "kết quả")
+    if ok:
+        step(lambda: False, 3.5, "thẻ kết quả đếm số")
+        phases = {host.net.rules.phase, guest.net.rules.phase}
+        ok = phases == {WON, LOST}
+        if not ok:
+            print(f"smoke hai máy: kết quả sai {phases}")
+    print("smoke hai máy:", "ván chạy tới thắng/thua" if ok else "KHÔNG tới được thắng/thua")
+    good = ok
+    for stage, values in times.items():
+        mean = sum(values) / len(values)
+        within = mean <= FRAME_BUDGET_MS
+        good = good and within
+        print(
+            f"smoke hai máy {stage}: {len(values)} khung (mỗi game), TB {mean:.2f} ms, tệ nhất "
+            f"{max(values):.2f} ms {'OK' if within else 'VƯỢT NGÂN SÁCH'}"
+        )
+    for a in apps:
+        a.go_menu()
+    return good
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--frames", type=int, default=300, help="frames in the break phase")
+    parser.add_argument("--size", default="1280x720", help="window size of the two-player run")
     args = parser.parse_args()
 
     if not (ROOT / "game" / "app.py").exists():
@@ -110,6 +217,7 @@ def main() -> int:
     app.help.go(3)
     turning = measure(app, 18)
     guide = measure(app, 60)
+    net_ok = net_smoke(tuple(int(v) for v in args.size.lower().split("x")))
     pg.quit()
 
     ok = (
@@ -121,6 +229,7 @@ def main() -> int:
         & report("hướng dẫn (đang mở ra)", opening)
         & report("hướng dẫn (đang lật trang)", turning)
         & report("hướng dẫn", guide)
+        & net_ok
     )
     return 0 if ok else 1
 

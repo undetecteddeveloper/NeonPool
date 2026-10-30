@@ -86,6 +86,7 @@ class App:
         self.menu.settings.prewarm(self.view)
         self.menu.play_panel.prewarm(self.view)
         hud.prewarm_result(self.view)
+        hud.prewarm_net(self.view)
 
     def start_net(self, session) -> None:
         """A room is full and the handshake is done: the two-player game begins."""
@@ -158,6 +159,7 @@ class App:
             self.menu.settings.prewarm(self.view)
             self.menu.play_panel.prewarm(self.view)
             hud.prewarm_result(self.view)
+            hud.prewarm_net(self.view)
         self.audio.update_music(
             dt,
             "menu" if self.scene is self.menu else "play",

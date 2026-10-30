@@ -137,7 +137,6 @@
   "net.err.port": "Không mở được phòng — cổng đang bị dùng",
   "net.you": "{name} (bạn)",
   "net.left": "CÒN",
-  "net.turn_you": "Đến lượt bạn",
   "net.turn_them": "Lượt của {name}",
   "net.placing_them": "{name} đang đặt bi trắng",
   "net.coin": "Tung xu…",
