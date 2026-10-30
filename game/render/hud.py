@@ -154,17 +154,31 @@ def label(canvas: pg.Surface, v: View, s: str, pos, color=C.TEXT_DIM, size: floa
 
 
 @cache
+def _halo_of(
+    s: str, dev: int, name: str, halo_color: tuple, radius: float, gain: float
+) -> tuple[pg.Surface, int]:
+    """(halo, pad): the light round a text and its margin. It depends on the HALO colour only,
+    never on the colour of the letters: a title whose letters change colour every frame must not
+    make a new halo (~5 ms) every frame."""
+    font = fonts.face(dev, name)
+    pad = math.ceil(radius * 2) + 2
+    w, h = font.size(s)
+    base = pg.Surface((w + 2 * pad, h + 2 * pad), pg.SRCALPHA)
+    base.blit(font.render(s, True, halo_color), (pad, pad))
+    return glow.halo(base.premul_alpha(), radius, gain), pad
+
+
+@cache
+def _face_of(s: str, dev: int, name: str, color: tuple) -> pg.Surface:
+    return fonts.face(dev, name).render(s, True, color)
+
+
 def _lit_text(
     s: str, dev: int, name: str, color: tuple, halo_color: tuple, radius: float, gain: float
 ) -> tuple[pg.Surface, pg.Surface, int]:
     """(halo, face, pad): the light round a text, the text itself, and the halo's margin."""
-    font = fonts.face(dev, name)
-    face_s = font.render(s, True, color)
-    pad = math.ceil(radius * 2) + 2
-    w, h = face_s.get_size()
-    base = pg.Surface((w + 2 * pad, h + 2 * pad), pg.SRCALPHA)
-    base.blit(font.render(s, True, halo_color), (pad, pad))
-    return glow.halo(base.premul_alpha(), radius, gain), face_s, pad
+    halo, pad = _halo_of(s, dev, name, halo_color, radius, gain)
+    return halo, _face_of(s, dev, name, color), pad
 
 
 def glow_text(

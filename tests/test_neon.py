@@ -465,6 +465,21 @@ def vi():
     i18n.set_lang("vi")
 
 
+def test_a_glow_text_that_changes_colour_does_not_make_a_new_halo_each_time(vi, monkeypatch):
+    """The menu title flickers on and then breathes: its letters take a new colour almost every
+    frame. The halo (the costly part, ~5 ms) depends on the halo colour and strength only."""
+    pg.font.init()
+    made = []
+    real = hud.glow.halo
+    monkeypatch.setattr(hud.glow, "halo", lambda *a, **k: made.append(1) or real(*a, **k))
+    hud._halo_of.cache_clear()
+    canvas = _canvas()
+    for level in range(20):  # twenty different letter colours, same halo
+        colour = C.lerp(C.scale(C.MAGENTA, 0.25), C.WHITE, level / 20)
+        hud.glow_text(canvas, V, "NeonPool", 76, colour, C.MAGENTA, (640, 150), strength=1.1)
+    assert len(made) == 1
+
+
 def test_glow_text_gives_light_round_the_letters_and_breathes(vi):
     pg.font.init()
     plain, bright, dim = _canvas(), _canvas(), _canvas()
