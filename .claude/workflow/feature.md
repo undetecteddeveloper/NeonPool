@@ -2,7 +2,7 @@
 
 Có giao diện → đọc thêm `ui.md`. Đụng va chạm/xoáy/ma sát → đọc thêm `physics.md`.
 
-1. Hỏi hướng SẢN PHẨM trước (CLAUDE.md §1b): chỉ chỗ có ≥2 hướng người chơi thấy khác nhau. Kỹ thuật tự quyết.
+1. Xác nhận cách hiểu trước (CLAUDE.md §1b), kèm câu chọn ở chỗ có ≥2 hướng người chơi thấy khác nhau. Kỹ thuật tự quyết. Tính năng đổi/bỏ thứ tài liệu đã chốt → CLAUDE.md §3b trước khi code.
 2. Tài liệu theo độ lớn — viết vừa đủ để code, GIỮ tiêu chí chấp nhận đánh số, bảng quyết định, chữ ký hàm, danh sách file, bước kiểm; BỎ nền, so sánh, đoạn mô tả lại code có sẵn:
    - **Nhỏ** (vài file, không đổi hành vi người chơi thấy): không tài liệu, làm như việc vặt nhưng chạy đủ cổng.
    - **Vừa**: một brief ≤100 dòng ở `docs/plans/<yyyymmdd>-<slug>.md` (yêu cầu + quyết định + danh sách task). Có đổi mục nào trong `GAME_DESIGN.md` thì sửa file đó cùng commit.

@@ -44,6 +44,20 @@ tools/                   # gate.py (cổng), smoke.py, shot.py, _out/ (git bỏ 
 - `Audio` (`game/audio.py`): tổng hợp âm bằng numpy, không có thiết bị thì im lặng; NHẠC: `update_music(dt, track, duck)` mỗi khung (App gọi: "menu" khi đang ở menu, còn lại "play"; `duck` khi thẻ kết quả hiện) — hai bài lặp vô hạn, mỗi bài một kênh mixer dành riêng (`MUSIC_CHANNELS`, tiếng hiệu ứng không bao giờ lấy), chéo mờ `MUSIC_FADE_S`, âm lượng riêng `music_volume`, M tắt cả nhạc; bài được tạo bằng một luồng nền ở lần gọi đầu (biến môi trường `NEONPOOL_NO_MUSIC` tắt: test và tools đặt sẵn); `on_events` chỉ phát tối đa `SFX_MAX_PER_FRAME` tiếng mạnh nhất mỗi khung (tiếng rơi lỗ luôn được phát). `Fx` (`render/fx.py`): vòng sóng ánh sáng (màu và độ lan theo loại: bi, băng, lỗ), bi co vào lỗ, rung — chỉ phụ thuộc thời gian, không ngẫu nhiên.
 - Neon (ánh sáng): mọi thứ sáng là hình premultiplied + quầng từ `render/glow.py` (`halo`, `lit`; làm mờ bằng thu rồi phóng, KHÔNG dùng `pg.transform.gaussian_blur` vì chậm ~500 ms/lớp lớn). Cộng sáng lên nền tối bằng `BLEND_RGB_ADD` (`draw.blit_add`): dải sóng (`waves.Waves`: dựng sẵn một lần rồi chỉ cuộn), sóng lan bàn khi bi rơi lỗ (`fx.Fx` vẽ lên một lớp cỡ bàn, chỉ khi có sóng), chữ phát sáng (`hud.glow_text`). Mức sáng đọc từ `palette.LOOK` lúc dựng. `table.build_table(v)` được nhớ theo độ phân giải (màn Hướng dẫn dùng chung bàn với ván): KHÔNG vẽ lên kết quả, chỉ blit. `view.CropView` cho lớp vẽ lớn chỉ rộng bằng bàn. Đồng hồ hiệu ứng là `_clock` của scene (không phải đồng hồ máy), nên ảnh chụp lặp lại được.
 
+## Thành phần UI dùng chung (một chức năng, một thành phần — luật: `workflow/ui.md` 4d)
+Thêm dòng khi tạo thành phần chung mới. "Khác có chủ ý" chỉ ghi điểm người dùng đã chốt cho khác (kèm lý do); điểm không ghi ở đó thì PHẢI giống. "Chưa gom" là nợ: gom khi chạm tới, nếu việc gom không đổi thứ người chơi thấy.
+
+| Chức năng | Thành phần chung | Dùng ở | Khác có chủ ý |
+|---|---|---|---|
+| Nút chữ có hiệu ứng (rê, bấm, chọn, nút chính) | `hud.live_button` + `hud.ButtonFx`, khung trượt `hud.glide_frame` | Menu, nút Xong ở Cài đặt, thẻ kết quả | — |
+| Dấu ▶ nhỏ trên nút đang chọn | `hud.arrow` | mọi nút chữ | — |
+| Bảng / thẻ nổi trên cảnh đóng băng | `render/frozen.FrozenScene` + `draw.veil` | Hướng dẫn, Cài đặt, thẻ kết quả | — |
+
+Chưa gom (kiểm lần cuối 2026-10-30, đọc code):
+- Mũi tên "bước trước/sau": Hướng dẫn dùng `help._arrow_button` + `_chevron` (nút tròn viền sáng, chữ V nét, nhún khi bấm); Cài đặt dùng `settings._chooser` + `_triangle` (tam giác đặc, không có nút tròn). Cùng chức năng, hai kiểu. `settings._triangle` còn là bản chép của `hud.arrow` có thêm hướng.
+- Nút phụ phình/nhún: `help._arrow_button` và `help._close_button` tự lặp công thức sáng/nhấn/phình (`lit`, `press_k`, `grow`) ngoài `live_button`.
+- Nút đóng bảng: Hướng dẫn có ✕ (`help._close_button`); Cài đặt đóng bằng nút Xong, không có ✕. Chưa rõ là chủ ý hay sót → hỏi người dùng khi chạm tới.
+
 ## Quy ước chống lỗi (chi tiết kiểm thử: workflow/physics.md)
 - Bi tốc độ cao có thể xuyên băng/xuyên bi giữa hai bước: bước cố định nhỏ + chia bước con theo vận tốc tối đa, hoặc phát hiện va chạm liên tục. Không dựa vào "tốc độ chắc không tới mức đó".
 - Bi gần dừng: ngưỡng dừng cứng (`REST_SPEED`) để khỏi rung vô hạn.
