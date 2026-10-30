@@ -162,19 +162,28 @@ def synth_ting(low: float, high: float) -> np.ndarray:
     return _to_int16(x * np.minimum(1.0, t / 0.002), gain=0.65)
 
 
-# --- the spin dial: a low soft "tok" for each step, the pitch following the level -------------
-# nine notes, a semitone apart, from the lowest (strike low) to the highest (strike high); every
-# partial stays under ~530 Hz, so nothing high like the button blips
-SPIN_NOTES = (165, 175, 185, 196, 208, 220, 233, 247, 262)
+# --- the spin dial: a soft round "tok" for each step, the pitch following the level -------------
+# Three candidate sounds, all the same loudness to the ear, differing in pitch only (the user picks
+# by listening: NEONPOOL_SPIN_SOUND, tools/spin_sound_preview.py). name: (lowest note in Hz,
+# playback volume). Nine notes a semitone apart, from the lowest (strike low) to the highest
+# (strike high). The first try (165-262 Hz) could not be heard: a laptop speaker plays next to
+# nothing below ~300 Hz and the ear is dull down there. All three stay under 1 kHz, below the
+# button blips (1-2 kHz).
+SPIN_SOUNDS = {"TRAM": (330, 0.34), "VUA": (440, 0.28), "SANG": (587, 0.25)}
+DEFAULT_SPIN_SOUND = "VUA"
+SPIN_STEPS = 9
+
+
+def spin_notes(lowest: float) -> tuple[int, ...]:
+    return tuple(round(lowest * 2 ** (k / 12)) for k in range(SPIN_STEPS))
 
 
 def synth_spin(freq: float) -> np.ndarray:
-    """One step of the spin dial: a short, round, low 'tok' (a sine and a quiet octave)."""
+    """One step of the spin dial: a short, round 'tok' (a sine and a quiet octave)."""
     t = _t(0.07)
-    x = np.sin(2 * np.pi * freq * t) * _decay(t, 0.02) + 0.3 * np.sin(
-        2 * np.pi * 2 * freq * t
-    ) * _decay(t, 0.01)
-    return _to_int16(x * np.minimum(1.0, t / 0.004), gain=0.5)
+    x = np.sin(2 * np.pi * freq * t) * _decay(t, 0.022)
+    x += 0.25 * np.sin(2 * np.pi * 2 * freq * t) * _decay(t, 0.012)
+    return _to_int16(x * np.minimum(1.0, t / 0.004), gain=0.6)
 
 
 def volume_for_speed(speed: float) -> float:
@@ -192,6 +201,10 @@ class Audio:
         self._tracks: dict[str, pg.mixer.Sound] = {}
         self._level = dict.fromkeys(music.TRACKS, 0.0)  # how far each track has faded in (0..1)
         self._duck = 1.0  # 1 normal, MUSIC_DUCK while the result card is up
+        # the spin dial's sound under test (see SPIN_SOUNDS); the one chosen stays, the rest go
+        name = os.environ.get("NEONPOOL_SPIN_SOUND", "")
+        lowest, self._spin_volume = SPIN_SOUNDS.get(name, SPIN_SOUNDS[DEFAULT_SPIN_SOUND])
+        self.spin_notes = spin_notes(lowest)
         self._music_thread: threading.Thread | None = None
         try:
             if not pg.mixer.get_init():
@@ -213,7 +226,7 @@ class Audio:
                 ("ting_win", lambda: synth_ting(1319, 1976)),  # bright: E6 and B6
                 ("ting_lose", lambda: synth_ting(440, 659)),  # lower: A4 and E5
                 *((f"tick{i}", lambda f=f: synth_tick(f)) for i, f in enumerate(TICK_NOTES)),
-                *((f"spin{i}", lambda f=f: synth_spin(f)) for i, f in enumerate(SPIN_NOTES)),
+                *((f"spin{i}", lambda f=f: synth_spin(f)) for i, f in enumerate(self.spin_notes)),
             ):
                 self._sounds[name] = self._make(fn())
             self.available = True
@@ -300,9 +313,8 @@ class Audio:
 
     def play_spin(self, level: float) -> None:
         """The spin dial moved a step; `level` -1 (low) .. +1 (high) picks the note."""
-        n = len(SPIN_NOTES)
-        i = round((min(1.0, max(-1.0, level)) + 1) / 2 * (n - 1))
-        self._play(f"spin{i}", 0.35)
+        i = round((min(1.0, max(-1.0, level)) + 1) / 2 * (SPIN_STEPS - 1))
+        self._play(f"spin{i}", self._spin_volume)
 
     def play_tally_tick(self, pitch: float) -> None:
         """A counting number stepped; `pitch` 0..1 is how far up the scale it has climbed."""

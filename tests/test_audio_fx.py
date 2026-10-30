@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pygame as pg
 import pytest
@@ -123,32 +125,77 @@ def test_clear_resets_everything():
     assert fx.ripples == [] and fx.drops == [] and fx.shake_offset() == (0.0, 0.0)
 
 
-# --- the spin dial's sound: low and soft, not the button blip -------------------------------------
+# --- the spin dial's sound: a soft round tok the ear can hear, not the button blip ----------------
+SPIN_FREQS = [f for low, _ in audio.SPIN_SOUNDS.values() for f in audio.spin_notes(low)]
+
+
 def _loudest_pitch(samples: np.ndarray) -> float:
     spectrum = np.abs(np.fft.rfft(samples.astype(float), n=1 << 16))
     return float(np.argmax(spectrum) * SAMPLE_RATE / (1 << 16))
 
 
-@pytest.mark.parametrize("freq", audio.SPIN_NOTES)
-def test_the_spin_sound_is_low_and_short_and_has_no_high_whistle(freq):
+def _heard(samples: np.ndarray, volume: float) -> float:
+    """How loud it sounds to an ear (A-weighted: dull below ~300 Hz) at this playback volume.
+    The first sound made for the dial (165-262 Hz) scored 25-42% of the quietest button blip and
+    could not be heard on a laptop; these must not fall back there."""
+
+    def a_weight(f: float) -> float:
+        f2 = f * f
+        top = 12194**2 * f2 * f2
+        low = (f2 + 20.6**2) * math.sqrt((f2 + 107.7**2) * (f2 + 737.9**2)) * (f2 + 12194**2)
+        return top / low / 0.7943
+
+    x = samples.astype(float) / 32768
+    freqs = np.fft.rfftfreq(x.size, 1 / SAMPLE_RATE)
+    weights = np.array([a_weight(max(f, 1.0)) for f in freqs])
+    power = np.sum((np.abs(np.fft.rfft(x)) * weights) ** 2)
+    return math.sqrt(power / x.size) * volume
+
+
+@pytest.mark.parametrize("freq", SPIN_FREQS)
+def test_the_spin_sound_is_a_short_round_tone_in_the_middle_of_the_range(freq):
     s = audio.synth_spin(freq)
     assert s.dtype == np.int16 and 0.03 < s.size / SAMPLE_RATE < 0.12 and np.max(np.abs(s)) > 3000
     assert abs(_loudest_pitch(s) - freq) < 12  # it IS the note it should be
+    assert 300 <= freq <= 1000  # a laptop speaker plays this; the button blips are above
     power = np.abs(np.fft.rfft(s.astype(float))) ** 2
-    cut = int(1000 * s.size / SAMPLE_RATE)
-    assert power[cut:].sum() < 0.01 * power.sum()  # next to nothing above 1 kHz
+    cut = int(2500 * s.size / SAMPLE_RATE)
+    assert power[cut:].sum() < 0.01 * power.sum()  # no whistle
 
 
-def test_the_spin_notes_climb_from_low_to_high_and_stay_far_below_the_button_blips():
-    assert list(audio.SPIN_NOTES) == sorted(audio.SPIN_NOTES)
-    assert len(set(audio.SPIN_NOTES)) == len(audio.SPIN_NOTES) == 9
-    assert max(audio.SPIN_NOTES) < 400 < min(audio.TICK_NOTES)
+def test_the_spin_sounds_are_audible_softer_than_the_button_blip_and_equal_to_each_other():
+    blip = _heard(audio.synth_blip(), 0.30)  # the quietest button sound: the yardstick
+    means = []
+    for name, (lowest, volume) in audio.SPIN_SOUNDS.items():
+        levels = [_heard(audio.synth_spin(f), volume) / blip for f in audio.spin_notes(lowest)]
+        assert all(0.55 <= x <= 1.0 for x in levels), (name, levels)  # heard, but softer
+        means.append(sum(levels) / len(levels))
+    assert max(means) / min(means) < 1.2  # the three differ in pitch, not in loudness
 
 
-def test_play_spin_picks_the_note_by_level_and_is_silent_when_muted():
+@pytest.mark.parametrize("lowest", [low for low, _ in audio.SPIN_SOUNDS.values()])
+def test_the_nine_notes_climb_a_semitone_at_a_time(lowest):
+    notes = audio.spin_notes(lowest)
+    assert len(notes) == audio.SPIN_STEPS == 9 and notes[0] == lowest
+    for a, b in zip(notes, notes[1:], strict=False):
+        assert b / a == pytest.approx(2 ** (1 / 12), rel=0.01)
+
+
+def test_play_spin_picks_the_note_by_level_and_plays_it_at_the_sounds_volume():
     played = []
     a = Audio.__new__(Audio)
-    a._play = lambda name, volume: played.append(name) or True
+    a._spin_volume = 0.3
+    a._play = lambda name, volume: played.append((name, volume)) or True
     for level in (-1.0, 0.0, 1.0, -5.0, 5.0):
         a.play_spin(level)
-    assert played == ["spin0", "spin4", "spin8", "spin0", "spin8"]
+    assert played == [(f"spin{i}", 0.3) for i in (0, 4, 8, 0, 8)]
+
+
+def test_the_environment_picks_which_spin_sound_the_game_makes(monkeypatch):
+    monkeypatch.setenv("NEONPOOL_SPIN_SOUND", "SANG")
+    chosen = Audio()
+    assert chosen.spin_notes == audio.spin_notes(audio.SPIN_SOUNDS["SANG"][0])
+    assert chosen._spin_volume == audio.SPIN_SOUNDS["SANG"][1]
+    monkeypatch.setenv("NEONPOOL_SPIN_SOUND", "nonsense")
+    default = Audio()
+    assert default.spin_notes == audio.spin_notes(audio.SPIN_SOUNDS[audio.DEFAULT_SPIN_SOUND][0])
