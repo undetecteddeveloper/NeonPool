@@ -1,4 +1,4 @@
-"""The six pictures of the how-to-play screen: REAL game frames with marks drawn on top.
+"""The seven pictures of the how-to-play screen: REAL game frames with marks drawn on top.
 
 Each picture is made by posing the balls in a real `PlayScene` (the game's own table, balls, aim
 line, pull bar, rings, result card and side panel), letting the game draw one frame, cropping it
@@ -17,7 +17,7 @@ from game.render import hud
 from game.render import palette as C
 from game.render.draw import RIM, BallSprites
 from game.render.guide_art import Annot
-from game.render.layout import PANEL_W, PANEL_X, to_px
+from game.render.layout import OUTER_W, OUTER_X, PANEL_W, PANEL_X, to_px
 from game.render.view import View
 from game.rules.eight_ball import LOST, LOST_EARLY, WON, ShotResult
 from game.scenes.play import PlayScene
@@ -267,7 +267,64 @@ def picture_keys(v: View) -> pg.Surface:
     return out
 
 
-PICTURES = (picture_cue, picture_groups, picture_fouls, picture_hand, picture_end, picture_keys)
+# --- 7 two players -----------------------------------------------------------------------
+def picture_duo(v: View) -> pg.Surface:
+    """The game's own name plates, clock bar, score, reaction buttons and Esc card, arranged on
+    one page (nothing is drawn by hand: these are the functions the two-player game calls)."""
+    out = _blank(v)
+    a = Annot(out, v)
+    wide = pg.Surface(v.size)
+    wide.fill(C.PANEL)
+    mine = pg.Rect(OUTER_X, hud.PLATE_Y, hud.PLATE_W, hud.PLATE_H)
+    theirs = pg.Rect(OUTER_X + OUTER_W - hud.PLATE_W, hud.PLATE_Y, hud.PLATE_W, hud.PLATE_H)
+    hud.name_plate(wide, v, mine, t("guide.duo_me"), t("group.solid"), 5, turn=True)
+    hud.name_plate(wide, v, theirs, t("guide.duo_them"), t("group.stripe"), 7, turn=False)
+    hud.versus(wide, v, OUTER_X + OUTER_W / 2, (2, 1))
+    hud.turn_bar(wide, v, mine, 0.6, warn=False, blink_on=True)
+    hud.emote_bubble(wide, v, theirs, False, t("net.emote.2"), 0.5)
+    crop = pg.Rect(OUTER_X - 10, 16, OUTER_W + 20, 82)
+    strip = wide.subsurface(v.rect(*crop)).copy()
+    k = (ART_W - 20) / crop.w
+    strip = pg.transform.smoothscale(strip, (v.i(ART_W - 20), v.i(crop.h * k)))
+    out.blit(strip, v.ipt((10, 10)))
+    bar = (10 + (mine.x + mine.w * 0.3 - crop.x) * k, 10 + (mine.bottom + 6 - crop.y) * k)
+    a.arrow((bar[0] + 40, 92), (bar[0] + 8, bar[1] + 6), C.ACCENT)
+    a.text(t("guide.duo_clock"), (bar[0] + 46, 88), 13, C.TEXT, bold=True)
+    # the three reaction buttons, as the game draws them
+    first = hud.emote_rects()[0]
+    dx, dy = 26 - first.x, 176 - first.y
+    fx = hud.ButtonFx()
+    for i, rect in enumerate(hud.emote_rects()):
+        hud.emote_chip(out, v, rect.move(dx, dy), t(f"net.emote.{i}"), str(i + 1), fx, i, 0.0)
+    a.text(t("guide.duo_emote"), (26 + 94, 152), 14, C.TEXT, bold=True, center=True)
+    # the Esc card, smaller
+    card = pg.Surface(v.size)
+    card.fill(C.PANEL)
+    hud.draw_notice_frame(card, v, t("net.card.esc_title"), t("net.card.esc_line"), C.CYAN)
+    buttons = (
+        ("resume", t("net.card.resume"), True),
+        ("surrender", t("net.card.surrender"), False),
+    )
+    hud.draw_notice_live(card, v, None, 0.0, buttons)
+    pic = card.subsurface(v.rect(*hud.NOTICE_CARD.inflate(16, 16))).copy()
+    width = 236
+    pic = pg.transform.smoothscale(
+        pic, (v.i(width), round(pic.get_height() * v.i(width) / pic.get_width()))
+    )
+    out.blit(pic, v.ipt((ART_W - width - 22, 122)))
+    a.text(t("guide.duo_esc"), (ART_W - width / 2 - 22, 300), 14, C.TEXT, bold=True, center=True)
+    return out
+
+
+PICTURES = (
+    picture_cue,
+    picture_groups,
+    picture_fouls,
+    picture_hand,
+    picture_end,
+    picture_keys,
+    picture_duo,
+)
 
 
 def build(index: int, v: View) -> pg.Surface:

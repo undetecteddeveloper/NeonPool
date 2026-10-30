@@ -180,5 +180,16 @@
   "net.notice.timeout_me": "Time is up: you lose the turn",
   "net.notice.timeout_them": "{name} ran out of time: your turn",
   "callout.timeout": "TIME UP!",
-  "net.rematch.wait_short": "Waiting…"
+  "net.rematch.wait_short": "Waiting…",
+  "guide.p7.title": "Two players",
+  "guide.p7.b1": "You take turns. Pocket one of your own balls and you shoot again; otherwise the turn passes.",
+  "guide.p7.b2": "A foul loses the turn: the other player places the cue ball anywhere.",
+  "guide.p7.b3": "Each shot has 60 seconds: the bar under the name plate runs out, blinks red and ticks in the last 10. Time up only loses the turn.",
+  "guide.p7.b4": "Nice! / Too bad / GG at the top right (keys 1, 2, 3).",
+  "guide.p7.b5": "Esc: Resume or Give up. Link lost: it waits 60 seconds. After a game both press Rematch.",
+  "guide.duo_me": "You",
+  "guide.duo_them": "Opponent",
+  "guide.duo_clock": "The bar runs out: time of the shot",
+  "guide.duo_emote": "Reactions (keys 1 2 3)",
+  "guide.duo_esc": "Esc: Resume or Give up"
 }

@@ -180,5 +180,16 @@
   "net.notice.timeout_me": "Hết giờ: bạn mất lượt",
   "net.notice.timeout_them": "{name} hết giờ, tới lượt bạn",
   "callout.timeout": "HẾT GIỜ!",
-  "net.rematch.wait_short": "Đang chờ…"
+  "net.rematch.wait_short": "Đang chờ…",
+  "guide.p7.title": "Chơi đôi",
+  "guide.p7.b1": "Hai người thay phiên. Bỏ bi nhóm mình vào lỗ thì đánh tiếp, không thì đổi lượt.",
+  "guide.p7.b2": "Lỗi: mất lượt, đối thủ đặt bi trắng ở đâu cũng được.",
+  "guide.p7.b3": "Mỗi cú 60 giây: thanh dưới khung tên cạn dần, 10 giây cuối nháy đỏ và tích. Hết giờ chỉ mất lượt.",
+  "guide.p7.b4": "Hay! / Tiếc quá / GG ở góc trên bên phải (phím 1, 2, 3).",
+  "guide.p7.b5": "Esc: Tiếp tục hoặc Đầu hàng. Rớt mạng: chờ 60 giây. Hết ván: cả hai bấm Đấu lại.",
+  "guide.duo_me": "Bạn",
+  "guide.duo_them": "Đối thủ",
+  "guide.duo_clock": "Thanh cạn dần: thời gian của cú",
+  "guide.duo_emote": "Biểu cảm (phím 1 2 3)",
+  "guide.duo_esc": "Esc: Tiếp tục hoặc Đầu hàng"
 }

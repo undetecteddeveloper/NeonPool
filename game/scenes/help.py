@@ -1,5 +1,5 @@
 """How to play: a small carousel that opens over whatever is behind it (the menu, or the table
-during a game), which goes dark. Six topics, one per page: a real picture of the game and a few
+during a game), which goes dark. Seven topics, one per page: a real picture of the game and a few
 numbered sentences (the numbers match the numbers drawn on the picture). Arrows (or the keys)
 turn the pages round and round.
 
@@ -33,6 +33,7 @@ TOPICS = (
     ("guide.p4", 3, (1, 2, 3)),
     ("guide.p5", 3, (None, None, None)),
     ("guide.p6", 2, (None, None)),
+    ("guide.p7", 5, (None, None, None, None, None)),
 )
 OPEN_S, CLOSE_S = 0.28, 0.2  # the card opens out of a line / folds back into it in this long
 DIM_ALPHA = 228  # how dark the scene behind goes (nearly black: only a glimmer of it shows)

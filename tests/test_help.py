@@ -427,3 +427,22 @@ def test_after_prepare_the_idle_menu_has_nothing_left_to_make_so_it_never_stalls
     app.help._make_page = lambda i: made.append(i) or real(i)
     run(app, 4.0)  # long past the 1.5 s the menu used to wait before making them
     assert made == []
+
+
+def test_the_last_page_is_two_player_play_with_its_picture_and_words_in_both_languages():
+    assert len(TOPICS) == len(pics.PICTURES) == 7
+    prefix, count, markers = TOPICS[-1]
+    assert prefix == "guide.p7" and len(markers) == count
+    for lang in ("vi", "en"):
+        table = i18n.table(lang)
+        assert f"{prefix}.title" in table
+        for n in range(1, count + 1):
+            assert f"{prefix}.b{n}" in table, (lang, n)
+        for key in (
+            "guide.duo_me",
+            "guide.duo_them",
+            "guide.duo_clock",
+            "guide.duo_emote",
+            "guide.duo_esc",
+        ):
+            assert key in table, (lang, key)
