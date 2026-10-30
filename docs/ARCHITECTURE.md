@@ -19,10 +19,12 @@ game/
     world.py             #   World.step(dt) -> list[Event]; trạng thái bi; rng riêng
     collide.py           #   bi–bi, bi–băng, bi–lỗ
   rules/                 # THUẦN: eight_ball.py nhận Event -> trạng thái ván (nhóm, lỗi, thắng/thua, `score`: thắng = 1000 − 10/cú − 50/lỗi, tối thiểu 100; thua = 50/bi đã vào, không tính bi 8; hằng số `SCORE_*` ở config.py)
+  tally.py               # THUẦN: `Tally` = đồng hồ cho số ở thẻ kết quả đếm lên (điểm → số cú → lỗi): `value`, `ticks_done`, `tick_pitch`, `flash`, `finished` theo tuổi thẻ; thẻ vẽ và PlayScene phát tiếng tích/ting từ cùng một nguồn; hằng số `TALLY_*` ở config.py
   music.py               # THUẦN (numpy, không pygame): `Style` (nhịp, hợp âm, mức từng lớp: pad, arp, bass, kick, hat, bell) + `render(style)` -> một vòng lặp int16 liền mạch (đuôi cuối vòng cuộn về đầu); 4 style có tên, `TRACKS` = bài đang dùng cho "menu" và "play"
   input/                 # drag.py: Knob (cơ như núm vặn quanh bi trắng) + DragAim (kéo ngược hướng muốn đánh: hướng và lực đều theo hướng kéo, tính từ chỗ bấm) -> trả Shot; cách nhập nào thêm sau này cũng chỉ trả Shot
   settings.py            # cài đặt của người chơi (ngôn ngữ, âm lượng, âm lượng nhạc, rung, FPS): JSON trong %APPDATA%\NeonPool, biến NEONPOOL_SETTINGS đổi chỗ (test và tools dùng); thuần, không pygame
   render/                # vẽ: bàn tối giản (table.py), bi (+ `SpinBalls`: bi xoay số/vạch sọc, mỗi 3° một sprite) + cơ neon + nút đặc (draw.py), chữ + số 7 đoạn + bảng điểm (hud.py), nền synthwave + sóng sống + bi trôi ở menu (synth.py), vệt quét CRT (crt.py), ánh sáng (glow.py), vòng sóng (fx.py), phông (fonts.py: assets/fonts, OFL), màu (palette.py); PX_PER_M chỉ dùng ở đây
+  render/frozen.py       # `FrozenScene`: ảnh cảnh phía sau một bảng nổi (chụp khung đầu, rồi dán; khi bảng mở yên thì nền tối + khung bảng được nướng MỘT lần) — Hướng dẫn và Cài đặt dùng chung; `draw.veil(size, alpha)` là lớp phủ tối có đệm
   scenes/                # menu, play, help (`HelpPanel`: carousel NỔI do App giữ, vẽ đè lên menu hoặc bàn; + help_pictures: ảnh thật chụp từ PlayScene), settings (bảng Cài đặt nổi trên menu)
 lang/vi.json, en.json
 tests/                   # pytest; conftest.py đặt SDL dummy
