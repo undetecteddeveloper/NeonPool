@@ -11,7 +11,7 @@ group of the player on turn; after it, the Match decides what the result means f
   again and the same player breaks.
 
 Player 0 is the room's host, who alone calls `finish_shot` (the referee); the guest's copy is
-brought up to date from a `MatchState` (`snapshot` / `load`). docs/GAME_DESIGN.md "Chơi mạng".
+brought up to date from a `MatchState` (`snapshot` / `load`). See GAME_DESIGN.md (network play).
 """
 
 from __future__ import annotations

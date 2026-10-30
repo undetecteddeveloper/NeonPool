@@ -5,7 +5,7 @@ few bytes, never as ball positions. The HOST (player 0) is the referee: it alone
 and sends the table and the verdict as a checkpoint; the guest (player 1) shoots at once on its
 own copy (the simulation is deterministic) and sends the shot as a request the host may refuse.
 Whatever the guest has simulated is replaced by the checkpoint, and a ball more than
-`NET_DESYNC_M` off is counted in `desyncs`. docs/ARCHITECTURE.md "Chơi mạng".
+`NET_DESYNC_M` off is counted in `desyncs`. docs/ARCHITECTURE.md, section on network play.
 
 Everything that changes the table (a shot ordered by the host, a checkpoint, a ball placed) waits
 in the inbox until this machine's own balls have stopped, so the order of events is the same on

@@ -1,1 +1,1 @@
-"""Network play (docs/ARCHITECTURE.md "Chơi mạng"). Pure: nothing here imports pygame."""
+"""Network play (see ARCHITECTURE.md). Pure: nothing here imports pygame."""

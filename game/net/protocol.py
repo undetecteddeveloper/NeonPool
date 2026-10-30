@@ -2,7 +2,7 @@
 
 A frame is `[length u16][type u8][payload]`, little-endian, `length` counting type + payload and
 never more than MAX_FRAME. No pickle: every field is read with a bounds check, so a broken, cut
-or foreign frame raises `ProtocolError` and nothing else. docs/ARCHITECTURE.md "Chơi mạng".
+or foreign frame raises `ProtocolError` and nothing else. See ARCHITECTURE.md (network play).
 """
 
 from __future__ import annotations

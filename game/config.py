@@ -141,7 +141,7 @@ SCORE_PER_FOUL = 50  # ... and this for every foul ...
 SCORE_WIN_MIN = 100  # ... but a win is never worth less than this
 SCORE_PER_BALL_LOST = 50  # a lost game only counts the balls that went down (the 8 excluded)
 
-# --- Network play (docs/ARCHITECTURE.md "Chơi mạng") ---
+# --- Network play (docs/ARCHITECTURE.md, section on network play) ---
 GAME_VERSION = "0.1"  # two builds with different values never meet; bump it with any change that
 # can alter a shot's result (the physics numbers are also checked: protocol.physics_fingerprint)
 NET_PORT = 47474  # where a room listens on the local network

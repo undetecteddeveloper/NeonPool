@@ -133,19 +133,23 @@ class PlayScene:
 
     def fire(self, shot: Shot) -> None:
         """Every cue shot goes through here."""
-        cue = self.world.balls[0]
-        d = (math.cos(shot.angle), math.sin(shot.angle))
-        self._lunge = (self._clock, to_px(cue.x, cue.y), d, self.drag.bar_length, shot.power)
+        self._shot_visuals(shot, self.drag.bar_length)
         self.world.apply(shot)
-        self._dial_drag = False  # the spin stays as set: the next shot uses it too
         self.rules.on_shot()  # also ends "cue ball in hand"
         self._live = True
+        self._break_pending = self.rules.is_break
+
+    def _shot_visuals(self, shot: Shot, pull_px: float) -> None:
+        """What a shot looks and sounds like: the cue darts at the ball, the clutter clears."""
+        cue = self.world.balls[0]
+        d = (math.cos(shot.angle), math.sin(shot.angle))
+        self._lunge = (self._clock, to_px(cue.x, cue.y), d, pull_px, shot.power)
+        self._dial_drag = False  # the spin stays as set: the next shot uses it too
         self.placing = False
         self._notice_left = 0.0
         self._callout = None
         self._cue_alpha = 0.0  # the darting cue of the shot takes over
         self.knob.angle = shot.angle
-        self._break_pending = self.rules.is_break
         self.app.audio.play_shot(shot.power)
 
     def shake_offset(self) -> tuple[float, float]:
@@ -326,15 +330,7 @@ class PlayScene:
     def update(self, dt: float) -> None:
         self._clock += dt
         self._notice_left = max(0.0, self._notice_left - dt)
-        self._acc += min(dt, MAX_FRAME_DT)
-        frame_events = []
-        while self._acc >= PHYSICS_DT:
-            self._acc -= PHYSICS_DT
-            events = self.world.step()
-            if events:
-                self.rules.on_events(events)
-                self._show_events(events)
-                frame_events += events
+        frame_events = self._step_world(dt)
         if frame_events:
             self.app.audio.on_events(frame_events)
         self.fx.update(dt)
@@ -347,6 +343,19 @@ class PlayScene:
         if self._live and self.world.at_rest():
             self._end_shot()
         self._fade_cue(dt)
+
+    def _step_world(self, dt: float) -> list:
+        """Run the simulation for `dt` (whole fixed steps); the events of those steps."""
+        self._acc += min(dt, MAX_FRAME_DT)
+        frame_events = []
+        while self._acc >= PHYSICS_DT:
+            self._acc -= PHYSICS_DT
+            events = self.world.step()
+            if events:
+                self.rules.on_events(events)
+                self._show_events(events)
+                frame_events += events
+        return frame_events
 
     def _tally_sounds(self) -> None:
         """The card's numbers tick while they climb and ring a bell when they stop."""
@@ -445,6 +454,14 @@ class PlayScene:
             pulse = 0.5 + 0.5 * math.sin(self._clock * 7.5)
             color = (*C.ACCENT, round(150 + 105 * pulse)) if self._place_ok else (*C.ERROR, 255)
             draw.draw_ring(canvas, v, to_px(cue.x, cue.y), draw.RIM + 5, color)
+        self._draw_cues(canvas, v, over)
+        self._draw_lunge(canvas, v)
+        self._draw_panel(canvas, v)
+        self._draw_overlays(canvas, v, over)
+
+    def _draw_cues(self, canvas: pg.Surface, v: View, over: bool) -> None:
+        """The aiming line and the cue: pulled back while aiming, resting behind the ball."""
+        cue = self.world.balls[0]
         if self.drag.has_direction and cue.in_play and not over:
             a = self.drag.angle
             d = (math.cos(a), math.sin(a))
@@ -463,7 +480,9 @@ class PlayScene:
             centre = to_px(cue.x, cue.y)
             d = (math.cos(self.knob.angle), math.sin(self.knob.angle))
             draw.draw_cue(canvas, v, centre, d, 0.0, 0.0, self._clock, self._cue_alpha)
-        self._draw_lunge(canvas, v)
+
+    def _draw_panel(self, canvas: pg.Surface, v: View) -> None:
+        """The panel beside the table."""
         hud.draw_panel(
             canvas,
             v,
@@ -482,6 +501,9 @@ class PlayScene:
             spin_lit=self._dial_lit,
             spin_on=self._dial_ok(),
         )
+
+    def _draw_overlays(self, canvas: pg.Surface, v: View, over: bool) -> None:
+        """Notices, the big arcade word, the hint, and the result card."""
         if not over:
             hud.banner(canvas, v, self._banner_lines(), BANNER_AT)
             if self._callout is not None:
