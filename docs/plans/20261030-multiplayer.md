@@ -26,9 +26,9 @@ Phiên này: Chặng 0 (đo, chốt kiến trúc) + Chặng 1 (hai máy CÙNG WI
 ## Task (mỗi task một commit `feat(net): ...`)
 Chặng 0
 1. Tài liệu (commit này) + brief.
-2. `net/protocol.py` + test khung tin (AC2, AC3).
+2. `net/protocol.py` + test khung tin (AC2, AC3). (Làm sau task 5: `Checkpoint` mang `MatchState`.)
 3. `net/transport.py` (giao diện, loopback, `NetSim`) + test.
-4. `tools/netbench.py` + số đo (AC7); ghi số vào mục "Số đo" dưới đây, chốt kiến trúc.
+4. `tools/netbench.py` + số đo (AC7); số ghi ở mục "Số đo" dưới đây, kiến trúc giữ nguyên (đã làm, sau task 5).
 Chặng 1
 5. `rules/two_player.py` (`Match`) + test luật (AC4 đồng hồ-khung, AC5).
 6. `net/session.py` (bắt tay, tung xu, lượt, điểm kiểm, đếm lệch) + test (AC4, AC6).
@@ -53,8 +53,23 @@ Chặng 1
 | AC9 | vi/en cùng bộ khoá | `tests/test_i18n.py` sẵn có + `test_ac9_net_keys_in_both_languages` |
 | AC10 | ảnh các màn mới đã nhìn | `tools/_out/20261030-multiplayer/` |
 
-## Số đo (điền ở task 4; nhãn "giả lập" = cùng máy, loopback/NetSim)
-(chưa đo)
+## Số đo (`tools\netbench.py`; nhãn "giả lập" = thời gian ảo của NetSim + đồng hồ thật cho phần việc của game)
+Một chiều "thả chuột ở A → B áp cú đánh", 4000 cú mỗi dòng, ms, **giả lập (đã đo)**, 2026-10-30:
+| Kịch bản | tới hàng đợi p50/p95/p99 | + chờ khung B p95 | + chờ khung A p95 | phần game p95 |
+|---|---|---|---|---|
+| LAN tốt | 1,3 / 1,5 / 1,5 | 17,1 | 29,1 | 0,03 |
+| VN thường (RTT 40, jitter 2) | 21,0 / 21,9 / 22,0 | **36,8** (mục tiêu ≤ 50: đạt) | 49,0 | **0,03** (≤ 5: đạt) |
+| VN xấu vừa (RTT 40, jitter 10, mất 2%) | 25,1 / 29,7 / **223,5** | 43,3 | 55,4 | 0,02 |
+| xa (RTT 80, jitter 20, mất 5%) | 50,4 / 59,9 / 256,1 | 75,0 | 88,0 | 0,03 |
+Cơ đối thủ: 30 gói/s, 240 byte/s nội dung (~1440 kể cả tiêu đề TCP/IP; mục tiêu < 2048). Điểm kiểm sau mỗi cú: 303 byte.
+**Hai máy thật: CHƯA ĐO.** Kịch bản chạy khi nhờ được bạn: cuối bản in của `netbench.py`.
+
+Điều số đo cho thấy (và quyết định):
+- Phần game tự cộng là ~0,03 ms: mã hoá + giải mã + áp cú không đáng kể. Phần lớn "tới khung" là chờ ĐẦU KHUNG HÌNH (60 FPS), vốn có ở mọi game pygame; không cố giảm bằng cách áp cú ngoài luồng chính (mất an toàn luồng).
+- Chờ khung ở CẢ HAI máy làm p95 vượt 48 ms ở "VN thường" (49,0). Mục tiêu 50 ms tính ở mức "+ khung B"; mức "+ khung A" ghi để không giấu.
+- Mất 2% gói làm p99 nhảy từ 22 lên 223 ms: gói tin cậy bị mất phải chờ RTO 200 ms (TCP). Với `SHOT` nằm trong 1% tệ nhất thì người chơi thấy khựng ~0,2 s. Chặng 1 (LAN, TCP) chịu được; **Chặng 2 (internet) nên dùng UDP + lớp tin cậy RTO ≈ 1,5×RTT (~70 ms)** thay vì TCP — transport mới, giao thức và `Session` giữ nguyên. Đo lại ở chặng 2.
+
+Kiến trúc `net/` được GIỮ như dự kiến (protocol / transport / session thuần; TCP cho LAN). Lý do không đổi: phần game không phải nút cổ chai, nên không cần đường đặc biệt nào ở chặng 1.
 
 ## Chặng sau (KHÔNG làm ở phiên này)
 - Chặng 2: mã phòng + danh bạ + máy trung chuyển miễn phí + tự chuyển trực tiếp/trung chuyển; đo lại 50 ms. Tra lại điều khoản gói miễn phí bằng WebSearch trước khi chốt nền tảng (CHƯA LÀM). Hiện địa chỉ → bỏ.
