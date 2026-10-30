@@ -249,8 +249,8 @@ def report(results: dict, shots: int) -> None:
     print(f"== Điểm kiểm sau mỗi cú: {results['checkpoint']} byte")
     print(f"== {REAL_LABEL}. Kịch bản chạy khi nhờ được bạn:")
     print("   1) Hai máy cùng wifi, cùng bản game (git checkout nhánh feat/multiplayer).")
-    print("   2) Máy A: menu > Chơi mạng > Tạo phòng (cho phép tường lửa Windows nếu hỏi).")
-    print("   3) Máy B: menu > Chơi mạng > Vào phòng > gõ địa chỉ máy A.")
+    print("   2) Máy A: Chơi > Chơi đôi > Tạo phòng (cho phép tường lửa Windows nếu hỏi).")
+    print("   3) Máy B: Chơi > Chơi đôi > Vào phòng > gõ địa chỉ máy A.")
     print("   4) Bật Cài đặt > Hiện FPS; đánh 20 cú ở mỗi máy; ghi cảm giác trễ và số 'lệch'.")
     print("   5) Đo số ms: chạy tools\\netbench.py --tcp trên MỘT máy (loopback) rồi hai máy.")
 
