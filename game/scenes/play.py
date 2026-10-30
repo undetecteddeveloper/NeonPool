@@ -428,6 +428,7 @@ class PlayScene:
             v,
             won=self.rules.phase == WON,
             reason=t(res.reason) if res and res.reason else None,
+            score=self.rules.score,
             rows=[(t("hud.shots"), self.rules.shots), (t("hud.fouls"), self.rules.fouls)],
             hover=self._hover,
             age=self._clock - self._ended_at,

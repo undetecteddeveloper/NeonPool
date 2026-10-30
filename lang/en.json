@@ -40,6 +40,7 @@
   "result.lost": "You lost",
   "result.lost_early": "The 8-ball went in before your group was cleared",
   "result.lost_foul": "The 8-ball went in on a shot with a foul",
+  "result.score": "Score",
   "result.new": "New game",
   "result.menu": "Menu",
   "guide.title": "How to play",

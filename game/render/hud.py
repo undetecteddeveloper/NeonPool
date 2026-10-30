@@ -590,11 +590,13 @@ def draw_callout(
     )
 
 
-RESULT_CARD = pg.Rect(334, 197, 400, 320)  # between the head spot and the rack (logical px)
+RESULT_CARD = pg.Rect(334, 163, 400, 388)  # centred on the table (logical px)
 RESULT_BUTTONS = {
-    "new": pg.Rect(RESULT_CARD.x + 28, RESULT_CARD.y + 252, 164, 46),
-    "menu": pg.Rect(RESULT_CARD.right - 192, RESULT_CARD.y + 252, 164, 46),
+    "new": pg.Rect(RESULT_CARD.x + 28, RESULT_CARD.y + 314, 164, 46),
+    "menu": pg.Rect(RESULT_CARD.right - 192, RESULT_CARD.y + 314, 164, 46),
 }
+RESULT_SCORE_Y, RESULT_SCORE_H = 140, 44  # the score line under the title (and the reason)
+RESULT_ROWS_Y, RESULT_ROW_STEP = 218, 46  # shots and fouls under the hairline below it
 RESULT_IN_S = 0.3  # the card grows in
 _dim_cache: dict[tuple[int, int], pg.Surface] = {}
 
@@ -605,14 +607,16 @@ def draw_result(
     *,
     won: bool,
     reason: str | None,
+    score: int,
     rows: list[tuple[str, int]],
     hover: str | None,
     age: float = 1.0,
     fx: ButtonFx | None = None,
     clock: float = 0.0,
 ) -> None:
-    """The end-of-game card: dims the table, a big lit title, why, the score in arcade digits and
-    two buttons. `age` (s since the game ended) lets the card grow in."""
+    """The end-of-game card: dims the table, a big lit title, why, the score on its own line,
+    shots and fouls in arcade digits and two buttons. `age` (s since the game ended) lets the
+    card grow in."""
     size = canvas.get_size()
     if size not in _dim_cache:
         _dim_cache.clear()
@@ -636,8 +640,12 @@ def draw_result(
     if reason:
         for i, line in enumerate(wrap(v, reason, 14, c.w - 60)[:2]):
             text(canvas, v, line, 14, C.TEXT_DIM, (cx, c.y + 98 + i * 19), center=True)
+    top = c.y + RESULT_SCORE_Y
+    label(canvas, v, t("result.score"), (c.x + 44, top + RESULT_SCORE_H / 2 - 5), C.TEXT, 14)
+    seg_number(canvas, v, score, 4, (c.right - 44, top), RESULT_SCORE_H, C.SUN_TOP, align="right")
+    blit_rrect(canvas, v, c.x + 44, top + RESULT_SCORE_H + 18, c.w - 88, 1.5, 0.75, C.PANEL_EDGE, 0)
     for i, (name, value) in enumerate(rows):
-        row = c.y + 146 + i * 46
+        row = c.y + RESULT_ROWS_Y + i * RESULT_ROW_STEP
         label(canvas, v, name, (c.x + 44, row + 12), size=12)
         seg_number(canvas, v, value, 3, (c.right - 44, row), 30, C.CYAN, align="right")
     fx = fx or ButtonFx(lit={"new": 1.0}, chosen="new")

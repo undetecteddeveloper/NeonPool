@@ -9,6 +9,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from game.config import (
+    SCORE_PER_BALL_LOST,
+    SCORE_PER_FOUL,
+    SCORE_PER_SHOT,
+    SCORE_WIN_BASE,
+    SCORE_WIN_MIN,
+)
 from game.physics.world import CUE, BallHitBall, BallHitCushion, BallPocketed, Event
 
 PLAYING, WON, LOST = "playing", "won", "lost"  # EightBall.phase
@@ -63,6 +70,16 @@ class EightBall:
     @property
     def balls_left(self) -> int:
         return 15 - len(self.pocketed)
+
+    @property
+    def score(self) -> int:
+        """The result card's score. A win keeps what is left of a fixed budget after every shot
+        and foul (so fewer shots and fouls score more); anything else counts only the balls that
+        went down, the 8 excluded."""
+        if self.phase == WON:
+            spent = SCORE_PER_SHOT * self.shots + SCORE_PER_FOUL * self.fouls
+            return max(SCORE_WIN_MIN, SCORE_WIN_BASE - spent)
+        return SCORE_PER_BALL_LOST * len(self.pocketed - {EIGHT})
 
     def _group_set(self) -> frozenset[int]:
         return {SOLID: SOLIDS, STRIPE: STRIPES}.get(self.group, frozenset())

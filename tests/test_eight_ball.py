@@ -266,3 +266,34 @@ def test_a_pocketed_cue_ball_can_be_placed_again():
     w = World()
     w.balls[0].in_play = False
     assert w.place_cue(1.0, 0.4) and w.balls[0].in_play
+
+
+# --- the score on the result card ---------------------------------------------------------
+def won_game(shots: int, fouls: int) -> EightBall:
+    rb = EightBall()
+    rb.shots, rb.fouls, rb.phase = shots, fouls, WON
+    rb.pocketed = set(range(1, 16))
+    return rb
+
+
+def test_a_win_scores_a_budget_minus_shots_and_fouls():
+    assert won_game(22, 6).score == 1000 - 22 * 10 - 6 * 50 == 480
+    assert won_game(5, 0).score > won_game(22, 6).score  # fewer shots and fouls: more points
+
+
+def test_a_win_is_never_worth_less_than_the_floor():
+    assert won_game(300, 40).score == 100
+
+
+def test_a_loss_counts_only_the_balls_that_went_down_without_the_eight():
+    rb = EightBall()
+    rb.phase, rb.pocketed = LOST, {2, 5, 8, 11}  # the 8 went in early: it does not count
+    assert rb.score == 3 * 50
+    rb.pocketed = {8}
+    assert rb.score == 0
+
+
+def test_a_running_game_has_no_score_yet():
+    rb = EightBall()
+    rb.shots, rb.fouls = 22, 6
+    assert rb.phase == PLAYING and rb.score == 0  # a running game has not won anything yet

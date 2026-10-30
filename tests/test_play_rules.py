@@ -201,3 +201,18 @@ def test_every_rules_state_draws(app, lang):
     app.draw()  # the ring and the banner
     play._notify("info", "notice.rerack")
     app.draw()
+
+
+def test_the_result_card_shows_the_score_inside_the_card_in_both_languages(app):
+    _won_position(app)
+    finish_with(app, *EIGHT_DOWN)
+    play = app.play
+    assert play.rules.phase == WON and play.rules.score > 0
+    c = hud.RESULT_CARD
+    assert all(c.contains(r) for r in hud.RESULT_BUTTONS.values())  # nothing sticks out
+    last_row = c.y + hud.RESULT_ROWS_Y + hud.RESULT_ROW_STEP + 30
+    assert last_row < min(r.top for r in hud.RESULT_BUTTONS.values())  # rows end above the buttons
+    for lang in ("vi", "en"):
+        i18n.set_lang(lang)
+        app.draw()
+        assert i18n.t("result.score") != "result.score"

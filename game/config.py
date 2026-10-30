@@ -89,6 +89,13 @@ SFX_MAX_PER_FRAME = 6  # cap sounds started per frame so a break is not a wall o
 SFX_REF_SPEED = 6.0  # m/s that maps to full volume
 SFX_MIN_SPEED = 0.05  # m/s; softer impacts make no sound (no ticking at the end of a roll)
 
+# --- Score on the result card (rules/eight_ball.py: `EightBall.score`) ---
+SCORE_WIN_BASE = 1000  # a won game starts from this ...
+SCORE_PER_SHOT = 10  # ... loses this for every shot ...
+SCORE_PER_FOUL = 50  # ... and this for every foul ...
+SCORE_WIN_MIN = 100  # ... but a win is never worth less than this
+SCORE_PER_BALL_LOST = 50  # a lost game only counts the balls that went down (the 8 excluded)
+
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---
 RACK_ORDER = (1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 6, 13, 14, 7, 15)

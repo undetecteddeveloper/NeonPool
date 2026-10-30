@@ -222,12 +222,12 @@ def _card(v: View, won: bool) -> pg.Surface:
 def picture_end(v: View) -> pg.Surface:
     out = _blank(v)
     a = Annot(out, v)
-    w = 300.0
+    w = 270.0  # the cards are taller than they were: two of them still fit above the captions
     for i, (won, caption) in enumerate(((True, "guide.end_clear"), (False, "guide.end_left"))):
         card = _card(v, won)
         scale = v.i(w) / card.get_width()
         small = pg.transform.smoothscale(card, (v.i(w), round(card.get_height() * scale)))
-        x = i * (w + 20)
+        x = (ART_W - 2 * w - 20) / 2 + i * (w + 20)
         out.blit(small, v.ipt((x, 12)))
         a.mark((x + w - 18, 30), won)
         a.text(t(caption), (x + w / 2, 296), 15, C.TEXT, bold=True, center=True)
