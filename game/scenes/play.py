@@ -137,7 +137,7 @@ class PlayScene:
         d = (math.cos(shot.angle), math.sin(shot.angle))
         self._lunge = (self._clock, to_px(cue.x, cue.y), d, self.drag.bar_length, shot.power)
         self.world.apply(shot)
-        self.spin, self._dial_drag = 0.0, False  # every shot starts from the middle of the ball
+        self._dial_drag = False  # the spin stays as set: the next shot uses it too
         self.rules.on_shot()  # also ends "cue ball in hand"
         self._live = True
         self.placing = False
@@ -226,9 +226,17 @@ class PlayScene:
     def _over_dial(self, pos: tuple[float, float]) -> bool:
         return math.dist(pos, hud.SPIN_C) <= hud.SPIN_HIT_R
 
-    def _set_spin(self, value: float) -> None:
+    def _set_spin(self, value: float, press: bool = False) -> None:
+        """Set the spin; a soft low 'tok' sounds when it reaches another step (and on a press)."""
+        old = self._spin_step()
         value = max(-1.0, min(1.0, round(value * 32) / 32))  # steps of 1/32: exact, tidy
         self.spin = 0.0 if abs(value) < 0.08 else value  # the middle is easy to hit
+        if press or self._spin_step() != old:
+            self.app.audio.play_spin(self.spin)
+
+    def _spin_step(self) -> int:
+        """Which of the nine steps (-4 .. +4, a quarter each) the spin is nearest to."""
+        return round(self.spin * 4)
 
     def _dial_event(self, e: pg.event.Event) -> bool:
         """Set the spin: press or drag the dot on the dial, or roll the wheel. True if used."""
@@ -239,8 +247,7 @@ class PlayScene:
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             if self._dial_ok() and self._over_dial(e.pos):
                 self._dial_drag = True
-                self._set_spin(hud.spin_value(e.pos[1]))
-                self.app.audio.play_click()
+                self._set_spin(hud.spin_value(e.pos[1]), press=True)
                 return True
         elif e.type == pg.MOUSEMOTION and self._dial_drag:
             self._set_spin(hud.spin_value(e.pos[1]))

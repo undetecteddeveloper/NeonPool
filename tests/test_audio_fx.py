@@ -121,3 +121,34 @@ def test_clear_resets_everything():
     fx.shake()
     fx.clear()
     assert fx.ripples == [] and fx.drops == [] and fx.shake_offset() == (0.0, 0.0)
+
+
+# --- the spin dial's sound: low and soft, not the button blip -------------------------------------
+def _loudest_pitch(samples: np.ndarray) -> float:
+    spectrum = np.abs(np.fft.rfft(samples.astype(float), n=1 << 16))
+    return float(np.argmax(spectrum) * SAMPLE_RATE / (1 << 16))
+
+
+@pytest.mark.parametrize("freq", audio.SPIN_NOTES)
+def test_the_spin_sound_is_low_and_short_and_has_no_high_whistle(freq):
+    s = audio.synth_spin(freq)
+    assert s.dtype == np.int16 and 0.03 < s.size / SAMPLE_RATE < 0.12 and np.max(np.abs(s)) > 3000
+    assert abs(_loudest_pitch(s) - freq) < 12  # it IS the note it should be
+    power = np.abs(np.fft.rfft(s.astype(float))) ** 2
+    cut = int(1000 * s.size / SAMPLE_RATE)
+    assert power[cut:].sum() < 0.01 * power.sum()  # next to nothing above 1 kHz
+
+
+def test_the_spin_notes_climb_from_low_to_high_and_stay_far_below_the_button_blips():
+    assert list(audio.SPIN_NOTES) == sorted(audio.SPIN_NOTES)
+    assert len(set(audio.SPIN_NOTES)) == len(audio.SPIN_NOTES) == 9
+    assert max(audio.SPIN_NOTES) < 400 < min(audio.TICK_NOTES)
+
+
+def test_play_spin_picks_the_note_by_level_and_is_silent_when_muted():
+    played = []
+    a = Audio.__new__(Audio)
+    a._play = lambda name, volume: played.append(name) or True
+    for level in (-1.0, 0.0, 1.0, -5.0, 5.0):
+        a.play_spin(level)
+    assert played == ["spin0", "spin4", "spin8", "spin0", "spin8"]

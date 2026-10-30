@@ -162,6 +162,21 @@ def synth_ting(low: float, high: float) -> np.ndarray:
     return _to_int16(x * np.minimum(1.0, t / 0.002), gain=0.65)
 
 
+# --- the spin dial: a low soft "tok" for each step, the pitch following the level -------------
+# nine notes, a semitone apart, from the lowest (strike low) to the highest (strike high); every
+# partial stays under ~530 Hz, so nothing high like the button blips
+SPIN_NOTES = (165, 175, 185, 196, 208, 220, 233, 247, 262)
+
+
+def synth_spin(freq: float) -> np.ndarray:
+    """One step of the spin dial: a short, round, low 'tok' (a sine and a quiet octave)."""
+    t = _t(0.07)
+    x = np.sin(2 * np.pi * freq * t) * _decay(t, 0.02) + 0.3 * np.sin(
+        2 * np.pi * 2 * freq * t
+    ) * _decay(t, 0.01)
+    return _to_int16(x * np.minimum(1.0, t / 0.004), gain=0.5)
+
+
 def volume_for_speed(speed: float) -> float:
     return float(min(1.0, 0.12 + 0.88 * (max(speed, 0.0) / SFX_REF_SPEED) ** 0.7))
 
@@ -198,6 +213,7 @@ class Audio:
                 ("ting_win", lambda: synth_ting(1319, 1976)),  # bright: E6 and B6
                 ("ting_lose", lambda: synth_ting(440, 659)),  # lower: A4 and E5
                 *((f"tick{i}", lambda f=f: synth_tick(f)) for i, f in enumerate(TICK_NOTES)),
+                *((f"spin{i}", lambda f=f: synth_spin(f)) for i, f in enumerate(SPIN_NOTES)),
             ):
                 self._sounds[name] = self._make(fn())
             self.available = True
@@ -281,6 +297,12 @@ class Audio:
 
     def play_notice(self) -> None:
         self._play("notice", 0.45)
+
+    def play_spin(self, level: float) -> None:
+        """The spin dial moved a step; `level` -1 (low) .. +1 (high) picks the note."""
+        n = len(SPIN_NOTES)
+        i = round((min(1.0, max(-1.0, level)) + 1) / 2 * (n - 1))
+        self._play(f"spin{i}", 0.35)
 
     def play_tally_tick(self, pitch: float) -> None:
         """A counting number stepped; `pitch` 0..1 is how far up the scale it has climbed."""

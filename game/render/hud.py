@@ -435,7 +435,8 @@ def spin_dial(
     if face is not None:
         blit_pm(canvas, *face)
     on = enabled and spin != 0.0
-    colour = C.MAGENTA if on else C.PANEL_HOT
+    # while the balls roll the dot stays (dimmer): the setting is kept for the next shot
+    colour = C.MAGENTA if on else C.scale(C.MAGENTA, 0.5) if spin != 0.0 else C.PANEL_HOT
     blit_dot(
         canvas, v, (cx, cy - spin * SPIN_R * SPIN_DIAL_TRAVEL), 4.2, colour, 0.9 if on else 0.0
     )

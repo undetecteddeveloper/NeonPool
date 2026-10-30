@@ -105,7 +105,7 @@ def test_a_press_away_from_the_dial_does_not_grab_it(app):
     assert not play._dial_drag
 
 
-def test_the_spin_goes_into_the_shot_and_the_dial_goes_back_to_the_middle(app):
+def test_the_spin_goes_into_the_shot_and_stays_for_the_next_one(app):
     play = app.play
     play.handle_event(wheel(1))
     play.handle_event(wheel(1))
@@ -118,7 +118,8 @@ def test_the_spin_goes_into_the_shot_and_the_dial_goes_back_to_the_middle(app):
     play.world.apply = lambda shot: (seen.append(shot), real_apply(shot))[1]
     play.handle_event(release((cx - 100, cy)))
     assert len(seen) == 1 and seen[0].spin == 0.5 and seen[0].angle == pytest.approx(0.0)
-    assert play.spin == 0.0  # the next shot starts from the middle
+    assert play.spin == 0.5  # kept: the next shot uses it too
+    assert not play._dial_drag
 
 
 def test_the_spin_cannot_be_changed_while_balls_roll(app):
@@ -155,3 +156,54 @@ def test_the_panel_draws_with_the_dial_at_every_spin_in_both_languages(app):
         for spin in (-1.0, 0.0, 1.0):
             app.play.spin = spin
             app.draw()
+
+
+def listen(app):
+    """Record every spin 'tok' and every button sound the table scene asks for."""
+    heard = {"spin": [], "click": 0}
+    app.audio.play_spin = lambda level: heard["spin"].append(level)
+    app.audio.play_click = lambda: heard.__setitem__("click", heard["click"] + 1)
+    return heard
+
+
+def test_each_step_of_the_wheel_makes_a_soft_tok_that_follows_the_level(app):
+    heard = listen(app)
+    for _ in range(3):
+        app.play.handle_event(wheel(1))
+    assert heard["spin"] == [0.25, 0.5, 0.75]
+    for _ in range(3):  # at the top end nothing moves, so nothing sounds
+        app.play.handle_event(wheel(1))
+    assert heard["spin"] == [0.25, 0.5, 0.75, 1.0]
+
+
+def test_dragging_sounds_once_for_each_step_crossed_and_never_the_button_blip(app):
+    heard = listen(app)
+    play = app.play
+    play.handle_event(press(hud.SPIN_C))  # a press always gives its tok (here: the middle)
+    assert heard["spin"] == [0.0]
+    play.handle_event(move(above(hud.SPIN_C, 0.52)))  # from the middle up two steps: one tok
+    play.handle_event(move(above(hud.SPIN_C, 0.55)))  # still the same step: quiet
+    assert len(heard["spin"]) == 2 and heard["spin"][1] == pytest.approx(0.52, abs=0.04)
+    assert heard["click"] == 0
+
+
+def test_a_press_that_does_not_change_the_step_still_gives_its_tok(app):
+    heard = listen(app)
+    app.play.handle_event(wheel(1))
+    app.play.handle_event(press(above(hud.SPIN_C, 0.25)))
+    assert heard["spin"][-1] == 0.25 and heard["click"] == 0
+
+
+def test_the_spin_is_kept_through_a_whole_shot_and_into_the_next(app):
+    play = app.play
+    play.handle_event(wheel(-1))
+    play.handle_event(wheel(-1))
+    assert play.spin == -0.5
+    play.fire(Shot(0.0, 0.3, play.spin))
+    for _ in range(60 * 90):
+        app.update(1 / 60)
+        if not play._live:
+            break
+    assert not play._live and play.spin == -0.5
+    play.handle_event(wheel(1))  # settable again once the balls stop
+    assert play.spin == -0.25
