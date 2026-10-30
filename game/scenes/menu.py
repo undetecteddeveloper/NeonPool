@@ -19,6 +19,7 @@ from game.render import palette as C
 from game.render.draw import blit_rrect
 from game.render.synth import Synthwave
 from game.render.view import View
+from game.scenes.play_panel import PlayPanel
 from game.scenes.settings import SettingsPanel
 
 ITEMS = ("play", "help", "settings", "quit")
@@ -51,6 +52,7 @@ class MenuScene:
         self._opened = 0.0
         self.fx = hud.ButtonFx()
         self.settings = SettingsPanel(app)
+        self.play_panel = PlayPanel(app)  # Play: Solo / Two players, then a room
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
@@ -67,9 +69,8 @@ class MenuScene:
         return self._clock - self._opened
 
     def _labels(self) -> list[str]:
-        resume = self.app.game_in_progress()
         return [
-            t("menu.resume") if resume else t("menu.play"),
+            t("menu.play"),
             t("menu.help"),
             t("menu.settings"),
             t("menu.quit"),
@@ -96,7 +97,7 @@ class MenuScene:
         self.fx.press(ITEMS[i], self._clock)
         item = ITEMS[i]
         if item == "play":
-            self.app.go_play()
+            self.play_panel.open()
         elif item == "help":
             self.app.open_help()
         elif item == "settings":
@@ -107,6 +108,9 @@ class MenuScene:
     def handle_event(self, e: pg.event.Event) -> None:
         if self.settings.is_open:
             self.settings.handle_event(e)
+            return
+        if self.play_panel.is_open:
+            self.play_panel.handle_event(e)
             return
         if e.type == pg.MOUSEMOTION:
             for i, r in enumerate(self._rects()):
@@ -131,12 +135,14 @@ class MenuScene:
         rects = dict(zip(ITEMS, self._rects(), strict=True))
         self.fx.update(dt, ITEMS[self.sel], rects, self._clock)
         self.settings.update(dt)
+        self.play_panel.update(dt)
 
     def draw(self, canvas: pg.Surface) -> None:
         v = self.view
-        if self.settings.covers_scene(canvas.get_size()):  # the panel holds a picture of the menu
-            self.settings.draw(canvas, v)
-            return
+        for panel in (self.settings, self.play_panel):
+            if panel.covers_scene(canvas.get_size()):  # the panel holds a picture of the menu
+                panel.draw(canvas, v)
+                return
         self.synth.draw(canvas, self._clock)
         cx = LOGICAL_SIZE[0] // 2
         level = title_level(self._clock - self._opened)
@@ -155,3 +161,4 @@ class MenuScene:
         blit_rrect(canvas, v, cx - w / 2, LOGICAL_SIZE[1] - 36, w, 26, 13, C.BG, 0)
         hud.text(canvas, v, hint, 14, C.TEXT_DIM, (cx, LOGICAL_SIZE[1] - 23), center=True)
         self.settings.draw(canvas, v)
+        self.play_panel.draw(canvas, v)

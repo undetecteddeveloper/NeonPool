@@ -102,6 +102,9 @@ class Session:
         self.bad_frames = 0  # frames that were not messages of this protocol
         self.rejected_shots = 0  # shots refused (host: requests it refused; guest: its own)
         self.rtt_s: float | None = None
+        self.shots_started = 0  # shots begun on this machine's table (either player's)
+        self.last_shot: Shot | None = None  # the latest, as simulated
+        self.last_shooter: int | None = None
         self.time = 0.0
         self._rng, self._feel, self._spin = rng, feel, spin
         self._build = build
@@ -335,7 +338,9 @@ class Session:
 
     def _start_shot(self, msg: p.ShotMsg) -> None:
         self.seq = msg.seq
-        self.world.apply(msg.to_shot())
+        self.last_shot, self.last_shooter = msg.to_shot(), self.match.turn
+        self.shots_started += 1
+        self.world.apply(self.last_shot)
         self.match.on_shot()
         self._live = True
         self._acc = 0.0

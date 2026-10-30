@@ -233,14 +233,14 @@ def local_address() -> str:
         return "127.0.0.1"
 
 
-def parse_address(text: str) -> tuple[str, int] | None:
+def parse_address(text: str, default_port: int = config.NET_PORT) -> tuple[str, int] | None:
     """'192.168.1.5' or '192.168.1.5:47474' -> (host, port); None if it is not an address."""
     text = text.strip()
     host, colon, port_text = text.partition(":")
     if not host or not host.isascii() or not all(ch.isalnum() or ch in ".-" for ch in host):
         return None
     if not colon:
-        return host, config.NET_PORT
+        return host, default_port
     if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
         return None
     return host, int(port_text)

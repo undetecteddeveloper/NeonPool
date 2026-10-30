@@ -26,6 +26,7 @@ from game.render.viewport import window_to_logical
 from game.rules.eight_ball import PLAYING
 from game.scenes.help import HelpPanel
 from game.scenes.menu import MenuScene
+from game.scenes.net_play import NetPlayScene
 from game.scenes.play import PlayScene
 
 log = logging.getLogger("neonpool")
@@ -51,6 +52,7 @@ class App:
         self.audio.music_volume = self.settings.music
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.menu = MenuScene(self)
+        self.net: NetPlayScene | None = None  # a two-player game, while there is one
         self.help = HelpPanel(self)  # a card over the menu or the table, not a scene
         self.scene = self.menu
         self.running = True
@@ -82,7 +84,13 @@ class App:
         while self.help.prefetch_one():
             pass
         self.menu.settings.prewarm(self.view)
+        self.menu.play_panel.prewarm(self.view)
         hud.prewarm_result(self.view)
+
+    def start_net(self, session) -> None:
+        """A room is full and the handshake is done: the two-player game begins."""
+        self.net = NetPlayScene(self, session)
+        self._switch(self.net)
 
     def go_play(self) -> None:
         self._switch(self.play)
@@ -95,6 +103,9 @@ class App:
 
     def go_menu(self) -> None:
         self.play.drag.cancel()
+        if self.net is not None and self.scene is self.net:
+            self.net.leave()  # (a game that is already over just closes the link)
+            self.net = None
         if self.scene is not self.menu:
             self.menu.enter()
         self._switch(self.menu)
@@ -121,7 +132,7 @@ class App:
             if e.key == pg.K_F11:
                 _toggle_fullscreen()
                 return
-            if e.key == pg.K_m:
+            if e.key == pg.K_m and not self.menu.play_panel.typing:  # (not while typing a name)
                 self.audio.toggle_mute()
                 return
         if e.type in _MOUSE_EVENTS:
@@ -145,11 +156,12 @@ class App:
             and not self.help.prefetch_one()  # the pictures are done: now the panels
         ):
             self.menu.settings.prewarm(self.view)
+            self.menu.play_panel.prewarm(self.view)
             hud.prewarm_result(self.view)
         self.audio.update_music(
             dt,
             "menu" if self.scene is self.menu else "play",
-            duck=self.scene is self.play and self.play.rules.phase != PLAYING,
+            duck=isinstance(self.scene, PlayScene) and self.scene.rules.phase != PLAYING,
         )
         if not (self.help.is_open and self.scene is self.play):  # the game waits behind the card
             self.scene.update(dt)
@@ -168,6 +180,8 @@ class App:
             self.canvas = pg.Surface(target.canvas)
             self._old_frame = None
             self.play.set_view(target)
+            if self.net is not None:
+                self.net.set_view(target)
             self.menu.set_view(target)
             self.help.set_view(target)
 

@@ -28,8 +28,10 @@ def click(pos):
 
 def test_app_opens_on_the_menu_and_play_enters_the_table(app):
     assert app.scene is app.menu
-    app.handle_event(key(pg.K_RETURN))  # first item = Play
-    assert app.scene is app.play
+    app.handle_event(key(pg.K_RETURN))  # first item = Play: the panel with Solo / Two players
+    assert app.scene is app.menu and app.menu.play_panel.is_open
+    app.handle_event(key(pg.K_RETURN))  # its first choice = Solo
+    assert app.scene is app.play and not app.menu.play_panel.is_open
 
 
 def test_the_menu_has_settings_where_the_language_now_lives(app):
@@ -53,6 +55,8 @@ def test_menu_quit_stops_the_app(app):
 def test_menu_buttons_work_with_the_mouse(app):
     rects = app.menu._rects()
     app.handle_event(click(rects[0].center))
+    assert app.menu.play_panel.is_open
+    app.handle_event(click(app.menu.play_panel._rects()["solo"].center))
     assert app.scene is app.play
 
 
@@ -68,7 +72,8 @@ def test_esc_returns_to_menu_and_play_resumes_the_same_game(app):
     assert app.play.rules.shots == 1 and app.game_in_progress()
     app.handle_event(key(pg.K_ESCAPE))
     assert app.scene is app.menu
-    app.handle_event(key(pg.K_RETURN))
+    app.handle_event(key(pg.K_RETURN))  # Play opens the panel ...
+    app.handle_event(key(pg.K_RETURN))  # ... whose first choice is now "Resume"
     assert app.scene is app.play and app.play.rules.shots == 1
 
 

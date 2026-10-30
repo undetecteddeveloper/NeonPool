@@ -62,6 +62,11 @@ CALLOUTS = {
 
 
 class PlayScene:
+    RESULT_DEFAULT = "new"  # the result card's button that Enter presses
+
+    def _result_rects(self) -> dict[str, pg.Rect]:
+        return hud.RESULT_BUTTONS
+
     def __init__(self, app) -> None:
         self.app = app
         # the table always feels "medium" (the user removed the choice); NEONPOOL_SPIN_SET picks
@@ -337,8 +342,8 @@ class PlayScene:
         want = 1.0 if self._dial_drag else 0.6 if self._dial_hover() else 0.0
         self._dial_lit += max(-1.0, min(1.0, (want - self._dial_lit) * 8.0 * dt)) if dt else 0.0
         if self.rules.phase != PLAYING:
-            chosen = self._hover or "new"  # Enter starts a new game: that button is lit
-            self.result_fx.update(dt, chosen, hud.RESULT_BUTTONS, self._clock)
+            chosen = self._hover or self.RESULT_DEFAULT  # Enter does that one: it is lit
+            self.result_fx.update(dt, chosen, self._result_rects(), self._clock)
             self._tally_sounds()
         if self._live and self.world.at_rest():
             self._end_shot()
