@@ -163,14 +163,14 @@ def synth_ting(low: float, high: float) -> np.ndarray:
 
 
 # --- the spin dial: a soft round "tok" for each step, the pitch following the level -------------
-# Three candidate sounds, all the same loudness to the ear, differing in pitch only (the user picks
-# by listening: NEONPOOL_SPIN_SOUND, tools/spin_sound_preview.py). name: (lowest note in Hz,
-# playback volume). Nine notes a semitone apart, from the lowest (strike low) to the highest
-# (strike high). The first try (165-262 Hz) could not be heard: a laptop speaker plays next to
-# nothing below ~300 Hz and the ear is dull down there. All three stay under 1 kHz, below the
-# button blips (1-2 kHz).
+# Three sounds, all the same loudness to the ear, differing in pitch only. The user listened and
+# picked SANG; NEONPOOL_SPIN_SOUND still selects another, and tools/spin_sound_preview.py writes
+# WAVs of them. name: (lowest note in Hz, playback volume). Nine notes a semitone apart, from
+# the lowest (strike low) to the highest (strike high). The first try (165-262 Hz) could not be
+# heard: a laptop speaker plays next to nothing below ~300 Hz and the ear is dull down there.
+# All three stay under 1 kHz, below the button blips (1-2 kHz).
 SPIN_SOUNDS = {"TRAM": (330, 0.34), "VUA": (440, 0.28), "SANG": (587, 0.25)}
-DEFAULT_SPIN_SOUND = "VUA"
+DEFAULT_SPIN_SOUND = "SANG"  # the user's pick (2026-10-30); the other two stay selectable
 SPIN_STEPS = 9
 
 
