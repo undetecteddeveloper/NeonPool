@@ -74,6 +74,16 @@ class App:
         self._tube = TUBE_OFF_S + TUBE_ON_S
         self._old_frame = None
 
+    def prepare(self) -> None:
+        """Make now, once, everything the menu would otherwise make while it is on show (about a
+        second of work, in a few frames of 30-650 ms): the how-to-play pictures, the settings
+        panel and the result card. The real game does this before the first frame, behind a
+        loading line, so the menu then runs smoothly and every card opens at once."""
+        while self.help.prefetch_one():
+            pass
+        self.menu.settings.prewarm(self.view)
+        hud.prewarm_result(self.view)
+
     def go_play(self) -> None:
         self._switch(self.play)
 
@@ -234,9 +244,11 @@ class App:
         pg.init()
         pg.display.set_caption("NeonPool")
         screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)  # the whole desktop, at its resolution
+        _show_loading(screen)  # the window is up at once; making the first pictures takes a while
         app = App(screen)
-        app.help.prefetch = True
-        clock = pg.time.Clock()
+        app.help.prefetch = True  # (later, after a language or size change, the menu re-makes them)
+        app.prepare()
+        clock = pg.time.Clock()  # made after the long wait: the first frame is not a "long frame"
         while app.running:
             dt = clock.tick(60) / 1000
             for e in pg.event.get():
@@ -245,6 +257,17 @@ class App:
             app.draw()
             pg.display.flip()
         pg.quit()
+
+
+def _show_loading(screen: pg.Surface) -> None:
+    """A dark screen with a small line in the middle, shown while the game gets ready."""
+    i18n.set_lang(settings.load().lang)  # the player's language, before the App exists
+    v = View.for_window(screen.get_size())
+    screen.fill(C.BG)
+    cx, cy = LOGICAL_SIZE[0] / 2, LOGICAL_SIZE[1] / 2
+    hud.label(screen, v, t("app.loading"), (cx, cy), C.TEXT_DIM, 14, center=True)
+    pg.display.flip()
+    pg.event.pump()  # the system sees the window answering
 
 
 def _enable_dpi_awareness() -> None:

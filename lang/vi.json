@@ -103,5 +103,6 @@
   "hud.fps": "FPS",
   "hud.spin": "Xoáy",
   "guide.p1.b5": "Muốn đánh cao hoặc thấp: xem trang Phím tắt.",
-  "guide.p6.b2": "Lăn chuột, hoặc bấm và kéo chấm trên hình bi nhỏ ở bảng bên: lên là đánh cao (bi trắng chạy tiếp sau va chạm), xuống là đánh thấp (bi trắng lùi lại). Chấm giữ nguyên sau mỗi cú; ván mới thì về giữa."
+  "guide.p6.b2": "Lăn chuột, hoặc bấm và kéo chấm trên hình bi nhỏ ở bảng bên: lên là đánh cao (bi trắng chạy tiếp sau va chạm), xuống là đánh thấp (bi trắng lùi lại). Chấm giữ nguyên sau mỗi cú; ván mới thì về giữa.",
+  "app.loading": "Đang chuẩn bị…"
 }

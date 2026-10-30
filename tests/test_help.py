@@ -406,3 +406,24 @@ def test_the_first_page_is_made_while_the_menu_idles_so_opening_does_not_stall(a
 def test_nothing_is_made_ahead_when_the_option_is_off(app):
     run(app, 3.0)
     assert not app.help._pages
+
+
+# --- everything is made once, at start-up, behind the loading line --------------------------------
+def test_prepare_makes_every_page_the_settings_panel_and_the_result_card_at_once(app):
+    from game.render import hud
+
+    app.help.prefetch = True
+    app.prepare()
+    assert len(app.help._pages) == len(TOPICS)
+    assert app.menu.settings._warm == app.view.s
+    assert hud._result_warm[0] == app.view.s
+
+
+def test_after_prepare_the_idle_menu_has_nothing_left_to_make_so_it_never_stalls(app):
+    app.help.prefetch = True
+    app.prepare()
+    made = []
+    real = app.help._make_page
+    app.help._make_page = lambda i: made.append(i) or real(i)
+    run(app, 4.0)  # long past the 1.5 s the menu used to wait before making them
+    assert made == []

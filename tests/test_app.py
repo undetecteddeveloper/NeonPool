@@ -128,3 +128,24 @@ def test_drawing_a_ball_that_is_dropping_into_a_pocket(app):
     app.play.fx.add_ripple(1.0, 0.6)
     app.update(config.POCKET_ANIM_S / 2)
     app.draw()
+
+
+def test_the_loading_screen_is_a_dark_screen_with_one_line_in_the_middle():
+    from game import app as app_module
+    from game.render import palette as C
+
+    pg.init()
+    screen = pg.display.set_mode(config.LOGICAL_SIZE)
+    app_module._show_loading(screen)
+    w, h = screen.get_size()
+    lit = [
+        (x, y)
+        for x in range(0, w, 2)
+        for y in range(0, h, 2)
+        if tuple(screen.get_at((x, y)))[:3] != tuple(C.BG)
+    ]
+    assert lit, "the line was not drawn"
+    xs, ys = [p[0] for p in lit], [p[1] for p in lit]
+    assert w * 0.3 < min(xs) and max(xs) < w * 0.7  # a small line, in the middle
+    assert h * 0.4 < min(ys) and max(ys) < h * 0.6
+    pg.quit()

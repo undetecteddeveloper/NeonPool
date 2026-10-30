@@ -103,5 +103,6 @@
   "hud.fps": "FPS",
   "hud.spin": "Spin",
   "guide.p1.b5": "For a high or low hit, see the Keys page.",
-  "guide.p6.b2": "Roll the mouse wheel, or press and drag the dot on the small ball in the side panel: up strikes high (the white ball runs on after the hit), down strikes low (it comes back). The dot stays where you left it after each shot; a new game puts it back in the middle."
+  "guide.p6.b2": "Roll the mouse wheel, or press and drag the dot on the small ball in the side panel: up strikes high (the white ball runs on after the hit), down strikes low (it comes back). The dot stays where you left it after each shot; a new game puts it back in the middle.",
+  "app.loading": "Getting ready…"
 }
