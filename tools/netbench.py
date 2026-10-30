@@ -21,6 +21,7 @@ import os
 import random
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -32,6 +33,7 @@ sys.path.insert(0, str(ROOT))
 
 from game import config  # noqa: E402
 from game.net import protocol as p  # noqa: E402
+from game.net import tcp  # noqa: E402
 from game.net.transport import NetSim  # noqa: E402
 from game.physics import Shot, World  # noqa: E402
 from game.rules.two_player import Match  # noqa: E402
@@ -120,6 +122,94 @@ def checkpoint_bytes() -> int:
     return len(p.encode(p.Checkpoint(1, 0, balls, match.snapshot())))
 
 
+class _Stamped(deque):
+    """The receiving queue of a TcpTransport, remembering when each frame was put in it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stamps: deque[float] = deque()
+        self.last = 0.0
+
+    def extend(self, frames) -> None:
+        now = time.perf_counter()
+        for frame in frames:
+            self.stamps.append(now)
+            self.append(frame)
+
+    def popleft(self):
+        frame = super().popleft()
+        self.last = self.stamps.popleft()
+        return frame
+
+
+def _spin(seconds: float) -> None:
+    """Pure Python work, like a frame being drawn: it holds the interpreter as a frame would."""
+    end = time.perf_counter() + seconds
+    n = 0
+    while time.perf_counter() < end:
+        n += 1
+
+
+def tcp_loopback(shots: int, busy: bool, interval: float) -> list[float]:
+    """Real sockets on 127.0.0.1 between two transports in this process: ms from `send` until the
+    frame is in the receiver's queue. `busy`: the main thread is doing frame-sized Python work
+    (4 ms slices) the whole time; `interval`: the interpreter's thread switch interval (s)."""
+    listener = tcp.TcpListener(0, "127.0.0.1")
+    conn = tcp.Connector("127.0.0.1", listener.port)
+    client = server = None
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and (client is None or server is None):
+        client = client or conn.result()
+        server = server or listener.accept()
+        time.sleep(0.001)
+    if client is None or server is None:
+        raise RuntimeError("loopback connection failed")
+    server._in = _Stamped()
+    old = sys.getswitchinterval()
+    sys.setswitchinterval(interval)
+    frame = p.encode(p.ShotMsg.from_shot(1, Shot(1.0, 0.5, 0.0)))
+    out = []
+    try:
+        for _ in range(shots):
+            t0 = time.perf_counter()
+            client.send(frame)
+            while True:
+                _spin(0.004) if busy else time.sleep(0.0003)
+                if server.poll():
+                    break
+            out.append((server._in.last - t0) * 1000)
+            time.sleep(0.004)
+    finally:
+        sys.setswitchinterval(old)
+        client.close()
+        listener.close()
+    return out
+
+
+def report_tcp(shots: int) -> dict[str, float]:
+    label = "cùng máy, ổ cắm thật (đã đo)"
+    print(f"== Từ `send` tới hàng đợi của bên nhận, {label}: {shots} cú (ms)")
+    print(
+        f"   {'luồng chính / chu kỳ chuyển luồng của Python':58} {'p50':>7} {'p95':>7} {'p99':>7}"
+    )
+    rows = (
+        ("rảnh", False, tcp.SWITCH_INTERVAL_S),
+        ("bận (khung 4 ms), 5 ms (mặc định của Python)", True, 0.005),
+        ("bận (khung 4 ms), 1 ms", True, 0.001),
+        ("bận (khung 4 ms), 0,2 ms  <- game dùng", True, tcp.SWITCH_INTERVAL_S),
+    )
+    p95s = {}
+    for name, busy, interval in rows:
+        p50, p95, p99 = stats(tcp_loopback(shots, busy, interval))
+        p95s[name] = p95
+        print(f"   {name:58} {p50:7.2f} {p95:7.2f} {p99:7.2f}")
+    print(f"   (mục tiêu phần game ≤ {LIMIT_GAME_MS:.0f} ms p95; đây CHƯA phải hai máy thật)")
+    print(
+        "   Windows làm tròn thời gian chờ GIL lên một nhịp đồng hồ; dưới 1 ms thì bàn giao ngay."
+    )
+    return p95s
+
+
 def run(shots: int) -> dict:
     results = {"scenarios": [], "cue": cue_bandwidth(), "checkpoint": checkpoint_bytes()}
     for i, (name, lat, jit, loss) in enumerate(SCENARIOS):
@@ -168,7 +258,11 @@ def report(results: dict, shots: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="few shots (tests)")
+    parser.add_argument("--tcp", action="store_true", help="real sockets on 127.0.0.1 only")
     args = parser.parse_args(argv)
+    if args.tcp:
+        report_tcp(40 if args.quick else 400)
+        return 0
     shots = 200 if args.quick else 4000
     report(run(shots), shots)
     return 0

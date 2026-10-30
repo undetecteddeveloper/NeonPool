@@ -269,7 +269,8 @@ class Session:
         elif self.phase == HANDSHAKE:
             self._handle_handshake(msg)
         elif isinstance(msg, p.Aim):
-            self.remote_cue.receive(msg)
+            if self.match.turn != self.me:  # only the player on turn has a cue to show
+                self.remote_cue.receive(msg)
         elif isinstance(msg, p.ShotMsg):
             if self.me == HOST:
                 self._host_receives_shot(msg)

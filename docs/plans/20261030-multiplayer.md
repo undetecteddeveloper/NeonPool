@@ -32,7 +32,7 @@ Chặng 0
 Chặng 1
 5. `rules/two_player.py` (`Match`) + test luật (AC4 đồng hồ-khung, AC5).
 6. `net/session.py` (bắt tay, tung xu, lượt, điểm kiểm, đếm lệch) + test (AC4, AC6).
-7. `net/tcp.py` nối thẳng LAN + test ổ cắm thật trên 127.0.0.1.
+7. `net/tcp.py` nối thẳng LAN + test ổ cắm thật trên 127.0.0.1 (+ `netbench.py --tcp`).
 8. `PlayScene` tách móc nối (bước mô phỏng, vẽ bàn / bảng bên / lớp phủ), tập một mình y hệt (AC1, dấu vân tay + ảnh trước/sau).
 9. Phác giao diện, người dùng chọn.
 10. Menu 5 nút + tên người chơi trong Cài đặt + màn Chơi mạng (tạo / vào phòng) + ô nhập chữ dùng chung.
@@ -68,6 +68,8 @@ Cơ đối thủ: 30 gói/s, 240 byte/s nội dung (~1440 kể cả tiêu đề 
 - Phần game tự cộng là ~0,03 ms: mã hoá + giải mã + áp cú không đáng kể. Phần lớn "tới khung" là chờ ĐẦU KHUNG HÌNH (60 FPS), vốn có ở mọi game pygame; không cố giảm bằng cách áp cú ngoài luồng chính (mất an toàn luồng).
 - Chờ khung ở CẢ HAI máy làm p95 vượt 48 ms ở "VN thường" (49,0). Mục tiêu 50 ms tính ở mức "+ khung B"; mức "+ khung A" ghi để không giấu.
 - Mất 2% gói làm p99 nhảy từ 22 lên 223 ms: gói tin cậy bị mất phải chờ RTO 200 ms (TCP). Với `SHOT` nằm trong 1% tệ nhất thì người chơi thấy khựng ~0,2 s. Chặng 1 (LAN, TCP) chịu được; **Chặng 2 (internet) nên dùng UDP + lớp tin cậy RTO ≈ 1,5×RTT (~70 ms)** thay vì TCP — transport mới, giao thức và `Session` giữ nguyên. Đo lại ở chặng 2.
+
+- **Ổ cắm thật cùng máy (`netbench.py --tcp`, đã đo)**: từ `send` tới hàng đợi bên nhận, p50/p95/p99 ms: luồng chính rảnh 0,16/0,31/0,50; luồng chính BẬN (khung 4 ms) với chu kỳ chuyển luồng mặc định 5 ms của Python 25,6/55,0/66,1 (!); 1 ms 25,6/46,8/56,6; **0,2 ms (game dùng) 0,23/0,37/0,54**. Nguyên nhân: trên Windows luồng nền chờ GIL bị làm tròn lên một nhịp đồng hồ (~10–15 ms) khi luồng chính bận; dưới 1 ms thì bàn giao ngay. `tcp.py` đặt `sys.setswitchinterval(0.0002)` lúc tạo kết nối đầu tiên. Đây vẫn là cùng một máy, chưa phải hai máy thật.
 
 Kiến trúc `net/` được GIỮ như dự kiến (protocol / transport / session thuần; TCP cho LAN). Lý do không đổi: phần game không phải nút cổ chai, nên không cần đường đặc biệt nào ở chặng 1.
 

@@ -36,3 +36,11 @@ def test_the_game_s_own_share_of_a_shot_is_far_below_the_budget():
     bench = load_bench()
     r = bench.one_way(20, 2, 0.0, 300, seed=1)
     assert bench.percentile(r["game"], 95) < bench.LIMIT_GAME_MS
+
+
+def test_the_game_s_thread_setting_keeps_the_network_fast_behind_a_busy_main_thread(capsys):
+    bench = load_bench()
+    p95 = bench.report_tcp(30)
+    assert "ổ cắm thật" in capsys.readouterr().out
+    game = next(v for k, v in p95.items() if "game dùng" in k)
+    assert game < bench.LIMIT_GAME_MS
