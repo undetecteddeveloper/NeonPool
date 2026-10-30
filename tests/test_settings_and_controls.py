@@ -318,3 +318,48 @@ def test_every_capital_sits_on_the_same_baseline_as_an_h(face, track):
 
         assert ink_bottom(0, w_h) == base - 1, (face, track, "H")
         assert abs(ink_bottom(x0 + 1, x1 - 1) - (base - 1)) <= 1, (face, track, hex(ord(ch)))
+
+
+# --- the menu behind the panel is a picture while the panel is up ----------------------------
+def _run(app, seconds):
+    for _ in range(round(seconds * 60)):
+        app.update(1 / 60)
+        app.draw()
+
+
+def test_with_the_settings_open_the_menu_behind_is_not_drawn_again_every_frame(app, monkeypatch):
+    app.sync_view(force=True)
+    app.skip_transition()
+    panel = app.menu.settings
+    for k in (pg.K_DOWN, pg.K_DOWN, pg.K_RETURN):
+        app.handle_event(key(k))
+    _run(app, 0.6)  # the panel has slid up
+    size = pg.display.get_surface().get_size()
+    assert panel.is_open and panel.covers_scene(size)
+    drawn = []
+    monkeypatch.setattr(app.menu.synth, "draw", lambda *a, **k: drawn.append(1))
+    _run(app, 0.5)
+    assert drawn == []  # the menu is a picture now: its own drawing is skipped
+    app.handle_event(key(pg.K_DOWN))  # but the panel itself still answers
+    _run(app, 0.3)
+    assert panel.sel == 1 and drawn == []
+
+
+def test_closing_the_settings_brings_the_live_menu_back(app, monkeypatch):
+    app.sync_view(force=True)
+    app.skip_transition()
+    panel = app.menu.settings
+    for k in (pg.K_DOWN, pg.K_DOWN, pg.K_RETURN):
+        app.handle_event(key(k))
+    _run(app, 0.6)
+    app.handle_event(key(pg.K_ESCAPE))
+    size = pg.display.get_surface().get_size()
+    assert panel.is_open and not panel.covers_scene(size)  # closing: the live menu is drawn
+    drawn = []
+    real = app.menu.synth.draw
+    monkeypatch.setattr(app.menu.synth, "draw", lambda *a, **k: (drawn.append(1), real(*a, **k)))
+    _run(app, 0.3)
+    assert drawn and not panel.is_open
+    drawn.clear()
+    _run(app, 0.2)
+    assert drawn  # and it goes on being drawn every frame

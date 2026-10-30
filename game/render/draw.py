@@ -85,7 +85,30 @@ def box_around(v: View, points: list[tuple[float, float]], pad: float) -> pg.Rec
 # --- glass panels and dots ---------------------------------------------------------------
 _rr_cache: dict[tuple, tuple[pg.Surface, int]] = {}
 _dot_cache: dict[tuple, tuple[pg.Surface, int]] = {}
+_veils: dict[tuple, pg.Surface] = {}
 FILL_ALPHA = 255  # solid panels: nothing behind ever shows through the text
+RR_CACHE_MAX = 480  # sprites kept; past this the OLDEST third goes, never the whole lot at once
+GLOW_STEPS = 8  # a glow is made in steps of 1/8: a fade of light is a few sprites, not one a frame
+
+
+def _trim(cache: dict, limit: int) -> None:
+    """Over `limit`: forget the oldest third (dicts keep insertion order). Clearing everything
+    made the next frame rebuild every sprite at once, a stall of a few hundred ms."""
+    if len(cache) >= limit:
+        for key in list(cache)[: max(1, limit // 3)]:
+            del cache[key]
+
+
+def veil(size: tuple[int, int], alpha: int) -> pg.Surface:
+    """A dark sheet (the night colour at `alpha`) for dimming a whole screen: made once per
+    size and darkness, not every frame."""
+    key = (size, alpha)
+    if key not in _veils:
+        _trim(_veils, 6)
+        sheet = pg.Surface(size, pg.SRCALPHA)
+        sheet.fill((*C.OUTLINE, alpha))
+        _veils[key] = sheet
+    return _veils[key]
 
 
 def _halo_px(glow: float) -> int:
@@ -100,10 +123,10 @@ def rrect_sprite(
 
     Returns (sprite, pad): the sprite reaches `pad` logical px past the rectangle on every side.
     """
-    key = (round(v.s, 4), w, h, radius, fill, edge, edge_color, round(glow, 3))
+    glow = round(glow * GLOW_STEPS) / GLOW_STEPS
+    key = (round(v.s, 4), w, h, radius, fill, edge, edge_color, glow)
     if key not in _rr_cache:
-        if len(_rr_cache) > 320:
-            _rr_cache.clear()
+        _trim(_rr_cache, RR_CACHE_MAX)
         pad = _halo_px(glow) + math.ceil(edge) + 1
         bv = v.framed().scaled(v.ss())
         ow, oh = w + 2 * pad, h + 2 * pad
@@ -147,10 +170,10 @@ def blit_dot(
     canvas: pg.Surface, v: View, centre: tuple[float, float], r: float, color, glow: float = 0.0
 ) -> None:
     """A small lit disc (page dots, switches) with its halo, centred on a logical point."""
-    key = (round(v.s, 4), r, color, round(glow, 3))
+    glow = round(glow * GLOW_STEPS) / GLOW_STEPS
+    key = (round(v.s, 4), r, color, glow)
     if key not in _dot_cache:
-        if len(_dot_cache) > 64:
-            _dot_cache.clear()
+        _trim(_dot_cache, 96)
         pad = _halo_px(glow) + 1
         bv = v.framed().scaled(v.ss())
         size = 2 * (r + pad)

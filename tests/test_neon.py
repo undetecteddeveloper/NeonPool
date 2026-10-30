@@ -9,7 +9,8 @@ import pygame as pg
 import pytest
 
 from game import config, i18n
-from game.render import crt, hud, synth, table
+from game.app import App
+from game.render import crt, draw, hud, synth, table
 from game.render import palette as C
 from game.render.draw import SpinBalls
 from game.render.fx import KINDS, Fx
@@ -478,3 +479,90 @@ def test_glow_text_gives_light_round_the_letters_and_breathes(vi):
         )
 
     assert light(bright) > light(dim) > light(plain)  # the halo swells and fades
+
+
+# --- opening a panel must not stall: sprites are made once, not every frame ----------------
+def _panel_sprites():
+    """The cached sprites of the settings panel's own frame (480 x 440)."""
+    return [k for k in draw._rr_cache if (k[1], k[2]) == (480, 440)]
+
+
+def _menu_app():
+    pg.init()
+    app = App(pg.display.set_mode((1280, 720)))
+    app.sync_view(force=True)
+    app.skip_transition()
+    return app
+
+
+def _frames(app, n):
+    for _ in range(n):
+        app.update(1 / 60)
+        app.draw()
+
+
+def test_a_glow_that_changes_a_little_reuses_the_same_sprite():
+    v = View(1.0)
+    a = draw.rrect_sprite(v, 100, 40, 6, C.PANEL, 1.5, C.CYAN, 0.50)
+    b = draw.rrect_sprite(v, 100, 40, 6, C.PANEL, 1.5, C.CYAN, 0.52)
+    assert a[0] is b[0]  # a halo that is 2% brighter is not worth a new sprite
+    c = draw.rrect_sprite(v, 100, 40, 6, C.PANEL, 1.5, C.CYAN, 0.9)
+    assert c[0] is not a[0]  # a clearly different glow is
+
+
+def test_the_sprite_cache_forgets_its_oldest_sprites_not_all_of_them():
+    v = View(1.0)
+    draw._rr_cache.clear()
+    first = draw.rrect_sprite(v, 10, 10, 2, C.PANEL, 0, C.CYAN, 0.0)
+    for i in range(draw.RR_CACHE_MAX + 40):
+        draw.rrect_sprite(v, 11 + i, 10, 2, C.PANEL, 0, C.CYAN, 0.0)
+    last = draw.rrect_sprite(v, 11 + draw.RR_CACHE_MAX + 39, 10, 2, C.PANEL, 0, C.CYAN, 0.0)
+    assert len(draw._rr_cache) <= draw.RR_CACHE_MAX
+    assert draw._rr_cache[next(reversed(draw._rr_cache))] is last  # the newest are still there
+    assert (round(v.s, 4), 10, 10, 2, C.PANEL, 0, C.CYAN, 0.0) not in draw._rr_cache
+    assert first is not None
+
+
+def test_the_dark_veil_is_made_once_per_size_and_darkness():
+    assert draw.veil((64, 48), 200) is draw.veil((64, 48), 200)
+    assert draw.veil((64, 48), 200) is not draw.veil((64, 48), 100)
+    assert draw.veil((64, 48), 200).get_at((3, 3))[3] == 200
+
+
+def test_opening_settings_makes_the_panel_frame_once_not_every_frame():
+    app = _menu_app()
+    _frames(app, 30)
+    draw._rr_cache.clear()
+    for k in (pg.K_DOWN, pg.K_DOWN, pg.K_RETURN):  # the menu's Settings button
+        app.handle_event(pg.event.Event(pg.KEYDOWN, key=k))
+    counts = []
+    for _ in range(20):  # the panel slides up (13 frames) and settles
+        _frames(app, 1)
+        counts.append(len(_panel_sprites()))
+    assert app.menu.settings.is_open
+    assert counts[-1] == 1, counts  # one frame sprite, whatever the slide did to its light
+    pg.quit()
+
+
+def test_prewarming_makes_the_whole_panel_before_it_is_ever_opened():
+    app = _menu_app()
+    draw._rr_cache.clear()
+    app.menu.settings.prewarm(app.view)
+    assert len(_panel_sprites()) == 1
+    assert not app.menu.settings.is_open  # drawn off screen: nothing opened
+    before = set(draw._rr_cache)
+    for k in (pg.K_DOWN, pg.K_DOWN, pg.K_RETURN):
+        app.handle_event(pg.event.Event(pg.KEYDOWN, key=k))
+    _frames(app, 30)
+    panel_like = [k for k in set(draw._rr_cache) - before if k[1] >= 52]  # bars and dots are tiny
+    assert [k for k in panel_like if (k[1], k[2]) == (480, 440)] == []
+    pg.quit()
+
+
+def test_the_real_game_prewarms_the_settings_panel_while_the_menu_idles():
+    app = _menu_app()
+    draw._rr_cache.clear()
+    app.help.prefetch = True  # what the real game sets
+    _frames(app, 60 * 3)  # the menu has been up a while: the pictures first, then the panel
+    assert len(_panel_sprites()) == 1
+    pg.quit()

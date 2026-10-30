@@ -17,7 +17,8 @@ from game import i18n
 from game.i18n import t
 from game.render import hud
 from game.render import palette as C
-from game.render.draw import Aa, blit_dot, blit_rrect
+from game.render.draw import Aa, blit_dot, blit_rrect, veil
+from game.render.frozen import FrozenScene
 from game.render.guide_art import Annot
 from game.render.view import View
 from game.scenes import help_pictures
@@ -169,9 +170,7 @@ class HelpPanel:
         self._hover: object = None
         self._clock = 0.0
         self._flip_at: float | None = None  # when the last page turn started
-        self._veil: tuple[tuple, pg.Surface] | None = None
-        self._snap: pg.Surface | None = None  # the scene behind, kept when the card opened
-        self._base: pg.Surface | None = None  # ... darkened, with the card's frame: baked once
+        self._frozen = FrozenScene()  # the scene behind, kept as a picture while the card is up
         self._from = 0  # the page that is folding away
         self.fx = hud.ButtonFx()
         self.prefetch = False  # the real game makes the pages ahead of time (see prefetch_one)
@@ -181,7 +180,7 @@ class HelpPanel:
         self.view = v
         self._pages: dict[tuple, pg.Surface] = {}
         self._fill: tuple[int, int, int] | None = None
-        self._snap = self._base = None
+        self._frozen.clear()
 
     def _card_fill(self) -> tuple[int, int, int]:
         """The colour of the card's inside (the frame tints it a little): a page is painted on it,
@@ -199,7 +198,7 @@ class HelpPanel:
     def open(self) -> None:
         self.is_open, self._closing, self._flip_at = True, False, None
         self._hover = None
-        self._snap = self._base = None
+        self._frozen.clear()
 
     def close(self) -> None:
         if self.is_open and not self._closing:
@@ -265,7 +264,7 @@ class HelpPanel:
             self.k = max(0.0, self.k - dt / CLOSE_S)
             if self.k == 0.0:
                 self.is_open, self._closing = False, False
-                self._snap = self._base = None
+                self._frozen.clear()
         else:
             self.k = min(1.0, self.k + dt / OPEN_S)
         if self._flip_at is not None and self._clock - self._flip_at >= FLIP_OFF_S + FLIP_ON_S:
@@ -330,12 +329,7 @@ class HelpPanel:
         """True when the scene behind need not be drawn: a frozen copy of it is used instead (it
         is under a nearly black veil, so nobody sees it stand still). Not while closing: the live
         scene must be there to come back to."""
-        return (
-            self.is_open
-            and not self._closing
-            and self._snap is not None
-            and self._snap.get_size() == size
-        )
+        return self.is_open and not self._closing and self._frozen.covers(size)
 
     def draw(self, canvas: pg.Surface) -> None:
         if not self.is_open:
@@ -345,13 +339,9 @@ class HelpPanel:
             self._draw_open(canvas, v)
             return
         e = 1 - (1 - self.k) ** 3
-        if self._closing:
-            pass  # the live scene is on the canvas
-        elif self._snap is None or self._snap.get_size() != size:
-            self._snap = canvas.copy()  # the scene has just been drawn: keep it
-        else:
-            canvas.blit(self._snap, (0, 0))
-        canvas.blit(self._dim(size, round(DIM_ALPHA * e)), (0, 0))
+        if not self._closing:  # (closing: the live scene is on the canvas, to come back to)
+            self._frozen.under(canvas)
+        canvas.blit(veil(size, round(DIM_ALPHA * e)), (0, 0))
         card = layout.card
         opening = self.k < 1.0
         if opening:  # only a band round the middle line is lit, and it grows to the whole card
@@ -365,26 +355,10 @@ class HelpPanel:
             for y in (card.centery - half, card.centery + half):
                 _light_line(canvas, v, card.x, y, card.w, glow)
 
-    def _dim(self, size: tuple[int, int], alpha: int) -> pg.Surface:
-        """The dark veil over the scene behind (made again only when its size or alpha change)."""
-        if self._veil is None or self._veil[0] != (size, alpha):
-            veil = pg.Surface(size, pg.SRCALPHA)
-            veil.fill((*C.OUTLINE, alpha))
-            self._veil = ((size, alpha), veil)
-        return self._veil[1]
-
     def _draw_open(self, canvas: pg.Surface, v: View) -> None:
         """The card is fully open: one dark picture with the card's frame is pasted (baked once),
         and only what moves (page, arrows, dots) is drawn over it."""
-        size = canvas.get_size()
-        if self._snap is None or self._snap.get_size() != size:
-            self._snap, self._base = canvas.copy(), None
-        if self._base is None:
-            base = self._snap.copy()
-            base.blit(self._dim(size, DIM_ALPHA), (0, 0))
-            self._paint_static(base, v)
-            self._base = base
-        canvas.blit(self._base, (0, 0))
+        self._frozen.paste_baked(canvas, DIM_ALPHA, lambda base: self._paint_static(base, v))
         self._paint_live(canvas, v)
 
     def _paint(self, canvas: pg.Surface, v: View) -> None:

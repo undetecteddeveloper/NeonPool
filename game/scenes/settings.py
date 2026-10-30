@@ -13,7 +13,8 @@ from game.config import VOLUME_STEP
 from game.i18n import t
 from game.render import hud
 from game.render import palette as C
-from game.render.draw import Aa, blit_dot, blit_rrect
+from game.render.draw import Aa, blit_dot, blit_rrect, veil
+from game.render.frozen import FrozenScene
 from game.render.view import View
 
 ROWS = ("lang", "volume", "music", "shake", "fps", "done")
@@ -24,6 +25,7 @@ FIRST_ROW_Y, ROW_STEP = 242, 54
 DONE = pg.Rect(560, 526, 160, 44)
 TRACK = (642, 790)  # the level meters, left and right ends (logical x)
 SWITCH_W, SWITCH_H = 52, 24
+DIM_ALPHA = 205  # how dark the menu behind goes
 OPEN_S, CLOSE_S = 0.22, 0.16  # the panel slides up in / back down in this long
 SLIDE_PX = 46  # ... from this far below
 
@@ -43,11 +45,14 @@ class SettingsPanel:
         self._closing = False
         self._dragging: str | None = None  # the level meter being dragged
         self._clock = 0.0
+        self._warm = 0.0  # the view scale the sprites were last made for (see prewarm)
+        self._frozen = FrozenScene()  # the menu behind, kept as a picture while the panel is up
         self.fx = hud.ButtonFx()
 
     # --- opening and closing -------------------------------------------------------------
     def open(self) -> None:
         self.is_open, self._closing, self.sel = True, False, 0
+        self._frozen.clear()
 
     def close(self) -> None:
         self._closing, self._dragging = True, None
@@ -134,23 +139,61 @@ class SettingsPanel:
             self.k = max(0.0, self.k - dt / CLOSE_S)
             if self.k == 0.0:
                 self.is_open, self._closing = False, False
+                self._frozen.clear()
         elif self.is_open:
             self.k = min(1.0, self.k + dt / OPEN_S)
         rects = {r: row_rect(i) for i, r in enumerate(ROWS)}
         self.fx.update(dt, ROWS[self.sel], rects, self._clock)
 
     # --- drawing -------------------------------------------------------------------------------
+    def prewarm(self, v: View) -> None:
+        """Draw the whole panel once, off screen, so every sprite it needs already exists when
+        it is first opened (the real game does this while the menu idles)."""
+        if self._warm == v.s:
+            return
+        self._warm = v.s
+        probe = pg.Surface(v.canvas)
+        was = self.is_open, self.k, self._frozen
+        self.is_open, self.k, self._frozen = True, 1.0, FrozenScene()
+        self.draw(probe, v)
+        self.is_open, self.k, self._frozen = was
+
+    def covers_scene(self, size: tuple[int, int]) -> bool:
+        """True when the menu behind need not be drawn: a frozen picture of it is used (it is under
+        a dark veil, so nobody sees it stand still). Not while closing: the live menu is needed
+        to come back to."""
+        return self.is_open and not self._closing and self._frozen.covers(size)
+
     def draw(self, canvas: pg.Surface, v: View) -> None:
         if not self.is_open:
             return
+        if (
+            self.k >= 1.0 and not self._closing
+        ):  # fully open: paste the baked picture, draw the rest
+            self._frozen.paste_baked(
+                canvas, DIM_ALPHA, lambda base: self._paint_static(base, v, 1.0)
+            )
+            self._paint_live(canvas, v)
+            return
         e = 1 - (1 - self.k) ** 3
-        dim = pg.Surface(canvas.get_size(), pg.SRCALPHA)
-        dim.fill((*C.OUTLINE, round(205 * e)))
-        canvas.blit(dim, (0, 0))
+        if not self._closing:
+            self._frozen.under(canvas)
+        canvas.blit(veil(canvas.get_size(), round(DIM_ALPHA * e)), (0, 0))
         pv = View(v.s, v.ox, v.oy + round((1 - e) * SLIDE_PX * v.s), v.cw, v.ch)  # sliding up
-        blit_rrect(canvas, pv, PANEL.x, PANEL.y, PANEL.w, PANEL.h, 10, C.PANEL, 1.8, C.VIOLET, e)
+        self._paint_static(canvas, pv, e)
+        self._paint_live(canvas, pv)
+
+    @staticmethod
+    def _paint_static(canvas: pg.Surface, pv: View, e: float) -> None:
+        """The panel's frame and title: they do not move once it is open."""
+        # the frame's light stays full while it slides: a halo that changed every frame meant a
+        # new 480x440 sprite every frame (60 ms each), which made the opening stutter
+        blit_rrect(canvas, pv, PANEL.x, PANEL.y, PANEL.w, PANEL.h, 10, C.PANEL, 1.8, C.VIOLET, 1.0)
         hud.glow_text(canvas, pv, t("settings.title"), 36, C.WHITE, C.MAGENTA,
                       (PANEL.centerx, PANEL.y + 42), face="display", strength=e)  # fmt: skip
+
+    def _paint_live(self, canvas: pg.Surface, pv: View) -> None:
+        """The rows, the lit frame gliding between them and the Done button."""
         frame = self.fx.frame
         if frame is not None and ROWS[self.sel] != "done":
             blit_rrect(canvas, pv, *frame, 6, C.PANEL_HOT, 1.4, C.CYAN, 0.6)

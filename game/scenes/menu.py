@@ -134,6 +134,9 @@ class MenuScene:
 
     def draw(self, canvas: pg.Surface) -> None:
         v = self.view
+        if self.settings.covers_scene(canvas.get_size()):  # the panel holds a picture of the menu
+            self.settings.draw(canvas, v)
+            return
         self.synth.draw(canvas, self._clock)
         cx = LOGICAL_SIZE[0] // 2
         level = title_level(self._clock - self._opened)
