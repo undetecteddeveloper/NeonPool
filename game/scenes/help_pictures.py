@@ -24,7 +24,7 @@ from game.scenes.play import PlayScene
 
 ART_W, ART_H = 620, 340  # size of every picture, in logical units
 CELL_W, CELL_H, CELL_GAP = 305, 165, 10  # the four small pictures of the "fouls" page
-KEYS_ZOOM = 2.0  # the key list is photographed this much bigger (rendered, not stretched)
+KEYS_ZOOM = 1.5  # the spin dial and key list are photographed this much bigger (rendered)
 
 Point = tuple[float, float]
 
@@ -250,9 +250,11 @@ def picture_keys(v: View) -> pg.Surface:
         muted=False,
         moving=False,
         sprites=BallSprites(big),
+        spin=0.5,  # the dot sits a little high, so the picture shows what the dial is for
     )
     count = len(hud.PANEL_KEYS)
-    crop = pg.Rect(PANEL_X + 4, hud.KEYS_Y - 16, PANEL_W - 8, count * hud.KEY_STEP + 26)
+    top = hud.SPIN_C[1] - hud.SPIN_R - 28  # from the dial's name down to the last key
+    crop = pg.Rect(PANEL_X + 4, top, PANEL_W - 8, hud.KEYS_Y + count * hud.KEY_STEP + 10 - top)
     pic = canvas.subsurface(big.rect(*crop)).copy()
     row = [what for _, what in hud.PANEL_KEYS].index("hud.key_help")
     a = Annot(pic, big, crop.topleft)

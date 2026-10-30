@@ -13,6 +13,7 @@ from functools import cache
 
 import pygame as pg
 
+from game.config import SPIN_DIAL_TRAVEL
 from game.i18n import t
 from game.render import fonts, glow
 from game.render import palette as C
@@ -39,6 +40,9 @@ PANEL_KEYS = (  # (key cap, what it does) at the bottom of the side panel (help 
 )
 KEY_STEP = 21
 KEYS_Y = PANEL_Y + PANEL_H - 18 - len(PANEL_KEYS) * KEY_STEP  # top of the first key row
+SPIN_R = 20.0  # radius of the spin dial: the cue ball seen face-on (logical px)
+SPIN_C = (PANEL_X + PANEL_W - 18 - 26, PANEL_Y + 345)  # its centre: right of the status lines
+SPIN_HIT_R = SPIN_R + 6  # a press this close to the centre grabs the dial
 BANNER_PAD = 16  # vertical padding of a notice (logical px), two lines make it 64 tall
 FLASH_S = 0.6  # a number that just changed glows this long
 ROLL_S = 0.32  # ... and rolls to its new value like a slot machine in this long
@@ -346,20 +350,81 @@ def rolling_number(canvas, v: View, board: Scoreboard, name: str, value: int, n:
     canvas.set_clip(before)
 
 
-_mini_cache: dict[tuple[float, int, bool], pg.Surface] = {}
+_mini_cache: dict[tuple[float, int, bool, float], pg.Surface] = {}
 
 
-def _mini_ball(sprites: BallSprites, v: View, number: int, gone: bool) -> pg.Surface:
-    key = (round(v.s, 4), number, gone)
+def _mini_ball(
+    sprites: BallSprites, v: View, number: int, gone: bool, side: float = MINI
+) -> pg.Surface:
+    key = (round(v.s, 4), number, gone, side)
     if key not in _mini_cache:
         if len(_mini_cache) > 64:
             _mini_cache.clear()
-        size = v.i(MINI)
+        size = v.i(side)
         surf = pg.transform.smoothscale(sprites.core(number), (size, size))
         if gone:  # premultiplied: scale every channel together
             surf.fill((60, 60, 60, 60), special_flags=pg.BLEND_RGBA_MULT)
         _mini_cache[key] = surf
     return _mini_cache[key]
+
+
+def spin_value(y: float) -> float:
+    """The spin a press at logical height `y` on the dial means: -1 (low) .. +1 (high)."""
+    return max(-1.0, min(1.0, (SPIN_C[1] - y) / (SPIN_R * SPIN_DIAL_TRAVEL)))
+
+
+_dial_cache: dict[tuple, tuple[pg.Surface, tuple[int, int]] | None] = {}
+
+
+def _dial_face(canvas: pg.Surface, v: View, lit: float, enabled: bool):
+    """The dial's ring and the dark line and ticks the dot slides on, made once per size and
+    brightness (eighths) and then only pasted: (premultiplied surface, top-left) or None."""
+    key = (round(v.s, 4), v.pt((0, 0)), canvas.get_size(), round(lit * 8), enabled)
+    if key not in _dial_cache:
+        if len(_dial_cache) >= 32:
+            _dial_cache.clear()
+        cx, cy = SPIN_C
+        reach = SPIN_R * SPIN_DIAL_TRAVEL
+        pad = SPIN_R + 8
+        layer = Aa(canvas, v, v.rect(cx - pad, cy - pad, 2 * pad, 2 * pad), 3)
+        ring = C.lerp(C.PANEL_EDGE, C.CYAN, 0.35 + 0.65 * key[3] / 8) if enabled else C.PANEL_EDGE
+        pg.draw.circle(
+            layer.surf, ring, layer.pt((cx, cy)), layer.n(SPIN_R + 3), max(1, round(layer.n(1.3)))
+        )
+        track = (*C.PANEL_HOT, 255)  # drawn dark on the lit ball
+        width = max(1, round(layer.n(1.0)))
+        segments = [((cx, cy - reach), (cx, cy + reach))]
+        for y, half in ((-reach, 4.0), (0.0, 3.0), (reach, 4.0)):  # ticks: high / middle / low
+            segments.append(((cx - half, cy + y), (cx + half, cy + y)))
+        for a, b in segments:
+            pg.draw.line(layer.surf, track, layer.pt(a), layer.pt(b), width)
+        _dial_cache[key] = layer.result()
+    return _dial_cache[key]
+
+
+def spin_dial(
+    canvas: pg.Surface,
+    v: View,
+    sprites: BallSprites,
+    spin: float,
+    lit: float = 0.0,
+    enabled: bool = True,
+) -> None:
+    """The cue ball seen face-on with a dot where the cue strikes it: up = high (the white ball
+    runs on after the hit), down = low (it comes back). `lit` (0..1) is how much the pointer is
+    on it; `enabled` False dims it while the balls roll."""
+    cx, cy = SPIN_C
+    label(canvas, v, t("hud.spin"), (cx, cy - SPIN_R - 14), size=10, center=True)
+    ball = _mini_ball(sprites, v, 0, not enabled, 2 * SPIN_R + 4)
+    blit_pm(canvas, ball, v.pt((cx - SPIN_R - 2, cy - SPIN_R - 2)))
+    face = _dial_face(canvas, v, lit, enabled)
+    if face is not None:
+        blit_pm(canvas, *face)
+    on = enabled and spin != 0.0
+    colour = C.MAGENTA if on else C.PANEL_HOT
+    blit_dot(
+        canvas, v, (cx, cy - spin * SPIN_R * SPIN_DIAL_TRAVEL), 4.2, colour, 0.9 if on else 0.0
+    )
 
 
 def _rule(canvas: pg.Surface, v: View, x0: float, x1: float, y: float) -> None:
@@ -389,9 +454,13 @@ def draw_panel(
     clock: float = 0.0,
     board: Scoreboard | None = None,
     pocket_times: dict[int, float] | None = None,
+    spin: float = 0.0,
+    spin_lit: float = 0.0,
+    spin_on: bool = True,
 ) -> None:
     """The side panel: the logo, the score in arcade digits, your group, the balls still on the
-    table (the ones that went in are struck off), what the table is doing, and the keys."""
+    table (the ones that went in are struck off), what the table is doing, the spin dial, and
+    the keys."""
     board = board or Scoreboard()
     pocket_times = pocket_times or {}
     blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
@@ -456,6 +525,7 @@ def draw_panel(
     label(canvas, v, t("hud.moving") if moving else t("hud.ready"), (x0 + 16, y), state_col, 12)
     y += 20
     label(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), (x0 + 16, y), size=10.5)
+    spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
 
     ky = KEYS_Y
     pg.draw.line(canvas, C.PANEL_EDGE, v.ipt((x0, ky - 12)), v.ipt((x1, ky - 12)), max(1, v.i(1)))

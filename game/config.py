@@ -57,10 +57,11 @@ FEEL_ORDER = ("TRON", "VUA", "CHAM")  # keys 1 / 2 / 3
 DEFAULT_FEEL = "VUA"
 
 # --- Spin: follow (high) and draw (low) on the cue ball --------------------------------------
-# Model (docs/GAME_DESIGN.md "Xoáy"): a struck ball slides on the cloth until it rolls. The part of
-# that slide a plain centre hit does not have is the cue ball's "slip" q (a vector, m/s, along
-# the aim line). Sliding friction uses q up at `decay` m/s^2 and turns every unit of it into
-# SLIDE_GAIN units of speed along q: follow pushes the ball on, draw pulls it back.
+# Model (docs/GAME_DESIGN.md, the spin section): a struck ball slides on the cloth until it
+# rolls. The part of that slide a plain centre hit does not have is the cue ball's "slip" q
+# (a vector, m/s, along the aim line). Sliding friction uses q up at `decay` m/s^2 and turns
+# every unit of it into SLIDE_GAIN units of speed along q: follow pushes the ball on, draw
+# pulls it back.
 SLIDE_GAIN = 2 / 7  # solid sphere: speed gained per unit of slip used up (Townsend, UIUC)
 
 

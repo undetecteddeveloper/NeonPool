@@ -7,6 +7,7 @@ Hotkeys: R restart, H how to play, Esc menu (M mute and F11 full screen belong t
 from __future__ import annotations
 
 import math
+import os
 
 import pygame as pg
 
@@ -19,6 +20,8 @@ from game.config import (
     PX_PER_M,
     RIPPLE_BALL_SPEED,
     RIPPLE_CUSHION_SPEED,
+    SPIN_SETS,
+    SPIN_WHEEL_STEP,
     STRONG_HIT_SPEED,
 )
 from game.i18n import t
@@ -61,7 +64,13 @@ CALLOUTS = {
 class PlayScene:
     def __init__(self, app) -> None:
         self.app = app
-        self.world = World(seed=0)  # the table always feels "medium" (the user removed the choice)
+        # the table always feels "medium" (the user removed the choice); NEONPOOL_SPIN_SET picks
+        # which named spin set to play-test (NHE / VUA / MANH) and goes once one is chosen
+        spin_set = SPIN_SETS.get(os.environ.get("NEONPOOL_SPIN_SET", ""))
+        self.world = World(seed=0, spin=spin_set)
+        self.spin = 0.0  # where the cue will strike the white ball: -1 (low) .. +1 (high)
+        self._dial_drag = False  # the spin dial is being dragged
+        self._dial_lit = 0.0  # how lit the dial is (the pointer is on it / dragging)
         self.rules = EightBall()
         self.drag = DragAim()
         self.fx = Fx()
@@ -107,6 +116,7 @@ class PlayScene:
         self._acc = 0.0
         self._live = False
         self.placing = False
+        self.spin, self._dial_drag = 0.0, False
         self._notice, self._notice_left, self._callout, self._lunge = None, 0.0, None, None
         self.pocket_times.clear()
         self._break_pending = True
@@ -127,6 +137,7 @@ class PlayScene:
         d = (math.cos(shot.angle), math.sin(shot.angle))
         self._lunge = (self._clock, to_px(cue.x, cue.y), d, self.drag.bar_length, shot.power)
         self.world.apply(shot)
+        self.spin, self._dial_drag = 0.0, False  # every shot starts from the middle of the ball
         self.rules.on_shot()  # also ends "cue ball in hand"
         self._live = True
         self.placing = False
@@ -183,7 +194,7 @@ class PlayScene:
             self._pointer = e.pos
         if e.type == pg.MOUSEBUTTONDOWN:
             self._callout = None  # the player is acting: the big word gets out of the way
-        if self._hand_event(e):
+        if self._dial_event(e) or self._hand_event(e):
             return
         if e.type == pg.KEYDOWN:
             self._key(e.key)
@@ -204,9 +215,40 @@ class PlayScene:
                 self.knob.angle = self.drag.angle  # a cancelled pull leaves the cue where it was
         elif e.type == pg.MOUSEBUTTONUP and e.button == 1 and self.drag.active:
             self.drag.move(e.pos)
-            shot = self.drag.end()
+            shot = self.drag.end(self.spin)
             if shot is not None:
                 self.fire(shot)
+
+    def _dial_ok(self) -> bool:
+        """The spin can be set: the game is on and every ball is still."""
+        return self.rules.phase == PLAYING and self.world.balls[0].in_play and self.world.at_rest()
+
+    def _over_dial(self, pos: tuple[float, float]) -> bool:
+        return math.dist(pos, hud.SPIN_C) <= hud.SPIN_HIT_R
+
+    def _set_spin(self, value: float) -> None:
+        value = max(-1.0, min(1.0, round(value * 32) / 32))  # steps of 1/32: exact, tidy
+        self.spin = 0.0 if abs(value) < 0.08 else value  # the middle is easy to hit
+
+    def _dial_event(self, e: pg.event.Event) -> bool:
+        """Set the spin: press or drag the dot on the dial, or roll the wheel. True if used."""
+        if e.type == pg.MOUSEWHEEL:
+            if self._dial_ok() and e.y:  # wheel up = higher
+                self._set_spin(self.spin + SPIN_WHEEL_STEP * (1 if e.y > 0 else -1))
+                return True
+        elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
+            if self._dial_ok() and self._over_dial(e.pos):
+                self._dial_drag = True
+                self._set_spin(hud.spin_value(e.pos[1]))
+                self.app.audio.play_click()
+                return True
+        elif e.type == pg.MOUSEMOTION and self._dial_drag:
+            self._set_spin(hud.spin_value(e.pos[1]))
+            return True
+        elif e.type == pg.MOUSEBUTTONUP and e.button == 1 and self._dial_drag:
+            self._dial_drag = False
+            return True
+        return False
 
     def _turn_knob(self, pos: tuple[float, float]) -> None:
         """Going round the cue ball with the pointer turns the cue, like a dial."""
@@ -289,6 +331,8 @@ class PlayScene:
         if frame_events:
             self.app.audio.on_events(frame_events)
         self.fx.update(dt)
+        want = 1.0 if self._dial_drag else 0.6 if self._dial_hover() else 0.0
+        self._dial_lit += max(-1.0, min(1.0, (want - self._dial_lit) * 8.0 * dt)) if dt else 0.0
         if self.rules.phase != PLAYING:
             chosen = self._hover or "new"  # Enter starts a new game: that button is lit
             self.result_fx.update(dt, chosen, hud.RESULT_BUTTONS, self._clock)
@@ -312,6 +356,9 @@ class PlayScene:
             if tally.finished(name, age) and name not in self._tinged and tally.targets[name]:
                 self._tinged.add(name)
                 audio.play_tally_ting(won, big=name == "score")
+
+    def _dial_hover(self) -> bool:
+        return self._dial_ok() and self._pointer is not None and self._over_dial(self._pointer)
 
     def _over_cue(self) -> bool:
         """The pointer is on the cue ball (where pressing would start a shot)."""
@@ -424,6 +471,9 @@ class PlayScene:
             clock=self._clock,
             board=self.board,
             pocket_times=self.pocket_times,
+            spin=self.spin,
+            spin_lit=self._dial_lit,
+            spin_on=self._dial_ok(),
         )
         if not over:
             hud.banner(canvas, v, self._banner_lines(), BANNER_AT)

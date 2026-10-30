@@ -27,12 +27,12 @@ from game.scenes.help_pictures import ART_W
 
 # (key prefix, number of sentences, marker in front of each sentence: a step number or None)
 TOPICS = (
-    ("guide.p1", 4, (1, 2, 3, None)),
+    ("guide.p1", 5, (1, 2, 3, None, None)),
     ("guide.p2", 3, (None, None, None)),
     ("guide.p3", 5, (1, 2, 3, 4, None)),
     ("guide.p4", 3, (1, 2, 3)),
     ("guide.p5", 3, (None, None, None)),
-    ("guide.p6", 1, (None,)),
+    ("guide.p6", 2, (None, None)),
 )
 OPEN_S, CLOSE_S = 0.28, 0.2  # the card opens out of a line / folds back into it in this long
 DIM_ALPHA = 228  # how dark the scene behind goes (nearly black: only a glimmer of it shows)
@@ -66,7 +66,7 @@ class Layout:
 def _wide() -> Layout:
     """A wide card: picture on the left, words on the right, round arrows outside the card."""
     card = pg.Rect(150, 112, 980, 496)
-    content = pg.Rect(card.x + 16, card.y + 70, card.w - 32, 362)
+    content = pg.Rect(card.x + 16, card.y + 70, card.w - 32, 386)
     art = (card.x + 34, content.y + 46)
     tx = art[0] + ART_W * 0.76 + 30
     return Layout(

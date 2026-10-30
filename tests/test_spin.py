@@ -1,4 +1,4 @@
-"""Follow / draw on the cue ball (docs/GAME_DESIGN.md "Xoáy"; workflow/physics.md)."""
+"""Follow / draw on the cue ball (docs/GAME_DESIGN.md, the spin section; workflow/physics.md)."""
 
 import math
 

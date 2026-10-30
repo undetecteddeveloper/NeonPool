@@ -91,10 +91,11 @@ class DragAim:
     def power(self) -> float:
         return min(1.0, self.pull / MAX_DRAG_PX) ** POWER_CURVE if self.active else 0.0
 
-    def end(self) -> Shot | None:
-        """Release: the Shot, or None if the pull was too weak (counts as cancel)."""
+    def end(self, spin: float = 0.0) -> Shot | None:
+        """Release: the Shot (struck at `spin`, -1 low .. +1 high), or None if the pull was too
+        weak (counts as cancel)."""
         shot = None
         if self.has_direction and self.pull >= MIN_PULL_PX:
-            shot = Shot(self.angle, self.power)
+            shot = Shot(self.angle, self.power, spin)
         self.active = False
         return shot

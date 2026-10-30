@@ -9,7 +9,7 @@
   "menu.hint": "Dùng chuột, hoặc phím ↑ ↓ và Enter",
   "hud.shots": "Số cú",
   "hud.ready": "Sẵn sàng",
-  "hud.moving": "Bi đang chạy",
+  "hud.moving": "Đang chạy",
   "hud.muted": "Tiếng: tắt",
   "hud.sound_on": "Tiếng: bật",
   "hud.hint": "Rê chuột vòng quanh bi trắng để xoay cơ, rồi bấm giữ và kéo ngược để đánh",
@@ -100,5 +100,8 @@
   "settings.off": "Tắt",
   "settings.done": "Xong",
   "settings.hint": "↑ ↓ chọn dòng, ← → đổi, Esc đóng",
-  "hud.fps": "FPS"
+  "hud.fps": "FPS",
+  "hud.spin": "Xoáy",
+  "guide.p1.b5": "Muốn đánh cao hoặc thấp: xem trang Phím tắt.",
+  "guide.p6.b2": "Lăn chuột, hoặc bấm và kéo chấm trên hình bi nhỏ ở bảng bên: lên là đánh cao (bi trắng chạy tiếp sau va chạm), xuống là đánh thấp (bi trắng lùi lại). Đánh xong, chấm tự về giữa."
 }
