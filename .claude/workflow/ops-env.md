@@ -8,7 +8,7 @@
 - Đóng gói .exe (PyInstaller) chưa cài; cài khi người dùng yêu cầu phát hành.
 
 ## Shell
-- PowerShell 5.1: không có `&&`/`||`; nối bằng `;` hoặc dùng Bash tool. Đường dẫn có dấu cách phải bọc nháy (`E:\pygame projects\MathofPool`).
+- PowerShell 5.1: không có `&&`/`||`; nối bằng `;` hoặc dùng Bash tool. Đường dẫn có dấu cách phải bọc nháy (`E:\pygame projects\NeonPool`).
 
 ## Git (chỉ cục bộ, không GitHub)
 - Nhánh làm việc `chore/...`, `feat/...`, `fix/...`; `main` chỉ nhận khi người dùng nói push/gộp/merge/đưa lên main; sau khi gộp nhánh bị xoá bằng `git branch -d` (quy trình đầy đủ: CLAUDE.md §6b). Không có remote nên không push, không CI; cổng kiểm tra = `tools\gate.py` chạy tay.
@@ -20,3 +20,4 @@
 - 2026-10-28 — hình mờ, lỗ có răng cưa trên laptop HD — vẽ lên canvas cố định 1280×720 rồi phóng/thu, `pg.draw` không khử răng cưa; Windows có thể còn tự kéo giãn cửa sổ khi màn hình bật tỉ lệ 125%/150% — vẽ ở độ phân giải thật (`View`), gọi `SetProcessDpiAwareness` trước `pg.init()`, cỡ cửa sổ mở đầu tự vừa màn hình (`_start_size`).
 - 2026-10-28 — `smoothscale` trên ảnh có alpha làm viền đen quanh bi — nó trộn màu của pixel trong suốt (đen) — nhân trước alpha (`premul_alpha`) rồi blit bằng `BLEND_PREMULTIPLIED`.
 - 2026-10-28 — "Invalid font (font module quit since font created)" khi pygame tắt/bật lại (test) — phông đã cache chết theo `pg.quit()`; `register_quit` chỉ chạy một lần nên không đủ — `fonts.get` kiểm tra phông còn sống rồi tạo lại.
+- 2026-10-30 — đổi tên thư mục dự án (`MathofPool` → `NeonPool`) giữa hai phiên — venv chỉ hỏng ở các script `activate*` và `pip.exe` (đường dẫn cũ ghi cứng); `python.exe` trong venv vẫn chạy — luôn gọi `.venv\Scripts\python.exe` trực tiếp; nếu cần `pip` thì dựng lại venv (xem "Dựng lại venv").
