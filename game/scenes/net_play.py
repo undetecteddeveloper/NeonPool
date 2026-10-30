@@ -4,8 +4,10 @@ A `Session` (game/net/session.py) owns the simulation and the referee's word; th
 and turns the mouse into shots. Over the solo scene it adds: a coin toss at the start, two name
 plates above the table (whose turn it is, group, balls left), the other player's cue moving as
 they aim, the cue ball in hand placed by whoever fouled against, a result card with both players,
-and a card when the connection ends. Esc twice in a row leaves (the proper surrender is later).
-See docs/GAME_DESIGN.md (network play).
+and a card when the connection ends. Also: the clock of the shot (a bar under the plate of the
+player on turn, beeps in its last seconds), the score of the room between the plates, three
+reaction buttons, Esc = a card with Resume / Give up, a card while the link is down, and a
+rematch from the result card. See docs/GAME_DESIGN.md (network play, feedback 17).
 """
 
 from __future__ import annotations
@@ -14,7 +16,17 @@ import math
 
 import pygame as pg
 
-from game.config import GRAB_RADIUS_M, NET_COIN_S, NOTICE_S, PX_PER_M
+from game.config import (
+    GRAB_RADIUS_M,
+    NET_COIN_S,
+    NET_EMOTES,
+    NET_LINK_CARD_DELAY_S,
+    NET_REJOIN_S,
+    NET_TURN_S,
+    NET_TURN_WARN_S,
+    NOTICE_S,
+    PX_PER_M,
+)
 from game.i18n import t
 from game.net import protocol as p
 from game.net import session as net_session
@@ -44,7 +56,8 @@ WON_REASONS = {
     LOST_SURRENDER: "net.won_surrender",
     LOST_DROPPED: "net.won_dropped",
 }
-ESC_AGAIN_S = 3.0  # a second Esc within this long leaves the game
+BLINK_HZ = 2.0  # the clock bar blinks this often in its last seconds
+WAIT_LABEL_MAX = 150  # a "waiting for <name>…" longer than this (logical px) becomes "Waiting…"
 
 
 class NetRules:
@@ -92,10 +105,17 @@ class NetRules:
 
 
 class NetPlayScene(PlayScene):
-    RESULT_DEFAULT = "menu"  # the one button of the result card
+    PANEL_KEYS = hud.NET_PANEL_KEYS
+
+    @property
+    def RESULT_DEFAULT(self) -> str:  # noqa: N802 (the solo scene has it as a class constant)
+        """The button Enter presses on the result card: Rematch while it can be asked for."""
+        return "again" if self._ended_note is None and self._can_again() else "menu"
 
     def _result_rects(self) -> dict[str, pg.Rect]:
-        return {"menu": hud.NOTICE_BUTTON if self._ended_note else hud.NET_BUTTON}
+        if self._ended_note is not None:
+            return {"menu": hud.NOTICE_BUTTON}
+        return dict(hud.NET_BUTTONS)
 
     def __init__(self, app, session: net_session.Session) -> None:
         super().__init__(app)
@@ -103,9 +123,18 @@ class NetPlayScene(PlayScene):
         self.world = session.world
         self.rules = NetRules(session, lambda: self._ended_note is not None)
         self._me, self._them = session.me, 1 - session.me
+        self._game_no = session.game_no  # a rematch makes a new one: and a new scene
         self._seen_shots = session.shots_started
         self._started_at = self._clock  # the coin toss runs from here
-        self._esc_at = -99.0
+        self._card: str | None = None  # a small card over the table: "esc" or "sure"
+        self._card_at = -99.0
+        self._card_sel = 0  # which of its buttons is chosen
+        self._card_fx = hud.ButtonFx()
+        self._link_open = False  # the "connection lost" card is up
+        self._emote_fx = hud.ButtonFx()
+        self._emote_hover: int | None = None
+        self._bubbles: dict[int, tuple[int, float]] = {}  # player -> (reaction, when it was said)
+        self._warned = -1  # the last second of the clock that was beeped
         self._net_notice: tuple[str, str] | None = None  # (kind, words)
         self._remote_alpha = 0.0  # the other player's cue fades in and out
         self._tallies: list[Tally] = []  # one per player, me first
@@ -173,32 +202,165 @@ class NetPlayScene(PlayScene):
             return True
         return False
 
-    def _key(self, key: int) -> None:
-        if key != pg.K_ESCAPE:
-            return  # no restart and no how-to-play card in the middle of a two-player game
-        if self.drag.active:
-            self.drag.cancel()
-        elif self._clock - self._esc_at <= ESC_AGAIN_S:
-            self.app.go_menu()
+    def handle_event(self, e: pg.event.Event) -> None:
+        card = self._card_showing()
+        if card is not None:
+            self._card_event(e, card)
+        elif self.rules.phase == PLAYING and self._emote_event(e):
+            return
         else:
-            self._esc_at = self._clock
-            self._net_notice, self._notice_left = ("info", t("net.esc_again")), ESC_AGAIN_S
+            super().handle_event(e)
+
+    def _key(self, key: int) -> None:
+        if pg.K_1 <= key < pg.K_1 + NET_EMOTES:
+            self._send_emote(key - pg.K_1)
+        elif key == pg.K_ESCAPE:  # (no restart and no how-to-play card in a two-player game)
+            if self.drag.active:
+                self.drag.cancel()
+            else:
+                self._open_card("esc")
+
+    # --- reactions
+    def _send_emote(self, code: int) -> None:
+        if self.session.send_emote(code):
+            self.app.audio.play_click()
+            self._emote_fx.press(code, self._clock)
+
+    def _emote_event(self, e: pg.event.Event) -> bool:
+        """The three reaction buttons. True when a click was theirs."""
+        rects = hud.emote_rects()
+        if e.type == pg.MOUSEMOTION:
+            hover = next((i for i, r in enumerate(rects) if r.collidepoint(e.pos)), None)
+            if hover is not None and hover != self._emote_hover:
+                self.app.audio.play_hover()
+            self._emote_hover = hover
+        elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
+            for i, rect in enumerate(rects):
+                if rect.collidepoint(e.pos):
+                    self._send_emote(i)
+                    return True
+        return False
+
+    # --- the small cards over a game that goes on: Esc, "give up?", "connection lost"
+    def _card_showing(self) -> str | None:
+        if self._link_open:
+            return "link"
+        return self._card if self.rules.phase == PLAYING else None
+
+    def _open_card(self, name: str, sel: int | None = None) -> None:
+        self._card, self._card_at = name, self._clock
+        self._card_sel = self._card_spec(name)[4] if sel is None else sel
+        self._card_fx = hud.ButtonFx()
+        self.drag.cancel()
+        self.placing = False
+
+    def _card_spec(self, name: str):
+        """(title, words, [(key, label, main one?)], colour, the button chosen to begin with)."""
+        them = self._name(self._them)
+        if name == "esc":
+            buttons = (("resume", t("net.card.resume"), True),
+                       ("surrender", t("net.card.surrender"), False))  # fmt: skip
+            return t("net.card.esc_title"), t("net.card.esc_line"), buttons, C.CYAN, 0
+        if name == "sure":
+            buttons = (("yes", t("net.card.surrender"), False), ("back", t("net.card.back"), True))
+            return t("net.card.sure_title"), t("net.card.sure_line", name=them), buttons, C.ERROR, 1
+        left = max(0, math.ceil(NET_REJOIN_S - (self.session.link_down_s or 0.0)))
+        key = "net.link.host" if self.session.me == net_session.HOST else "net.link.guest"
+        buttons = (("leave", t("net.card.leave"), True),)
+        return t("net.end.lost"), t(key, name=them, n=left), buttons, C.ERROR, 0
+
+    def _card_rects(self, name: str) -> dict[str, pg.Rect]:
+        keys = [b[0] for b in self._card_spec(name)[2]]
+        return dict(zip(keys, hud.notice_buttons(len(keys)), strict=True))
+
+    def _card_event(self, e: pg.event.Event, name: str) -> None:
+        rects = self._card_rects(name)
+        keys = list(rects)
+        if e.type == pg.MOUSEMOTION:
+            for i, key in enumerate(keys):
+                if rects[key].collidepoint(e.pos) and i != self._card_sel:
+                    self._card_sel = i
+                    self.app.audio.play_hover()
+        elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
+            for key, rect in rects.items():
+                if rect.collidepoint(e.pos):
+                    self._card_do(name, key)
+                    return
+        elif e.type == pg.KEYDOWN:
+            if e.key == pg.K_ESCAPE and name != "link":
+                self._card = None  # (the card for a lost link only goes when the link is back)
+            elif e.key in (pg.K_LEFT, pg.K_UP, pg.K_RIGHT, pg.K_DOWN, pg.K_TAB) and len(keys) > 1:
+                self._card_sel = (self._card_sel + 1) % len(keys)
+                self.app.audio.play_hover()
+            elif e.key in (pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
+                self._card_do(name, keys[self._card_sel])
+
+    def _card_do(self, name: str, key: str) -> None:
+        self.app.audio.play_click()
+        self._card_fx.press(key, self._clock)
+        if key in ("resume", "back"):
+            self._card = None
+        elif key == "surrender":
+            self._open_card("sure")
+        elif key == "yes":
+            self._card = None
+            self.session.surrender()
+        elif key == "leave":
+            self.app.go_menu()
+
+    # --- the result card: Rematch / Back to menu
+    def _rematch_state(self) -> str:
+        """ready | they_asked | wait (you asked) | gone (the other player left the room)."""
+        s = self.session
+        if s.phase == net_session.CLOSED or not s.linked:
+            return "gone"
+        if s.rematch[self._me]:
+            return "wait"
+        return "they_asked" if s.rematch[self._them] else "ready"
+
+    def _can_again(self) -> bool:
+        return self._rematch_state() in ("ready", "they_asked")
 
     def _result_event(self, e: pg.event.Event) -> None:
-        button = self._result_rects()["menu"]
-        if e.type == pg.MOUSEMOTION:
-            hover = "menu" if button.collidepoint(e.pos) else None
+        rects = self._result_rects()
+        if e.type == pg.KEYDOWN and pg.K_1 <= e.key < pg.K_1 + NET_EMOTES:
+            self._send_emote(e.key - pg.K_1)
+        elif self._emote_event(e):
+            return
+        elif e.type == pg.MOUSEMOTION:
+            hover = next(
+                (k for k, r in rects.items() if r.collidepoint(e.pos) and self._enabled(k)), None
+            )
             if hover is not None and hover != self._hover:
                 self.app.audio.play_hover()
             self._hover = hover
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
-            if button.collidepoint(e.pos):
-                self.app.audio.play_click()
-                self.result_fx.press("menu", self._clock)
+            for key, rect in rects.items():
+                if rect.collidepoint(e.pos):
+                    self._result_do(key)
+                    return
+        elif e.type == pg.KEYDOWN:
+            if e.key in (pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
+                self._result_do(self._hover or self.RESULT_DEFAULT)
+            elif e.key == pg.K_ESCAPE:
                 self.app.go_menu()
-        elif e.type == pg.KEYDOWN and e.key in (
-            pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE, pg.K_ESCAPE
-        ):  # fmt: skip
+            elif (
+                e.key in (pg.K_LEFT, pg.K_RIGHT, pg.K_TAB) and len(rects) > 1 and self._can_again()
+            ):
+                self._hover = "menu" if (self._hover or self.RESULT_DEFAULT) == "again" else "again"
+                self.app.audio.play_hover()
+
+    def _enabled(self, key: str) -> bool:
+        return key != "again" or self._can_again()
+
+    def _result_do(self, key: str) -> None:
+        if key == "again":
+            if self.session.ask_rematch():
+                self.app.audio.play_click()
+                self.result_fx.press("again", self._clock)
+        else:
+            self.app.audio.play_click()
+            self.result_fx.press("menu", self._clock)
             self.app.go_menu()
 
     # --- time ---
@@ -209,8 +371,14 @@ class NetPlayScene(PlayScene):
         return events
 
     def update(self, dt: float) -> None:
-        super().update(dt)
         s = self.session
+        if s.game_no != self._game_no:  # a rematch: a new table and a new coin, in a new scene
+            self.app.start_net(s)
+            return
+        super().update(dt)
+        if s.game_no != self._game_no:
+            self.app.start_net(s)
+            return
         if s.shots_started != self._seen_shots:  # the other player has shot: show their cue darting
             self._seen_shots = s.shots_started
             if s.last_shooter != self._me:
@@ -227,6 +395,40 @@ class NetPlayScene(PlayScene):
             self._enter_result()
         elif s.phase == net_session.CLOSED and not s.match.over and self._ended_note is None:
             self._end_with_note()
+        self._update_extras(dt)
+
+    def _update_extras(self, dt: float) -> None:
+        """The clock's beeps, the reactions, the small cards."""
+        s, audio = self.session, self.app.audio
+        left = math.ceil(s.turn_left_s)
+        if left > NET_TURN_WARN_S or not s.playing:
+            self._warned = -1
+        elif s.my_turn and s.clock_running and self._toss_done() and 0 < left != self._warned:
+            self._warned = left  # a beep for each of your last seconds
+            audio.play_clock_warn(left)
+        for player, code in s.take_emotes():
+            self._bubbles[player] = (code, self._clock)
+            if player != self._me:
+                audio.play_hover()
+        if self.rules.phase != PLAYING:
+            self._card = None
+        wanted = (
+            s.phase == net_session.PLAYING
+            and s.link_down_s is not None
+            and s.link_down_s >= NET_LINK_CARD_DELAY_S
+        )
+        if wanted and not self._link_open:
+            self._link_open, self._card_at, self._card_sel = True, self._clock, 0
+            self._card_fx = hud.ButtonFx()
+            self.drag.cancel()
+        elif not wanted:
+            self._link_open = False
+        card = self._card_showing()
+        if card is not None:
+            keys = list(self._card_rects(card))
+            self._card_fx.update(dt, keys[self._card_sel], self._card_rects(card), self._clock)
+        rects = dict(enumerate(hud.emote_rects()))
+        self._emote_fx.update(dt, self._emote_hover, rects, self._clock)
 
     def _send_aim(self) -> None:
         s = self.session
@@ -248,7 +450,12 @@ class NetPlayScene(PlayScene):
         m = self.session.match
         mine = res.shooter == self._me
         who = self._name(res.shooter)
-        if res.timed_out or res.outcome in (WON, LOST):
+        if res.timed_out:  # the clock of the shot ran out: the turn went to the other player
+            key = "net.timeout_me" if mine else "net.timeout_them"
+            words = t("net.notice.timeout_me") if mine else t("net.notice.timeout_them", name=who)
+            self._notify_net("foul" if mine else "info", words, key)
+            return
+        if res.outcome in (WON, LOST):
             return
         if res.outcome == RERACK:
             self.fx.clear()
@@ -333,8 +540,39 @@ class NetPlayScene(PlayScene):
                 m.group_left(player),
                 turn=m.turn == player and not m.over and s.playing,
             )  # fmt: skip
-        vs_at = (OUTER_X + OUTER_W / 2, hud.PLATE_Y + 31)
-        hud.text(canvas, v, "VS", 20, C.VIOLET, vs_at, bold=True, center=True)
+        wins = (s.wins[self._me], s.wins[self._them])
+        hud.versus(canvas, v, OUTER_X + OUTER_W / 2, wins)
+        if s.playing and not m.over and self._toss_done():
+            turn_rect = mine if m.turn == self._me else theirs
+            warn = s.clock_running and s.turn_left_s <= NET_TURN_WARN_S
+            blink = int(self._clock * BLINK_HZ * 2) % 2 == 0
+            hud.turn_bar(
+                canvas, v, turn_rect, s.turn_left_s / NET_TURN_S, warn=warn, blink_on=blink
+            )
+        self._draw_emotes(canvas, v)
+
+    def _draw_emotes(self, canvas: pg.Surface, v: View) -> None:
+        """The reaction buttons (above the side panel) and what each player last said."""
+        s = self.session
+        for i, rect in enumerate(hud.emote_rects()):
+            hud.emote_chip(canvas, v, rect, t(f"net.emote.{i}"), str(i + 1), self._emote_fx, i,
+                           self._clock, enabled=s.emote_ready)  # fmt: skip
+        mine, theirs = self._plate_rects()
+        for player, (code, at) in self._bubbles.items():
+            plate = mine if player == self._me else theirs
+            hud.emote_bubble(canvas, v, plate, player == self._me, t(f"net.emote.{code}"),
+                             self._clock - at)  # fmt: skip
+
+    def draw(self, canvas: pg.Surface) -> None:
+        super().draw(canvas)
+        v = self.view
+        if self.rules.phase != PLAYING:  # the reactions stay on top of the result card
+            self._draw_emotes(canvas, v)
+        card = self._card_showing()
+        if card is not None:
+            title, line, buttons, mood, _ = self._card_spec(card)
+            hud.draw_notice(canvas, v, title, line, self._clock - self._card_at, self._card_fx,
+                            self._clock, mood=mood, buttons=buttons, dim=False)  # fmt: skip
 
     def _draw_overlays(self, canvas: pg.Surface, v: View, over: bool) -> None:
         super()._draw_overlays(canvas, v, over)
@@ -393,6 +631,27 @@ class NetPlayScene(PlayScene):
         won = self.session.match.winner == self._me
         return (self._name(self._me), self._name(self._them)), (won, not won)
 
+    def _row_names(self) -> tuple[str, str, str, str]:
+        return (t("result.score"), t("hud.shots"), t("hud.fouls"), t("net.wins_row"))
+
+    def _wins(self) -> tuple[int, int]:
+        return (self.session.wins[self._me], self.session.wins[self._them])
+
+    def _again_view(self) -> tuple[tuple[str, bool], tuple[str, tuple[int, int, int]] | None]:
+        """The Rematch button (its words, can it be pressed) and the line above the buttons."""
+        state, name = self._rematch_state(), self._name(self._them)
+        if state == "wait":
+            words = t("net.rematch.wait", name=name)
+            if hud.text_width(self.view, words, 17, True) > WAIT_LABEL_MAX:
+                words = t("net.rematch.wait_short")
+            return (words, False), None
+        if state == "gone":
+            return (t("net.again"), False), (t("net.rematch.gone", name=name), C.TEXT_DIM)
+        note = (
+            (t("net.rematch.they_asked", name=name), C.MAGENTA) if state == "they_asked" else None
+        )
+        return (t("net.again"), True), note
+
     def _draw_result_frame(self, canvas: pg.Surface, v: View) -> None:
         if self._ended_note is not None:
             title, line = self._ended_note
@@ -400,17 +659,17 @@ class NetPlayScene(PlayScene):
             return
         reason, won = self._result_words()
         names, won_by = self._names_row()
-        rows = (t("result.score"), t("hud.shots"), t("hud.fouls"))
         hud.draw_net_result_frame(canvas, v, won=won, reason=reason, names=names, won_by=won_by,
-                                  row_names=rows)  # fmt: skip
+                                  row_names=self._row_names(), wins=self._wins())  # fmt: skip
 
     def _draw_result_live(self, canvas: pg.Surface, v: View) -> None:
         if self._ended_note is not None:
             hud.draw_notice_live(canvas, v, self.result_fx, self._clock)
             return
         values, flashes = self._result_numbers()
+        again, note = self._again_view()
         hud.draw_net_result_live(canvas, v, values=values, flashes=flashes, fx=self.result_fx,
-                                 clock=self._clock)  # fmt: skip
+                                 clock=self._clock, again=again, note=note)  # fmt: skip
 
     def _draw_result(self, canvas: pg.Surface, v: View) -> None:
         age = self._clock - self._ended_at
@@ -421,7 +680,8 @@ class NetPlayScene(PlayScene):
         reason, won = self._result_words()
         names, won_by = self._names_row()
         values, flashes = self._result_numbers()
+        again, note = self._again_view()
         hud.draw_net_result(canvas, v, won=won, reason=reason, names=names, won_by=won_by,
-                            row_names=(t("result.score"), t("hud.shots"), t("hud.fouls")),
-                            values=values, flashes=flashes, age=age, fx=self.result_fx,
+                            row_names=self._row_names(), wins=self._wins(), values=values,
+                            flashes=flashes, again=again, note=note, age=age, fx=self.result_fx,
                             clock=self._clock)  # fmt: skip

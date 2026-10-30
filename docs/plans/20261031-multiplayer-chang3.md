@@ -24,7 +24,7 @@ Chặng 2 (mã phòng + máy trung chuyển) và 4 (trang vận hành) KHÔNG l�
 | Đấu lại | `Session.ask_rematch()` gửi `Rematch`; chủ phòng thấy đủ hai bên → `Start` mới (seed, người phá ngẫu nhiên) → `game_no` += 1. Cảnh ván nhận ra `game_no` đổi thì `App.start_net` dựng cảnh mới (sạch mọi trạng thái, có chuyển cảnh) | tránh viết lại việc đặt lại từng biến của `PlayScene` |
 | Tỉ số | `Session.wins[2]`: mỗi bên tự cộng khi thấy ván xong (cờ đã tính cho từng ván; vào lại không tính đôi) | cùng quy tắc nên luôn bằng nhau |
 | Biểu cảm | `Emote(code)` 0..2; gửi tối đa 1 lần / `NET_EMOTE_GAP_S` (1,5 s); mã ≥ 3 bị bỏ | không chat, chống spam |
-| Giao diện | Phác ảnh 2–3 hướng cho từng thứ MỚI (đồng hồ, tỉ số, bảng Esc/Đầu hàng, hàng nút thẻ kết quả, biểu cảm, lớp "mất kết nối") rồi người dùng chọn (`ui.md`) | hướng người chơi thấy |
+| Giao diện | ĐÃ phác và người dùng chọn (2026-10-31, `tools/_out/20261031-chang3/`): đồng hồ = thanh cạn dần dưới khung + tiếng tích 10 giây cuối (không hiện số); tỉ số = số arcade giữa hai khung và hàng "VÁN THẮNG" ở thẻ; hai nút Đấu lại / Về menu; biểu cảm = ba nút góc trên phải; thẻ Esc / Đầu hàng? / Mất kết nối như ảnh (chi tiết: GAME_DESIGN lần 17) | `ui.md` |
 
 ## Task (mỗi task một commit)
 1. Tài liệu (commit này): brief, GAME_DESIGN lần 17, ARCHITECTURE.

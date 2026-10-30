@@ -142,6 +142,15 @@ def synth_notice() -> np.ndarray:
     return _to_int16(_notes([1047, 1568], 0.07, 0.07, tail=0.12), gain=0.6)
 
 
+# --- the clock of a shot, in its last seconds: a beep a second, a quicker double one at the end ---
+def synth_warn() -> np.ndarray:
+    return _to_int16(_square(880, 0.07, 0.02), gain=0.55)
+
+
+def synth_warn_last() -> np.ndarray:
+    return _to_int16(_notes([1175, 1175], 0.09, 0.02, tail=0.03), gain=0.6)
+
+
 # --- the result card's numbers counting up: ticks that climb a scale, then a bell ----------------
 TICK_NOTES = (784, 880, 988, 1175, 1319, 1568, 1760, 1976)  # a pentatonic climb, G5 up to B6
 
@@ -223,6 +232,8 @@ class Audio:
                 ("lose", synth_lose),
                 ("foul", synth_foul),
                 ("notice", synth_notice),
+                ("warn", synth_warn),
+                ("warn_last", synth_warn_last),
                 ("ting_win", lambda: synth_ting(1319, 1976)),  # bright: E6 and B6
                 ("ting_lose", lambda: synth_ting(440, 659)),  # lower: A4 and E5
                 *((f"tick{i}", lambda f=f: synth_tick(f)) for i, f in enumerate(TICK_NOTES)),
@@ -310,6 +321,10 @@ class Audio:
 
     def play_notice(self) -> None:
         self._play("notice", 0.45)
+
+    def play_clock_warn(self, seconds_left: int) -> None:
+        """A second of the last ten of your clock; the last three are quicker and higher."""
+        self._play("warn_last" if seconds_left <= 3 else "warn", 0.5)
 
     def play_spin(self, level: float) -> None:
         """The spin dial moved a step; `level` -1 (low) .. +1 (high) picks the note."""

@@ -292,6 +292,11 @@ class Session:
         self._emotes.append((self.me, code))
         return True
 
+    @property
+    def emote_ready(self) -> bool:
+        """A reaction may be sent now (one per `NET_EMOTE_GAP_S`)."""
+        return self.playing and self.time - self._emote_at >= config.NET_EMOTE_GAP_S
+
     def take_emotes(self) -> list[tuple[int, int]]:
         """The reactions (player, code) sent by either player since the last call."""
         out, self._emotes = self._emotes, []

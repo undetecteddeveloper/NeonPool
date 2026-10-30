@@ -13,6 +13,7 @@ from game.app import App
 from game.net import session as net_session
 from game.physics import Shot
 from game.render import hud
+from game.render.layout import to_px
 from game.rules.eight_ball import LOST, PLAYING, WON
 from game.scenes import play_panel as pp
 from game.scenes.net_play import COIN_S, NetPlayScene
@@ -263,7 +264,9 @@ def test_the_result_card_button_goes_back_to_the_menu_and_the_other_side_is_told
     finish_with_the_8_early(apps)
     assert run(apps, lambda: host.net._result_shown and guest.net._result_shown)
     run(apps, lambda: False, seconds=1.0)
-    host.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=hud.NET_BUTTON.center, button=1))
+    host.handle_event(
+        pg.event.Event(pg.MOUSEBUTTONDOWN, pos=hud.NET_BUTTONS["menu"].center, button=1)
+    )
     assert host.scene is host.menu and host.net is None
     assert run(apps, lambda: guest.net.session.phase == net_session.CLOSED)
 
@@ -283,15 +286,202 @@ def test_walking_out_in_the_middle_of_a_game_gives_the_other_player_the_win(apps
     assert host.scene is host.menu
 
 
-def test_esc_has_to_be_pressed_twice_to_leave_a_two_player_game(apps):
+def test_esc_opens_a_card_while_the_game_goes_on_and_resume_closes_it(apps):
     host, guest = apps
     assert meet(apps) and after_the_toss(apps)
     host.handle_event(key(pg.K_ESCAPE))
-    assert host.scene is host.net and host.net._notice_left > 0
+    assert host.scene is host.net and host.net._card == "esc" and host.net._card_sel == 0
+    run(apps, lambda: False, seconds=0.5)
+    assert host.net.session.playing and host.net.session.linked  # nothing stopped for the card
+    for _ in range(20):
+        host.draw()
     host.handle_event(key(pg.K_ESCAPE))
-    assert host.scene is host.menu
-    host.handle_event(key(pg.K_m))  # after the panel the shortcuts of the game work again
+    assert host.net._card is None
+    host.handle_event(key(pg.K_m))  # the shortcuts of the game work again
     assert host.audio.muted
+
+
+def test_the_card_blocks_the_table_and_the_mouse_picks_its_buttons(apps):
+    assert meet(apps) and after_the_toss(apps)
+    scene = players(apps)[0]
+    app = apps[0] if scene is apps[0].net else apps[1]
+    app.handle_event(key(pg.K_ESCAPE))
+    assert scene._card_showing() == "esc"
+    cue = scene.world.balls[0]
+    app.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=to_px(cue.x, cue.y), button=1))
+    assert not scene.drag.active  # a press on the cue ball under the card does nothing
+    rects = scene._card_rects("esc")
+    pos = rects["surrender"].center
+    app.handle_event(pg.event.Event(pg.MOUSEMOTION, pos=pos, rel=(0, 0), buttons=(0, 0, 0)))
+    assert scene._card_sel == 1
+    app.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=pos, button=1))
+    assert scene._card == "sure" and scene._card_sel == 1  # "Back" is the chosen one: the safe one
+    app.handle_event(key(pg.K_ESCAPE))
+    assert scene._card is None
+
+
+def give_up_from_the_host(host):
+    host.handle_event(key(pg.K_ESCAPE))
+    host.handle_event(key(pg.K_RIGHT))
+    host.handle_event(key(pg.K_RETURN))  # "Give up" ...
+    assert host.net._card == "sure" and host.net.rules.phase == PLAYING
+    host.handle_event(key(pg.K_LEFT))
+    host.handle_event(key(pg.K_RETURN))  # ... and "yes, give up"
+
+
+def test_giving_up_needs_two_steps_then_both_cards_show_who_won_and_why(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    give_up_from_the_host(host)
+    assert run(apps, lambda: host.net._result_shown and guest.net._result_shown)
+    assert host.net.rules.phase == LOST and guest.net.rules.phase == WON
+    assert host.net._result_words() == (i18n.t("net.lost_surrender"), False)
+    words, won = guest.net._result_words()
+    assert won and words == i18n.t("net.won_surrender", name=guest.net._name(0))
+    assert host.net._wins() == (0, 1) and guest.net._wins() == (1, 0)
+    for app in (host, guest):
+        for _ in range(5):
+            app.draw()
+
+
+def test_a_rematch_waits_for_the_other_side_then_makes_a_new_game_with_the_score_kept(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    old = host.net
+    give_up_from_the_host(host)
+    assert run(apps, lambda: host.net._result_shown and guest.net._result_shown)
+    assert host.net.RESULT_DEFAULT == "again" and host.net._rematch_state() == "ready"
+    host.handle_event(key(pg.K_RETURN))  # the host asks first ...
+    assert host.net._rematch_state() == "wait" and host.net.RESULT_DEFAULT == "menu"
+    assert run(apps, lambda: guest.net._rematch_state() == "they_asked")
+    assert guest.net._again_view()[1][0] == i18n.t("net.rematch.they_asked", name="Hoa")
+    run(apps, lambda: False, seconds=1.0)  # ... and waits as long as it takes
+    assert host.net is old and host.net._rematch_state() == "wait"
+    guest.handle_event(key(pg.K_RETURN))
+    assert run(apps, lambda: host.net is not old and guest.net.session.game_no == 2)
+    assert host.net.session.game_no == 2 and not host.net.session.match.over
+    assert host.net._wins() == (0, 1) and guest.net._wins() == (1, 0)
+    assert after_the_toss(apps)
+    for app in (host, guest):
+        for _ in range(5):
+            app.draw()
+
+
+def test_the_other_side_leaving_turns_the_rematch_button_off_with_a_note(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    host.net.session.surrender()
+    assert run(apps, lambda: host.net._result_shown and guest.net._result_shown)
+    guest.net.leave()
+    assert run(apps, lambda: host.net._rematch_state() == "gone")
+    (label, can), note = host.net._again_view()
+    assert not can and note[0] == i18n.t("net.rematch.gone", name="Nam")
+    assert host.net.RESULT_DEFAULT == "menu"
+    host.handle_event(key(pg.K_RETURN))
+    assert host.scene is host.menu
+
+
+def test_a_reaction_shows_on_both_screens_and_is_rationed(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    host.handle_event(key(pg.K_1))
+    host.handle_event(key(pg.K_2))  # too soon: dropped
+    assert run(apps, lambda: 0 in guest.net._bubbles and 0 in host.net._bubbles)
+    assert guest.net._bubbles[0][0] == 0 and host.net._bubbles[0][0] == 0
+    chips = hud.emote_rects()
+    assert len(chips) == config.NET_EMOTES
+    run(apps, lambda: False, seconds=config.NET_EMOTE_GAP_S + 0.2)
+    guest.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=chips[2].center, button=1))
+    assert run(apps, lambda: 1 in host.net._bubbles and host.net._bubbles[1][0] == 2)
+    for app in (host, guest):
+        for _ in range(5):
+            app.draw()
+
+
+def test_the_last_ten_seconds_of_your_clock_beep_once_a_second(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    scene = players(apps)[0]
+    beeps = []
+    scene.app.audio.play_clock_warn = beeps.append
+    scene.session._turn_used = config.NET_TURN_S - 11.5
+    other = apps[1] if scene is host.net else apps[0]
+    for _ in range(5 * 60):
+        scene.update(1 / 60)
+        other.update(1 / 60)
+    assert beeps[:4] == [10, 9, 8, 7]
+    assert all(b > 0 for b in beeps) and len(beeps) == len(set(beeps))
+
+
+def test_the_other_players_clock_makes_no_sound_for_you(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    waiting = players(apps)[1]
+    beeps = []
+    waiting.app.audio.play_clock_warn = beeps.append
+    waiting.session._turn_used = config.NET_TURN_S - 3.0
+    for _ in range(120):
+        waiting.update(1 / 60)
+    assert beeps == []
+
+
+def test_the_clock_bar_costs_no_new_picture_as_it_shrinks(apps):
+    from game.render import draw as d
+
+    host, _ = apps
+    assert meet(apps) and after_the_toss(apps)
+    scene = host.net
+    for _ in range(3):
+        host.draw()
+    before = len(d._rr_cache)
+    for i in range(120):
+        scene.session._turn_used = i * 0.4
+        host.draw()
+    assert len(d._rr_cache) - before <= 6
+
+
+def test_a_broken_link_shows_its_card_after_a_moment_and_it_goes_when_the_link_is_back(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    session = host.net.session
+    session.link_down_s = 0.2  # (the real break is in test_net_tcp: this is the scene's part)
+    host.update(1 / 60)
+    assert host.net._card_showing() is None  # a blink of the wifi is not news
+    session.link_down_s = config.NET_LINK_CARD_DELAY_S + 0.1
+    host.update(1 / 60)
+    assert host.net._card_showing() == "link"
+    title, line, buttons, _, _ = host.net._card_spec("link")
+    assert str(int(config.NET_REJOIN_S) - 1) in line
+    assert [b[0] for b in buttons] == ["leave"]
+    for _ in range(20):
+        host.draw()
+    session.link_down_s = None
+    host.update(1 / 60)
+    assert host.net._card_showing() is None
+
+
+def test_the_leave_button_of_the_lost_link_card_goes_to_the_menu(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    host.net.session.link_down_s = config.NET_LINK_CARD_DELAY_S + 0.5
+    host.update(1 / 60)
+    host.handle_event(key(pg.K_ESCAPE))  # Esc does not dismiss it: only getting the link back does
+    assert host.net._card_showing() == "link"
+    host.handle_event(key(pg.K_RETURN))
+    assert host.scene is host.menu
+
+
+def test_a_timed_out_turn_says_so_on_both_screens(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    on_turn_session = players(apps)[0].session
+    assert host.net.session.timeout_turn()  # the referee calls time
+    assert run(apps, lambda: all(a.net._net_notice for a in (host, guest)))
+    shown = {a.net._net_notice[1] for a in (host, guest)}
+    shooter_name = host.net._name(on_turn_session.me)
+    mine = i18n.t("net.notice.timeout_me")
+    theirs = i18n.t("net.notice.timeout_them", name=shooter_name)
+    assert shown == {mine, theirs} or shown == {mine}
 
 
 def test_ac9_net_keys_in_both_languages():

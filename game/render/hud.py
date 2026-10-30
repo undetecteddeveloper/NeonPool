@@ -13,7 +13,7 @@ from functools import cache
 
 import pygame as pg
 
-from game.config import SPIN_DIAL_TRAVEL
+from game.config import NET_EMOTE_SHOW_S, SPIN_DIAL_TRAVEL
 from game.i18n import t
 from game.render import fonts, glow
 from game.render import palette as C
@@ -37,6 +37,12 @@ PANEL_KEYS = (  # (key cap, what it does) at the bottom of the side panel (help 
     ("keycap.h", "hud.key_help"),
     ("keycap.f11", "hud.key_full"),
     ("keycap.esc", "hud.key_menu"),
+)
+NET_PANEL_KEYS = (  # the same list for a two-player game: no restart, no how-to card
+    ("keycap.m", "hud.key_mute"),
+    ("keycap.f11", "hud.key_full"),
+    ("keycap.emote", "net.key_emote"),
+    ("keycap.esc", "net.key_menu"),
 )
 KEY_STEP = 21
 KEYS_Y = PANEL_Y + PANEL_H - 18 - len(PANEL_KEYS) * KEY_STEP  # top of the first key row
@@ -472,6 +478,7 @@ def draw_panel(
     spin: float = 0.0,
     spin_lit: float = 0.0,
     spin_on: bool = True,
+    keys: tuple = PANEL_KEYS,
 ) -> None:
     """The side panel: the logo, the score in arcade digits, your group, the balls still on the
     table (the ones that went in are struck off), what the table is doing, the spin dial, and
@@ -542,9 +549,9 @@ def draw_panel(
     label(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), (x0 + 16, y), size=10.5)
     spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
 
-    ky = KEYS_Y
+    ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
     pg.draw.line(canvas, C.PANEL_EDGE, v.ipt((x0, ky - 12)), v.ipt((x1, ky - 12)), max(1, v.i(1)))
-    for i, (cap, what) in enumerate(PANEL_KEYS):
+    for i, (cap, what) in enumerate(keys):
         row = ky + i * KEY_STEP
         keycap(canvas, v, t(cap), (x0, row), 34)
         text(canvas, v, t(what), 12, C.TEXT_DIM, (x0 + 44, row + 4))
@@ -684,12 +691,12 @@ def draw_callout(
     )
 
 
-def _grow_frame(canvas: pg.Surface, v: View, c: pg.Rect, won: bool, k: float) -> None:
+def _grow_frame(canvas: pg.Surface, v: View, c: pg.Rect, won: bool, k: float, mood=None) -> None:
     """A result card opening (`k` 0..1): just its lit frame, getting bigger."""
     # ONE full-size sprite, shrunk a little each frame (never enlarged): a new sprite for
     # every size meant 20-50 ms a frame while the card opened
     e = 1 - (1 - k) ** 3
-    spr, _ = rrect_sprite(v, c.w, c.h, 10, C.PANEL, 1.8, C.OK if won else C.ERROR, 1.0)
+    spr, _ = rrect_sprite(v, c.w, c.h, 10, C.PANEL, 1.8, mood or (C.OK if won else C.ERROR), 1.0)
     f = 0.7 + 0.3 * e
     small = pg.transform.smoothscale(
         spr, (max(1, round(spr.get_width() * f)), max(1, round(spr.get_height() * f)))
@@ -969,18 +976,101 @@ def name_plate(canvas: pg.Surface, v: View, rect: pg.Rect, name: str, group_s: s
                    C.CYAN if left else C.OK, glow_k=0.6, align="right")  # fmt: skip
 
 
+# --- the clock of a shot and the score of the room (two-player game) ---------------------------
+def turn_bar(canvas: pg.Surface, v: View, rect: pg.Rect, frac: float, *, warn: bool,
+             blink_on: bool) -> None:  # fmt: skip
+    """The clock of the player on turn: a bar under their name plate that runs out (`frac` 1 ->
+    0). In the last seconds (`warn`) it is red and blinks; the beeps of those seconds are the
+    scene's. The filled part is one sprite cut short, so no new sprite is made as it shrinks."""
+    colour = (C.ERROR if blink_on else C.scale(C.ERROR, 0.5)) if warn else C.MAGENTA
+    x, y, w = rect.x + 6, rect.bottom + 4, rect.w - 12
+    blit_rrect(canvas, v, x, y, w, 4, 2, C.scale(C.PANEL_EDGE, 0.6), 0, C.BG, 0)
+    spr, pad = rrect_sprite(v, w, 4, 2, colour, 0, colour, 0.0)
+    part = max(1, round(spr.get_width() * max(0.0, min(1.0, frac))))
+    at = tuple(round(c) for c in v.pt((x - pad, y - pad)))
+    canvas.blit(
+        spr, at, pg.Rect(0, 0, part, spr.get_height()), special_flags=pg.BLEND_PREMULTIPLIED
+    )
+
+
+def versus(canvas: pg.Surface, v: View, cx: float, wins: tuple[int, int]) -> None:
+    """Between the two name plates: "VS" in the first game, then the score of the room, yours
+    first (games won by each player in this room)."""
+    if not any(wins):
+        text(canvas, v, "VS", 20, C.VIOLET, (cx, PLATE_Y + 31), bold=True, center=True)
+        return
+    n, h = (2 if max(wins) > 9 else 1), 30
+    text(canvas, v, t("net.score"), 10, C.TEXT_DIM, (cx, PLATE_Y + 8), center=True, track=1.5)
+    top = PLATE_Y + 18
+    seg_number(canvas, v, wins[0], n, (cx - 16, top), h, C.CYAN, glow_k=0.8, align="right")
+    text(canvas, v, ":", 26, C.VIOLET, (cx, PLATE_Y + 33), bold=True, center=True)
+    seg_number(canvas, v, wins[1], n, (cx + 16, top), h, C.CYAN, glow_k=0.8)
+
+
+# --- reactions: three small buttons, and a bubble beside the plate of whoever said it -----------
+EMOTE_W, EMOTE_H, EMOTE_GAP, EMOTE_Y = 59, 46, 6, 32  # above the side panel, level with the plates
+
+
+def emote_rects() -> list[pg.Rect]:
+    x0 = PANEL_X + (PANEL_W - (3 * EMOTE_W + 2 * EMOTE_GAP)) // 2
+    return [pg.Rect(x0 + i * (EMOTE_W + EMOTE_GAP), EMOTE_Y, EMOTE_W, EMOTE_H) for i in range(3)]
+
+
+def emote_chip(canvas: pg.Surface, v: View, rect: pg.Rect, word: str, key_s: str, fx: ButtonFx,
+               key, clock: float, *, enabled: bool = True) -> None:  # fmt: skip
+    """A reaction button. Lit, bigger while chosen and dipping when pressed like `live_button`
+    (no arrow or running light: it is too small for them); dim while the last reaction is fresh."""
+    lit = fx.lit.get(key, 0.0) if enabled else 0.0
+    press = fx.press_k(key, clock)
+    grow = 1.0 + 0.03 * lit - 0.05 * press
+    w, h = round(rect.w * grow * 2) / 2, round(rect.h * grow * 2) / 2
+    x, y = rect.centerx - w / 2, rect.centery - h / 2
+    fill = C.lerp(C.lerp(C.PANEL, C.PANEL_HOT, lit), C.lerp(C.CYAN, C.WHITE, 0.3), 0.35 * press)
+    edge = C.lerp(C.PANEL_EDGE, C.CYAN, lit)
+    if not enabled:
+        fill, edge = C.BG, C.scale(C.PANEL_EDGE, 0.6)
+    blit_rrect(canvas, v, x, y, w, h, 6, fill, 1.4, edge, lit)
+    text(canvas, v, word, 12, C.WHITE if enabled else C.TEXT_DIM, (rect.centerx, rect.y + 17),
+         bold=True, center=True)  # fmt: skip
+    keycap(canvas, v, key_s, (rect.centerx - 8, rect.y + 29), 16)
+
+
+def emote_bubble(canvas: pg.Surface, v: View, plate: pg.Rect, mine: bool, word: str,
+                 age: float) -> None:  # fmt: skip
+    """What a player said, in the gap between the two plates, next to their own: it fades out over
+    its last third of a second (the colours move towards the night, in quarter steps)."""
+    if age >= NET_EMOTE_SHOW_S:
+        return
+    fade = 1.0 if age < NET_EMOTE_SHOW_S - 0.35 else (NET_EMOTE_SHOW_S - age) / 0.35
+    k = round(max(0.0, min(1.0, fade)) * 4) / 4
+    colour = C.CYAN if mine else C.MAGENTA
+    w = text_width(v, word, 15, True) + 34
+    x = plate.right + 12 if mine else plate.x - 12 - w
+    blit_rrect(canvas, v, x, plate.y + 16, w, 30, 15, C.lerp(C.BG, C.PANEL_HOT, k), 1.6,
+               C.lerp(C.BG, colour, k), 0.9 * k)  # fmt: skip
+    text(canvas, v, word, 15, C.lerp(C.BG, C.WHITE, k), (x + w / 2, plate.y + 31), bold=True,
+         center=True)  # fmt: skip
+
+
 # --- the result card of a two-player game: both players side by side ----------------------------
-NET_CARD = pg.Rect(0, 0, 440, 430)
+NET_CARD = pg.Rect(0, 0, 440, 496)
 NET_CARD.center = RESULT_CARD.center
 NET_COLS = (NET_CARD.x + 220, NET_CARD.x + 372)  # right edges of the two columns of numbers
 NET_ROWS = ((NET_CARD.y + 168, 36, 4), (NET_CARD.y + 226, 26, 2), (NET_CARD.y + 274, 26, 2))
-NET_BUTTON = pg.Rect(NET_CARD.centerx - 90, NET_CARD.bottom - 76, 180, 46)
+NET_WINS_Y = NET_CARD.y + 330  # the fourth row, under a hairline: games won in this room
+NET_NOTE_Y = NET_CARD.y + 404  # the words between the table and the buttons
+NET_BUTTONS = {
+    "again": pg.Rect(NET_CARD.x + 24, NET_CARD.y + 424, 182, 46),
+    "menu": pg.Rect(NET_CARD.right - 24 - 182, NET_CARD.y + 424, 182, 46),
+}
 
 
 def draw_net_result_frame(canvas: pg.Surface, v: View, *, won: bool, reason: str | None,
                           names: tuple[str, str], won_by: tuple[bool, bool],
-                          row_names: tuple[str, str, str]) -> None:  # fmt: skip
-    """The card's parts that never move: frame, title, why, the two names and the row labels."""
+                          row_names: tuple[str, str, str, str],
+                          wins: tuple[int, int]) -> None:  # fmt: skip
+    """The card's parts that never move: frame, title, why, the two names, the row labels and
+    the games won in this room (fixed once the card has settled)."""
     c = NET_CARD
     mood = C.OK if won else C.ERROR
     blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, mood, 1.0)
@@ -993,27 +1083,26 @@ def draw_net_result_frame(canvas: pg.Surface, v: View, *, won: bool, reason: str
             text(canvas, v, line, 14, C.TEXT_DIM, (c.centerx, c.y + 90 + i * 19), center=True)
     for x, name, win in zip(NET_COLS, names, won_by, strict=True):
         cx = x - 52
-        text(
-            canvas,
-            v,
-            name,
-            16,
-            C.OK if win else C.TEXT_DIM,
-            (cx, c.y + 124),
-            bold=True,
-            center=True,
-        )
+        text(canvas, v, name, 16, C.OK if win else C.TEXT_DIM, (cx, c.y + 124), bold=True,
+             center=True)  # fmt: skip
         word = t("net.tag_win") if win else t("net.tag_lose")
         text(canvas, v, word, 11, C.OK if win else C.ERROR, (cx, c.y + 144), center=True)
-    for (y, h, _), name in zip(NET_ROWS, row_names, strict=True):
+    for (y, h, _), name in zip(NET_ROWS, row_names[:3], strict=True):
         label(canvas, v, name, (c.x + 26, y + h / 2 - 5), size=12)
+    blit_rrect(canvas, v, c.x + 26, c.y + 320, c.w - 52, 1.5, 0.75, C.PANEL_EDGE, 0)
+    label(canvas, v, row_names[3], (c.x + 26, NET_WINS_Y + 26 / 2 - 5), size=12)
+    n = 2 if max(wins) > 9 else 1
+    for x, count in zip(NET_COLS, wins, strict=True):
+        seg_number(canvas, v, count, n, (x, NET_WINS_Y), 26, C.CYAN, glow_k=0.7, align="right")
 
 
 def draw_net_result_live(canvas: pg.Surface, v: View, *, values: list[list[int]],
-                         flashes: list[list[float]], fx: ButtonFx | None,
-                         clock: float) -> None:  # fmt: skip
+                         flashes: list[list[float]], fx: ButtonFx | None, clock: float,
+                         again: tuple[str, bool],
+                         note: tuple[str, tuple[int, int, int]] | None) -> None:  # fmt: skip
     """The card's parts that move: `values[row][column]` (score, shots, fouls) counting up, each
-    glowing whiter just after it stops (`flashes`, same shape), and the button."""
+    glowing whiter just after it stops (`flashes`, same shape); the words about the rematch
+    (`note`), and the two buttons (`again` = its label and whether it can be pressed)."""
     for r, (y, h, digits) in enumerate(NET_ROWS):
         colour = C.SUN_TOP if r == 0 else C.CYAN
         for col, x in enumerate(NET_COLS):
@@ -1021,14 +1110,24 @@ def draw_net_result_live(canvas: pg.Surface, v: View, *, values: list[list[int]]
             lit = C.lerp(colour, C.WHITE, 0.6 * fl)
             seg_number(canvas, v, values[r][col], digits, (x, y), h, lit,
                        glow_k=0.7 + 0.9 * fl, align="right")  # fmt: skip
-    fx = fx or ButtonFx(lit={"menu": 1.0}, chosen="menu")
-    live_button(canvas, v, NET_BUTTON, t("result.menu"), fx, "menu", clock, primary=True)
+    if note:
+        text(
+            canvas, v, note[0], 14, note[1], (NET_CARD.centerx, NET_NOTE_Y), bold=True, center=True
+        )
+    fx = fx or ButtonFx(lit={"again": 1.0}, chosen="again")
+    label_again, can_again = again
+    live_button(canvas, v, NET_BUTTONS["again"], label_again, fx, "again", clock, primary=True,
+                enabled=can_again, size=17)  # fmt: skip
+    live_button(canvas, v, NET_BUTTONS["menu"], t("result.menu"), fx, "menu", clock, primary=False,
+                size=17)  # fmt: skip
 
 
 def draw_net_result(canvas: pg.Surface, v: View, *, won: bool, reason: str | None,
                     names: tuple[str, str], won_by: tuple[bool, bool],
-                    row_names: tuple[str, str, str], values: list[list[int]],
-                    flashes: list[list[float]], age: float = 1.0, fx: ButtonFx | None = None,
+                    row_names: tuple[str, str, str, str], wins: tuple[int, int],
+                    values: list[list[int]], flashes: list[list[float]],
+                    again: tuple[str, bool], note: tuple[str, tuple[int, int, int]] | None,
+                    age: float = 1.0, fx: ButtonFx | None = None,
                     clock: float = 0.0) -> None:  # fmt: skip
     """The end-of-game card of a two-player game: dims the table, grows in, then the whole card."""
     canvas.blit(veil(canvas.get_size(), RESULT_DIM_ALPHA), (0, 0))
@@ -1037,14 +1136,29 @@ def draw_net_result(canvas: pg.Surface, v: View, *, won: bool, reason: str | Non
         _grow_frame(canvas, v, NET_CARD, won, k)
         return
     draw_net_result_frame(canvas, v, won=won, reason=reason, names=names, won_by=won_by,
-                          row_names=row_names)  # fmt: skip
-    draw_net_result_live(canvas, v, values=values, flashes=flashes, fx=fx, clock=clock)
+                          row_names=row_names, wins=wins)  # fmt: skip
+    draw_net_result_live(canvas, v, values=values, flashes=flashes, fx=fx, clock=clock,
+                         again=again, note=note)  # fmt: skip
 
 
-# --- the card for a two-player game whose connection ended ---
+# --- a small card with one or two buttons: the connection ended, Esc, "give up?" ----------------
 NOTICE_CARD = pg.Rect(0, 0, 420, 250)
 NOTICE_CARD.center = RESULT_CARD.center
-NOTICE_BUTTON = pg.Rect(NOTICE_CARD.centerx - 90, NOTICE_CARD.bottom - 74, 180, 46)
+
+
+def notice_buttons(n: int) -> list[pg.Rect]:
+    """The buttons of the small card: one in the middle, or two side by side."""
+    y = NOTICE_CARD.bottom - 74
+    if n == 1:
+        return [pg.Rect(NOTICE_CARD.centerx - 90, y, 180, 46)]
+    w, gap = 182, 12
+    x0 = NOTICE_CARD.centerx - (n * w + (n - 1) * gap) // 2
+    return [pg.Rect(x0 + i * (w + gap), y, w, 46) for i in range(n)]
+
+
+NOTICE_BUTTON = notice_buttons(1)[0]
+# (key, label, is it the main one) of the card for a connection that ended
+NOTICE_MENU = (("menu", "result.menu", True),)
 
 
 _net_warm = [0.0]  # the view scale the two-player parts were last made for
@@ -1052,8 +1166,8 @@ _net_warm = [0.0]  # the view scale the two-player parts were last made for
 
 def prewarm_net(v: View) -> None:
     """Draw the two-player parts once off screen (the result cards growing and whole, the
-    connection card, the name plates) so their sprites exist before the first game ends. The
-    names themselves are not known yet: text is made when it first shows."""
+    connection card, the name plates, the reaction buttons) so their sprites exist before the
+    first game ends. The names themselves are not known yet: text is made when it first shows."""
     if _net_warm[0] == v.s:
         return
     _net_warm[0] = v.s
@@ -1063,36 +1177,51 @@ def prewarm_net(v: View) -> None:
         for age in (RESULT_IN_S / 2, 1.0):
             both = (won, not won)
             draw_net_result(probe, v, won=won, reason=None, names=names, won_by=both,
-                            row_names=("", "", ""), values=zeros, flashes=zeros,
-                            age=age)  # fmt: skip
+                            row_names=("", "", "", ""), wins=(0, 0), values=zeros, flashes=zeros,
+                            again=("", True), note=None, age=age)  # fmt: skip
     for age in (RESULT_IN_S / 2, 1.0):
         draw_notice(probe, v, "", "", age, None, 0.0)
+        draw_notice(probe, v, "", "", age, None, 0.0, mood=C.CYAN, dim=False,
+                    buttons=(("a", "", True), ("b", "", False)))  # fmt: skip
     for turn in (True, False):
         name_plate(probe, v, pg.Rect(0, 0, PLATE_W, PLATE_H), "", "", 7, turn=turn)
+    fx = ButtonFx()
+    for rect in emote_rects():
+        emote_chip(probe, v, rect, "", "1", fx, 0, 0.0)
+        emote_chip(probe, v, rect, "", "1", fx, 0, 0.0, enabled=False)
+    for colour_warn in (False, True):
+        turn_bar(probe, v, pg.Rect(0, 0, PLATE_W, PLATE_H), 0.5, warn=colour_warn, blink_on=True)
+    turn_bar(probe, v, pg.Rect(0, 0, PLATE_W, PLATE_H), 0.5, warn=True, blink_on=False)
 
 
-def draw_notice_frame(canvas: pg.Surface, v: View, title: str, line: str) -> None:
+def draw_notice_frame(canvas: pg.Surface, v: View, title: str, line: str, mood=C.ERROR) -> None:
     c = NOTICE_CARD
-    blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, C.ERROR, 1.0)
-    glow_text(
-        canvas, v, title, 38, C.WHITE, C.ERROR, (c.centerx, c.y + 54), strength=1.2, face="display"
-    )
+    blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, mood, 1.0)
+    glow_text(canvas, v, title, 38, C.WHITE, mood, (c.centerx, c.y + 54), strength=1.2,
+              face="display")  # fmt: skip
     for i, s in enumerate(wrap(v, line, 15, c.w - 60)[:2]):
         text(canvas, v, s, 15, C.TEXT_DIM, (c.centerx, c.y + 108 + i * 20), center=True)
 
 
-def draw_notice_live(canvas: pg.Surface, v: View, fx: ButtonFx | None, clock: float) -> None:
-    fx = fx or ButtonFx(lit={"menu": 1.0}, chosen="menu")
-    live_button(canvas, v, NOTICE_BUTTON, t("result.menu"), fx, "menu", clock, primary=True)
+def draw_notice_live(canvas: pg.Surface, v: View, fx: ButtonFx | None, clock: float,
+                     buttons=None) -> None:  # fmt: skip
+    """The buttons of the small card: `buttons` is (key, label, main one?) each (default: one
+    "Back to menu"); the first is lit unless `fx` says otherwise."""
+    buttons = buttons or tuple((k, t(label), main) for k, label, main in NOTICE_MENU)
+    fx = fx or ButtonFx(lit={buttons[0][0]: 1.0}, chosen=buttons[0][0])
+    for rect, (key, label_s, main) in zip(notice_buttons(len(buttons)), buttons, strict=True):
+        live_button(canvas, v, rect, label_s, fx, key, clock, primary=main, size=17)
 
 
 def draw_notice(canvas: pg.Surface, v: View, title: str, line: str, age: float,
-                fx: ButtonFx | None, clock: float) -> None:  # fmt: skip
-    """The card, growing in over a darkened table."""
-    canvas.blit(veil(canvas.get_size(), RESULT_DIM_ALPHA), (0, 0))
+                fx: ButtonFx | None, clock: float, *, mood=C.ERROR, buttons=None,
+                dim: bool = True) -> None:  # fmt: skip
+    """The card, growing in (over a darkened table, unless `dim` is off: a game that goes on)."""
+    if dim:
+        canvas.blit(veil(canvas.get_size(), RESULT_DIM_ALPHA), (0, 0))
     k = min(1.0, max(0.0, age / RESULT_IN_S))
     if k < 1.0:
-        _grow_frame(canvas, v, NOTICE_CARD, False, k)
+        _grow_frame(canvas, v, NOTICE_CARD, False, k, mood)
         return
-    draw_notice_frame(canvas, v, title, line)
-    draw_notice_live(canvas, v, fx, clock)
+    draw_notice_frame(canvas, v, title, line, mood)
+    draw_notice_live(canvas, v, fx, clock, buttons)

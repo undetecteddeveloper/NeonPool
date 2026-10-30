@@ -58,11 +58,14 @@ CALLOUTS = {
     "notice.group_stripe": ("callout.stripe", C.CYAN, "notice"),
     "notice.eight": ("callout.eight", C.MAGENTA, "notice"),
     "notice.rerack": ("callout.rerack", C.AMBER, "notice"),
+    "net.timeout_me": ("callout.timeout", C.AMBER, "foul"),  # two-player: a shot's clock ran out
+    "net.timeout_them": ("callout.timeout", C.AMBER, "notice"),
 }
 
 
 class PlayScene:
     RESULT_DEFAULT = "new"  # the result card's button that Enter presses
+    PANEL_KEYS = hud.PANEL_KEYS  # the key list at the bottom of the side panel
 
     def _result_rects(self) -> dict[str, pg.Rect]:
         return hud.RESULT_BUTTONS
@@ -505,6 +508,7 @@ class PlayScene:
             spin=self.spin,
             spin_lit=self._dial_lit,
             spin_on=self._dial_ok(),
+            keys=self.PANEL_KEYS,
         )
 
     def _draw_overlays(self, canvas: pg.Surface, v: View, over: bool) -> None:
