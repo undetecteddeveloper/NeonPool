@@ -3,8 +3,9 @@ during a game), which goes dark. Six topics, one per page: a real picture of the
 numbered sentences (the numbers match the numbers drawn on the picture). Arrows (or the keys)
 turn the pages round and round.
 
-Motion, like an old tube: the card opens out of a bright horizontal line and closes back into it;
-turning a page folds the old page into a line and opens the new one out of it.
+Motion: the card opens out of a bright horizontal line (like an old tube) and closes back into
+it. Turning a page slides it the way the arrow points while it fades: the old page leaves
+sideways, the new one comes in from the other side.
 """
 
 from __future__ import annotations
@@ -35,7 +36,8 @@ TOPICS = (
 )
 OPEN_S, CLOSE_S = 0.28, 0.2  # the card opens out of a line / folds back into it in this long
 DIM_ALPHA = 228  # how dark the scene behind goes (nearly black: only a glimmer of it shows)
-FLIP_OFF_S, FLIP_ON_S = 0.12, 0.18  # turning a page: the old one folds, the new one opens
+FLIP_S = 0.26  # turning a page: the old one slides out and fades, the new one slides in
+FLIP_SLIDE_PX = 72  # ... this far (logical px)
 EDGE_PAD = 24  # the card's glow reaches this far past its edge (logical px)
 DOT_STEP = 26
 
@@ -126,15 +128,13 @@ def _light_line(canvas: pg.Surface, v: View, x: float, y: float, w: float, stren
     blit_rrect(canvas, v, x, y - 1.5, w, 3, 1.5, C.WHITE, 1.0, C.CYAN, round(0.4 + strength, 1))
 
 
-def _fold(canvas: pg.Surface, v: View, rect: pg.Rect, surf: pg.Surface, k: float) -> None:
-    """`surf` (the page of `rect`, device px) squeezed towards its middle: k 1 whole .. 0 a line."""
-    dev = v.rect(*rect)
-    h = round(dev.h * k)
-    if h >= 2:
-        shown = surf if h >= dev.h else pg.transform.smoothscale(surf, (dev.w, h))
-        canvas.blit(shown, (dev.x, dev.centery - h // 2))
-    if k < 0.96:
-        _light_line(canvas, v, rect.x, rect.centery, rect.w, 1 - k)
+def flip_state(age: float, direction: int) -> tuple[tuple[float, float], tuple[float, float]]:
+    """How a page turn looks `age` seconds in: ((x, opacity) of the old page, (x, opacity) of
+    the new one), x in logical px from where a page rests. `direction` 1 = forward (the old page
+    leaves to the left), -1 = back. Both ease out; the two opacities always add up to 1."""
+    u = min(1.0, max(0.0, age / FLIP_S))
+    e = 1 - (1 - u) ** 3
+    return (-direction * FLIP_SLIDE_PX * e, 1 - e), (direction * FLIP_SLIDE_PX * (1 - e), e)
 
 
 def _chevron(canvas: pg.Surface, v: View, c: tuple[float, float], d: int, colour) -> None:
@@ -171,7 +171,8 @@ class HelpPanel:
         self._clock = 0.0
         self._flip_at: float | None = None  # when the last page turn started
         self._frozen = FrozenScene()  # the scene behind, kept as a picture while the card is up
-        self._from = 0  # the page that is folding away
+        self._from = 0  # the page that is sliding away
+        self._flip_dir = 1  # 1: forward (the arrow to the right), -1: back
         self.fx = hud.ButtonFx()
         self.prefetch = False  # the real game makes the pages ahead of time (see prefetch_one)
         self.set_view(app.view)
@@ -205,12 +206,14 @@ class HelpPanel:
             self._closing = True
             self.app.audio.play_click()
 
-    def go(self, page: int, via: str | None = None) -> None:
-        """Turn to `page` (the arrows wrap round). `via` is the button that flashes."""
+    def go(self, page: int, via: str | None = None, direction: int | None = None) -> None:
+        """Turn to `page` (the arrows wrap round). `via` is the button that flashes; `direction`
+        is which way the page slides (1 forward, -1 back; by default towards the higher page)."""
         page %= len(TOPICS)
         if via:
             self.fx.press(via, self._clock)
         if page != self.page:
+            self._flip_dir = direction or (1 if page > self.page else -1)
             self._from, self.page, self._flip_at = self.page, page, self._clock
             self.app.audio.play_click()
 
@@ -222,9 +225,9 @@ class HelpPanel:
             if e.key in (pg.K_ESCAPE, pg.K_h):
                 self.close()
             elif e.key in (pg.K_RIGHT, pg.K_d, pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
-                self.go(self.page + 1, "next")
+                self.go(self.page + 1, "next", 1)
             elif e.key in (pg.K_LEFT, pg.K_a):
-                self.go(self.page - 1, "prev")
+                self.go(self.page - 1, "prev", -1)
         elif e.type == pg.MOUSEMOTION:
             target = self._target(e.pos)
             if target not in (None, "card") and target != self._hover:
@@ -238,7 +241,11 @@ class HelpPanel:
                 self.fx.press("close", self._clock)
                 self.close()
             elif target in ("prev", "next"):
-                self.go(self.page + (1 if target == "next" else -1), target)
+                self.go(
+                    self.page + (1 if target == "next" else -1),
+                    target,
+                    1 if target == "next" else -1,
+                )
             elif isinstance(target, int):
                 self.go(target)
 
@@ -267,7 +274,7 @@ class HelpPanel:
                 self._frozen.clear()
         else:
             self.k = min(1.0, self.k + dt / OPEN_S)
-        if self._flip_at is not None and self._clock - self._flip_at >= FLIP_OFF_S + FLIP_ON_S:
+        if self._flip_at is not None and self._clock - self._flip_at >= FLIP_S:
             self._flip_at = None
         if self.prefetch and self.k >= 1.0 and not self._closing and self._flip_at is None:
             self.prefetch_one()  # the card stands still: a good moment
@@ -390,12 +397,16 @@ class HelpPanel:
         if self._flip_at is None:
             canvas.blit(self._page(self.page), v.ipt(rect.topleft))
             return
-        age = self._clock - self._flip_at
-        if age < FLIP_OFF_S:  # the old page folds into a line ...
-            _fold(canvas, v, rect, self._page(self._from), (1 - age / FLIP_OFF_S) ** 2)
-        else:  # ... and the new one opens out of it
-            u = min(1.0, (age - FLIP_OFF_S) / FLIP_ON_S)
-            _fold(canvas, v, rect, self._page(self.page), 1 - (1 - u) ** 2)
+        dev = v.rect(*rect)
+        old, new = flip_state(self._clock - self._flip_at, self._flip_dir)
+        canvas.set_clip(dev)  # a page never shows outside its place on the card
+        for surf, (dx, opacity) in ((self._page(self._from), old), (self._page(self.page), new)):
+            if opacity <= 0.0:
+                continue
+            surf.set_alpha(round(255 * opacity))
+            canvas.blit(surf, (dev.x + v.i(dx), dev.y))
+            surf.set_alpha(None)
+        canvas.set_clip(None)
 
     def _arrow_button(self, canvas, v: View, rect: pg.Rect, d: int, key: str) -> None:
         lit, press = self.fx.lit.get(key, 0.0), self.fx.press_k(key, self._clock)

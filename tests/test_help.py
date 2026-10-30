@@ -11,7 +11,7 @@ from game.render.layout import to_px
 from game.render.view import View
 from game.scenes import help as help_scene
 from game.scenes import help_pictures as pics
-from game.scenes.help import FLIP_OFF_S, FLIP_ON_S, TOPICS, dot_rect
+from game.scenes.help import TOPICS, dot_rect
 
 
 @pytest.fixture(params=list(help_scene.LAYOUTS))
@@ -156,7 +156,7 @@ def test_arrows_and_the_close_button_light_up_under_the_pointer(app):
     assert app.help.fx.lit["next"] == 1.0 and app.help.fx.lit["prev"] == 0.0
 
 
-# --- the tube-like motion -------------------------------------------------------------------
+# --- the motion -------------------------------------------------------------------
 def _bright(screen, rect, step=6):
     return sum(sum(screen.get_at((x, rect.centery))[:3]) for x in range(rect.x, rect.right, step))
 
@@ -177,21 +177,82 @@ def test_the_card_opens_out_of_a_bright_line_in_its_middle(app):
     assert app.help.k == 1.0
 
 
-def test_turning_a_page_folds_the_old_one_into_a_line_and_opens_the_new_one(app):
+def test_a_page_turn_slides_one_page_out_and_the_next_in_while_they_fade():
+    from game.scenes.help import FLIP_S, FLIP_SLIDE_PX, flip_state
+
+    (ox, oa), (nx, na) = flip_state(0.0, 1)
+    assert (
+        (ox, oa) == (0.0, 1.0) and na == 0.0 and nx == FLIP_SLIDE_PX
+    )  # the new one waits at the right
+    (ox, oa), (nx, na) = flip_state(FLIP_S, 1)
+    assert (nx, na) == (0.0, 1.0) and oa == 0.0 and ox == -FLIP_SLIDE_PX  # the old one is gone left
+    for age in (0.02, 0.07, 0.13, 0.2):
+        (ox, oa), (nx, na) = flip_state(age, 1)
+        assert oa + na == 1.0 and -FLIP_SLIDE_PX < ox < 0 < nx < FLIP_SLIDE_PX
+    back = flip_state(0.1, -1)  # going back is the mirror image
+    fwd = flip_state(0.1, 1)
+    assert back[0][0] == -fwd[0][0] and back[1][0] == -fwd[1][0]
+    assert flip_state(-1.0, 1) == flip_state(0.0, 1) and flip_state(9.0, 1) == flip_state(FLIP_S, 1)
+
+
+def test_the_slide_goes_the_way_the_arrow_points(app):
+    open_help(app)
+    layout = help_scene.LAYOUT
+    app.handle_event(key(pg.K_RIGHT))
+    assert app.help._flip_dir == 1
+    app.handle_event(key(pg.K_LEFT))
+    assert app.help._flip_dir == -1
+    run(app, 0.4)
+    app.handle_event(click(layout.next.center))
+    assert app.help._flip_dir == 1
+    run(app, 0.4)
+    app.handle_event(click(layout.prev.center))
+    assert app.help._flip_dir == -1
+    run(app, 0.4)
+    app.handle_event(click(dot_rect(5).center))  # a dot further on: forward
+    assert app.help._flip_dir == 1
+    run(app, 0.4)
+    app.handle_event(click(dot_rect(1).center))  # a dot back: backward
+    assert app.help._flip_dir == -1
+    run(app, 0.4)
+    app.help.page = len(TOPICS) - 1
+    app.handle_event(
+        key(pg.K_RIGHT)
+    )  # past the last page it comes round to the first, still forward
+    assert app.help.page == 0 and app.help._flip_dir == 1
+
+
+def test_while_a_page_turns_nothing_slides_out_of_its_place_on_the_card(app):
+    open_help(app)
+    layout = help_scene.LAYOUT
+    screen = pg.display.get_surface()
+    spots = [
+        (layout.card.x + 8, layout.content.centery),  # the card's margin, left of the page
+        (layout.card.right - 8, layout.content.centery),  # ... and right of it
+        (layout.content.centerx, layout.content.y - 6),  # ... and above it
+    ]
+    at_rest = [tuple(screen.get_at(p)) for p in spots]
+    app.handle_event(key(pg.K_RIGHT))
+    for _ in range(round(help_scene.FLIP_S * 60)):
+        app.update(1 / 60)
+        app.draw()
+        assert [
+            tuple(screen.get_at(p)) for p in spots
+        ] == at_rest  # the page is clipped to its place
+    assert app.help._flip_at is None
+
+
+def test_mid_turn_both_pages_are_on_screen_and_the_page_is_not_a_bright_line(app):
     open_help(app)
     content = help_scene.LAYOUT.content
     screen = pg.display.get_surface()
+    rest = _bright(screen, content.inflate(-80, 0))
     app.handle_event(key(pg.K_RIGHT))
-    assert app.help._flip_at is not None
-    run(app, FLIP_OFF_S - 0.01)  # the old page has all but folded away
-    thin = _bright(screen, content.inflate(-80, 0))
-    top = sum(
-        sum(screen.get_at((x, content.y + 20))[:3])
-        for x in range(content.x + 60, content.right - 60, 6)
-    )
-    assert thin > top + 3000
-    run(app, FLIP_ON_S + 0.1)
-    assert app.help._flip_at is None  # the new page is whole again
+    run(app, help_scene.FLIP_S / 2)
+    mid = pg.image.tobytes(screen, "RGB")
+    assert _bright(screen, content.inflate(-80, 0)) < rest * 3 + 6000  # not the old CRT line
+    run(app, help_scene.FLIP_S)
+    assert pg.image.tobytes(screen, "RGB") != mid  # and it does settle on something else
 
 
 def test_keys_pressed_while_a_page_turns_still_count(app):
