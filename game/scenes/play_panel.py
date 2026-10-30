@@ -111,6 +111,7 @@ class PlayPanel(FloatPanel):
         self.listener: tcp.TcpListener | None = None
         self.connector: tcp.Connector | None = None
         self.session: net_session.Session | None = None
+        self._join_target: tuple[str, int] | None = None  # where the guest came in (to come back)
         self._clock = 0.0
 
     def title(self) -> str:
@@ -256,6 +257,7 @@ class PlayPanel(FloatPanel):
         self._save_name()
         self.error = None
         self.connector = tcp.Connector(*parsed)
+        self._join_target = parsed
         self._goto(CONNECTING)
 
     def _join_failed(self, error_key: str) -> None:
@@ -267,9 +269,12 @@ class PlayPanel(FloatPanel):
 
     def _begin_match(self) -> None:
         session, self.session = self.session, None
-        if self.listener is not None:
-            self.listener.close()
+        if self.listener is not None:  # the door stays open: the guest may have to come back in
+            session.set_relink(tcp.HostRelink(self.listener))
+        elif self._join_target is not None:  # ... and the guest knows where to knock
+            session.set_relink(tcp.GuestRelink(*self._join_target))
         self.listener = self.connector = None
+        self._join_target = None
         self.dismiss()
         self.app.start_net(session)
 

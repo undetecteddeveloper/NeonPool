@@ -9,10 +9,10 @@ from game import config
 from game.net import protocol as p
 from game.net import session as s
 from game.net.session import GUEST, HOST, Session, capture_balls
-from game.net.transport import NetSim
+from game.net.transport import NetSim, SimRoom
 from game.physics import Shot
 from game.rules.eight_ball import FOUL_NO_HIT
-from game.rules.two_player import LOST_SURRENDER
+from game.rules.two_player import LOST_DROPPED, LOST_SURRENDER
 
 
 def pair(latency=0.0, jitter=0.0, loss=0.0, seed=0, **guest_kw):
@@ -418,6 +418,189 @@ def test_ac13_a_rematch_message_in_the_middle_of_a_game_is_ignored():
     guest._send(p.Start(5, 0, config.DEFAULT_FEEL, config.DEFAULT_SPIN))  # nor may Start be forced
     run(sim, (host, guest), 0.5)
     assert host.rematch == [False, False] and host.game_no == guest.game_no == 1
+
+
+# --- AC14: the link breaks in the middle of the game and comes back ---
+def room_pair(latency=0.0, jitter=0.0, loss=0.0, seed=0):
+    """A started game whose two machines can get a new connection (`SimRoom`) if the link breaks."""
+    room = SimRoom(latency, jitter, loss, seed)
+    host = Session(room.a, True, "Hoa", rng=random.Random(11), relink=room.host_relink)
+    guest = Session(room.b, False, "Nam", relink=room.guest_relink)
+    assert run(room, (host, guest), 5.0, lambda: host.playing and guest.playing)
+    host.set_relink(room.host_relink), guest.set_relink(room.guest_relink)
+    return room, host, guest
+
+
+def settle_clocks(room, host, guest):
+    """Let the coin land, so that the clock is running."""
+    run(room, (host, guest), config.NET_COIN_S + 0.1)
+
+
+def back_together(host, guest):
+    return host.linked and guest.linked and host.settled and guest.settled
+
+
+def test_ac14_a_break_while_the_balls_roll_then_back_in_time_gives_the_same_table():
+    room, host, guest = room_pair(latency=0.02)
+    shooter = on_turn(host, guest)
+    assert shooter.shoot(Shot(0.0, 0.9, 0.0)) is not None
+    run(room, (host, guest), 0.3)
+    room.cut()
+    run(room, (host, guest), 0.2)
+    assert host.link_down_s is not None and guest.link_down_s is not None
+    assert not host.can_shoot and not guest.can_shoot and host.playing and guest.playing
+    run(room, (host, guest), 6.0)  # the balls run to a stop on each machine meanwhile
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: back_together(host, guest))
+    assert host.link_down_s is None and guest.link_down_s is None
+    assert host.rejoins == 1 and guest.rejoins == 1 and host.link_losses == guest.link_losses == 1
+    assert same_table(host, guest) and host.match.snapshot() == guest.match.snapshot()
+    asked = host.checkpoints
+    assert on_turn(host, guest).shoot(Shot(0.5, 0.7, 0.0)) is not None  # the game goes on ...
+    assert run(
+        room, (host, guest), 60.0, lambda: host.checkpoints > asked and back_together(host, guest)
+    )
+    assert (
+        same_table(host, guest) and host.match.snapshot() == guest.match.snapshot()
+    )  # ... verdict and all
+
+
+def test_ac14_a_break_on_the_guests_turn_and_the_guest_shoots_after_coming_back():
+    room, host, guest = room_pair(latency=0.02)
+    give_guest_the_turn(room, host, guest)
+    room.cut()
+    run(room, (host, guest), 3.0)
+    assert not guest.can_shoot  # no shooting into the void
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: back_together(host, guest))
+    assert guest.can_shoot and same_table(host, guest)
+    play_shot(room, host, guest, Shot(0.3, 0.6, 0.0))
+    assert host.last_shooter == GUEST and same_table(host, guest)
+
+
+def test_ac14_a_break_while_placing_the_cue_ball_in_hand():
+    room, host, guest = room_pair(latency=0.02)
+    play_shot(room, host, guest, no_hit_shot())  # a foul: the other player has the ball in hand
+    placer = on_turn(host, guest)
+    assert run(room, (host, guest), 2.0, lambda: placer.can_place)
+    assert placer.place_cue(1.0, 0.4)
+    room.cut()
+    run(room, (host, guest), 3.0)
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: host.linked and guest.linked and host.settled)
+    run(room, (host, guest), 1.0)
+    assert placer.can_place and host.match.cue_in_hand and guest.match.cue_in_hand
+    assert placer.place_cue(1.1, 0.5)
+    placer.release_cue()
+    assert run(room, (host, guest), 2.0, lambda: placer.can_shoot and same_table(host, guest))
+
+
+def test_ac14_the_clock_of_the_shot_waits_while_the_link_is_down():
+    room, host, guest = room_pair()
+    settle_clocks(room, host, guest)
+    run(room, (host, guest), 10.0)
+    left = host.turn_left_s
+    room.cut()
+    run(room, (host, guest), 40.0)
+    assert host.turn_left_s == pytest.approx(left, abs=0.1) and not host.clock_running
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: back_together(host, guest))
+    # a new verdict-less table from the host: the clock starts again from there, not from nothing
+    assert host.match.turn == guest.match.turn
+    assert host.turn_left_s <= config.NET_TURN_S
+
+
+def test_ac14_after_a_minute_without_the_guest_the_host_wins_and_the_guest_is_told_it_is_lost():
+    room, host, guest = room_pair(latency=0.02)
+    settle_clocks(room, host, guest)
+    room.cut()
+    run(room, (host, guest), config.NET_REJOIN_S - 2.0)
+    assert host.playing and guest.playing and not host.match.over
+    assert run(room, (host, guest), 4.0, lambda: host.phase == s.CLOSED and guest.phase == s.CLOSED)
+    assert host.close_reason == guest.close_reason == s.CLOSE_LOST
+    assert host.match.over and host.match.winner == HOST
+    assert host.match.last.shooter == GUEST and host.match.last.reason == LOST_DROPPED
+    assert not guest.match.over  # it cannot know who is to blame: the screen says "connection lost"
+
+
+def test_ac14_a_stranger_with_the_wrong_key_is_turned_away_and_the_guest_still_gets_in():
+    room, host, guest = room_pair(latency=0.01)
+    room.cut()
+    run(room, (host, guest), 1.0)
+    thief = room.stranger()
+    thief.send(
+        p.encode(
+            p.Resume(
+                p.PROTOCOL_VERSION, config.GAME_VERSION, p.physics_fingerprint(), guest.token ^ 1
+            )
+        )
+    )
+    run(room, (host, guest), 1.0)
+    assert [p.decode(f) for f in thief.poll()] == [p.Reject(p.REJECT_BUSY)]
+    assert host.link_down_s is not None and host.rejoins == 0  # nobody was let in
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: back_together(host, guest))
+    assert host.rejoins == 1
+
+
+def test_ac14_a_guest_with_another_build_cannot_take_the_seat_back():
+    room, host, guest = room_pair()
+    guest._build = "9.9"
+    room.cut()
+    run(room, (host, guest), 1.0)
+    room.reconnect()
+    run(room, (host, guest), 5.0)
+    assert host.link_down_s is not None and host.rejoins == 0
+
+
+def test_ac14_a_link_that_goes_quiet_without_closing_is_noticed_and_mended():
+    room, host, guest = room_pair(latency=0.02)
+    settle_clocks(room, host, guest)
+    room.mute()  # nothing gets through, but nobody hangs up
+    assert run(
+        room, (host, guest), config.NET_SILENT_S + 3.0, lambda: not host.linked and not guest.linked
+    )
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: back_together(host, guest))
+    assert same_table(host, guest)
+
+
+def test_ac14_a_shot_that_never_arrived_is_taken_back_by_the_hosts_table():
+    room, host, guest = room_pair(latency=0.02)
+    give_guest_the_turn(room, host, guest)
+    before = capture_balls(host.world)
+    room.mute()
+    assert guest.shoot(Shot(0.0, 0.8, 0.0)) is not None  # played here, but never sent
+    room.cut()
+    run(room, (host, guest), 8.0)
+    assert capture_balls(guest.world) != before  # the guest's own table moved on
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: back_together(host, guest))
+    assert same_table(host, guest) and capture_balls(host.world) == before
+    assert guest.can_shoot  # and it is still the guest's turn: it shoots again
+
+
+def test_ac14_walking_out_while_the_link_is_down_still_ends_the_game():
+    room, host, guest = room_pair()
+    room.cut()
+    run(room, (host, guest), 1.0)
+    host.leave()
+    assert host.phase == s.CLOSED and host.match.over and host.match.winner == GUEST
+
+
+def test_ac14_a_rematch_asked_for_before_the_break_is_not_forgotten():
+    room, host, guest = room_pair(latency=0.02)
+    assert host.surrender()
+    assert run(room, (host, guest), 2.0, lambda: finished(room, host, guest))
+    assert guest.ask_rematch()
+    room.cut()
+    run(room, (host, guest), 2.0)
+    room.reconnect()
+    assert run(room, (host, guest), 5.0, lambda: host.linked and guest.linked)
+    run(room, (host, guest), 1.0)
+    assert host.rematch == [False, True]  # the host heard it again
+    assert host.ask_rematch()
+    assert run(room, (host, guest), 2.0, lambda: next_game(host, guest))
 
 
 # --- AC15: the ready-made reactions ---

@@ -23,11 +23,11 @@ from collections import deque
 from game import config
 from game.net import protocol as p
 from game.net.remote_cue import RemoteCue
-from game.net.transport import Transport
+from game.net.transport import Relinker, Transport
 from game.physics import Event, Shot, World
 from game.physics.world import CUE
 from game.rules.eight_ball import RERACK
-from game.rules.two_player import LOST_SURRENDER, Match, MatchShot
+from game.rules.two_player import LOST_DROPPED, LOST_SURRENDER, Match, MatchShot
 
 log = logging.getLogger("neonpool")
 
@@ -82,6 +82,7 @@ class Session:
         spin: str = config.DEFAULT_SPIN,
         build: str = config.GAME_VERSION,
         fingerprint: int | None = None,
+        relink: Relinker | None = None,
     ) -> None:
         self.transport = transport
         self.me = HOST if host else GUEST
@@ -115,6 +116,15 @@ class Session:
         self._fingerprint = p.physics_fingerprint() if fingerprint is None else fingerprint
         self._acc = 0.0
         self._silent = 0.0
+        self.link_down_s: float | None = None  # None: the link is fine; else how long it is down
+        self.link_losses = 0  # times the link broke ...
+        self.rejoins = 0  # ... and times it was made again
+        self._relink = relink
+        self._pending: Transport | None = (
+            None  # (host) a new connection that has not said who it is
+        )
+        self._pending_silent = 0.0
+        self._resuming = False  # (guest) a new connection is made and has told the host who we are
         self._counted = False  # this game's winner is in `wins`
         self._emotes: list[tuple[int, int]] = []  # (player, code) waiting for the screen
         self._emote_at = -config.NET_EMOTE_GAP_S
@@ -152,19 +162,34 @@ class Session:
         return self.playing and self.world.at_rest() and not self._live and not self._inbox
 
     @property
+    def linked(self) -> bool:
+        """The link works. (A game whose link broke waits for it: see `link_down_s`.)"""
+        return self.link_down_s is None
+
+    def set_relink(self, relink: Relinker | None) -> None:
+        """Where a new connection comes from if the link breaks in the middle of the game."""
+        self._relink = relink
+
+    @property
+    def _free(self) -> bool:
+        return self.my_turn and self.settled and self.linked and not self._timeout_sent
+
+    @property
     def can_shoot(self) -> bool:
-        return (
-            self.my_turn and self.settled and not self._timeout_sent and not self.match.cue_in_hand
-        )
+        return self._free and not self.match.cue_in_hand
 
     @property
     def can_place(self) -> bool:
-        return self.my_turn and self.settled and not self._timeout_sent and self.match.cue_in_hand
+        return self._free and self.match.cue_in_hand
 
     @property
     def clock_running(self) -> bool:
-        """The clock of the player on turn is counting: the toss is over and every ball is still."""
-        return self.playing and not self.match.over and self._toss_left <= 0 and self.settled
+        """The clock of the player on turn is counting: the toss is over, every ball is still and
+        the link works."""
+        return (
+            self.playing and not self.match.over and self._toss_left <= 0
+            and self.settled and self.linked
+        )  # fmt: skip
 
     @property
     def turn_left_s(self) -> float:
@@ -293,7 +318,12 @@ class Session:
             return []
         self._pump()
         if self.phase != CLOSED and not self.transport.connected:
-            self._close(CLOSE_LOST)
+            if self.linked and self.phase == PLAYING and self._relink is not None:
+                self._link_lost()
+            elif self.linked:
+                self._close(CLOSE_LOST)
+            else:
+                self._resuming = False  # (the new connection died before it was let in)
         if self.phase == CLOSED:
             return []
         self._silent += dt
@@ -301,6 +331,10 @@ class Session:
             if self._silent > config.NET_HANDSHAKE_TIMEOUT_S:
                 self._close(CLOSE_TIMEOUT)
             return []
+        if self.linked and self._relink is not None and self._silent > config.NET_SILENT_S:
+            self._link_lost()  # (a link can die without a word: a cable out, a wifi that stopped)
+        if not self.linked:
+            return self._update_down(dt)
         self._drain_inbox()
         events = self._advance_world(dt)
         self._drain_inbox()
@@ -309,6 +343,102 @@ class Session:
         self.remote_cue.update(dt)
         self._send_due()
         return events
+
+    # --- a broken link, and getting it back ---
+    def _link_lost(self) -> None:
+        """The link broke in the middle of the game. Wait for it (up to NET_REJOIN_S): the guest
+        goes on trying to reconnect, the host goes on listening."""
+        self.link_down_s = 0.0
+        self.link_losses += 1
+        self._resuming = False
+        self._aim_want = (p.AIM_HIDDEN, 0, 0)
+        self.remote_cue.state = p.AIM_HIDDEN
+        self.transport.close()
+        log.info("net: the link is down; waiting for it")
+
+    def _update_down(self, dt: float) -> list[Event]:
+        """A frame while the link is down: the balls still rolling run to a stop (both machines
+        do the same sums), nobody may shoot, the clock waits, and a new connection is looked for."""
+        self.link_down_s += dt
+        self._look_for_the_other(dt)
+        if not self.linked and self.link_down_s >= config.NET_REJOIN_S:
+            self._give_up_waiting()
+            return []
+        if not self.linked:
+            self._drain_inbox()
+            events = self._advance_world(dt)
+            self.remote_cue.update(dt)
+            return events
+        return []
+
+    def _look_for_the_other(self, dt: float) -> None:
+        if self._relink is None:
+            return
+        fresh = self._relink.poll()
+        if self.me == GUEST:
+            if fresh is not None and not self._resuming:
+                self.transport, self._resuming, self._silent = fresh, True, 0.0
+                self._send(p.Resume(p.PROTOCOL_VERSION, self._build, self._fingerprint, self.token))
+            elif self._resuming and self._silent > config.NET_HANDSHAKE_TIMEOUT_S:
+                self.transport.close()  # no answer: this try is over, the next one starts
+                self._resuming = False
+            return
+        if fresh is not None:  # (host) someone knocks: the newest knock is the one that counts
+            if self._pending is not None:
+                self._pending.close()
+            self._pending, self._pending_silent = fresh, 0.0
+        if self._pending is None:
+            return
+        self._pending_silent += dt
+        for frame in self._pending.poll():
+            try:
+                msg = p.decode(frame)
+            except p.ProtocolError:
+                self.bad_frames += 1
+                continue
+            if isinstance(msg, p.Resume):
+                self._host_takes_back(msg)
+                return
+        if self._pending_silent > config.NET_HANDSHAKE_TIMEOUT_S or not self._pending.connected:
+            self._pending.close()
+            self._pending = None
+
+    def _host_takes_back(self, msg: p.Resume) -> None:
+        """(Host) a new connection says it is the guest: the same builds and the room's key."""
+        newcomer, self._pending = self._pending, None
+        ours = (p.PROTOCOL_VERSION, self._build, self._fingerprint, self.token)
+        if (msg.proto, msg.build, msg.fingerprint, msg.token) != ours:
+            newcomer.send(p.encode(p.Reject(p.REJECT_BUSY)))
+            newcomer.close()
+            return
+        self.transport = newcomer
+        self._send(p.Welcome(self.name, self.token))
+        self._link_up()
+
+    def _link_up(self) -> None:
+        """The link is back. The host puts the table and the verdicts right on both machines by
+        sending its own (`CHECK_RESYNC`); whatever was waiting from before the break is dropped,
+        since that word says it all."""
+        self.link_down_s = None
+        self.rejoins += 1
+        self._resuming = False
+        self._silent = 0.0
+        self._inbox.clear()
+        self._ping_sent.clear()
+        self._ping_at = self.time - PING_EVERY_S
+        self._aim_sent = (-1, 0, 0)
+        if self.rematch[self.me]:
+            self._send(p.Rematch())
+        if self.me == HOST:
+            self._resync_due = True
+        log.info("net: the link is back")
+
+    def _give_up_waiting(self) -> None:
+        """NET_REJOIN_S went by. The host wins the game (the one who was gone loses it); the
+        guest can only say the connection was lost."""
+        if self.me == HOST and not self.match.over:
+            self._end_game(GUEST, LOST_DROPPED)
+        self._close(CLOSE_LOST)
 
     def _tick_clock(self, dt: float) -> None:
         if self._toss_left > 0:
@@ -361,6 +491,11 @@ class Session:
             if sent is not None:
                 rtt = self.time - sent
                 self.rtt_s = rtt if self.rtt_s is None else self.rtt_s * 0.7 + rtt * 0.3
+        elif isinstance(msg, p.Welcome) and self._resuming:
+            self._link_up()
+        elif isinstance(msg, p.Reject) and self._resuming:
+            self.transport.close()  # not let in (yet): the next try is made soon
+            self._resuming = False
         elif self.phase == HANDSHAKE:
             self._handle_handshake(msg)
         elif isinstance(msg, p.Aim):
@@ -586,6 +721,8 @@ class Session:
         self.transport.send(p.encode(msg), reliable)
 
     def _send_due(self) -> None:
+        if not self.linked:
+            return
         interval = 1.0 / config.NET_AIM_HZ
         if self._aim_want != self._aim_sent and self.time - self._aim_at >= interval:
             state, angle, pull = self._aim_want
@@ -607,3 +744,7 @@ class Session:
         self.phase = CLOSED
         self.close_reason = reason
         self.transport.close()
+        if self._pending is not None:
+            self._pending.close()
+        if self._relink is not None:
+            self._relink.close()

@@ -2,6 +2,7 @@
 
 import math
 import random
+import socket
 import struct
 import time
 
@@ -131,3 +132,54 @@ def test_a_whole_game_start_and_a_shot_work_over_real_sockets():
     guest.leave()
     assert wait(lambda: (tick(), host.close_reason == s.CLOSE_LEFT)[1])
     listener.close()
+
+
+def test_ac14_the_guest_comes_back_over_real_sockets_after_its_connection_died():
+    listener = tcp.TcpListener(0, "127.0.0.1")
+    client, server = connect(listener)
+    host = s.Session(server, True, "Hoa", rng=random.Random(2))
+    guest = s.Session(client, False, "Nam")
+
+    def tick():
+        host.update(0.02)
+        guest.update(0.02)
+        time.sleep(0.001)
+
+    assert wait(lambda: (tick(), host.playing and guest.playing)[1])
+    host.set_relink(tcp.HostRelink(listener))
+    guest.set_relink(tcp.GuestRelink("127.0.0.1", listener.port, every_s=0.1))
+    shooter = host if host.match.turn == s.HOST else guest
+    assert shooter.shoot(Shot(math.pi, 0.1, 0.0)) is not None
+    assert wait(lambda: (tick(), host.checkpoints == 1 and guest.checkpoints == 1)[1], 10.0)
+    client._sock.shutdown(socket.SHUT_RDWR)  # the guest's connection dies, abruptly
+    assert wait(lambda: (tick(), host.link_down_s is not None and guest.link_down_s is not None)[1])
+    assert host.playing and guest.playing  # nobody gave up the game
+    assert wait(lambda: (tick(), host.linked and guest.linked and host.rejoins == 1)[1], 10.0)
+    assert wait(lambda: (tick(), host.settled and guest.settled)[1])
+    assert s.capture_balls(host.world) == s.capture_balls(guest.world)
+    assert host.match.snapshot() == guest.match.snapshot()
+    # the game goes on over the new connection
+    mover = host if host.match.turn == s.HOST else guest
+    if mover.can_place:
+        assert mover.place_cue(1.0, 0.4)
+        mover.release_cue()
+        assert wait(lambda: (tick(), mover.can_shoot)[1])
+    assert mover.shoot(Shot(math.pi, 0.1, 0.0)) is not None
+    assert wait(lambda: (tick(), host.checkpoints >= 3 and guest.checkpoints >= 3)[1], 10.0)
+    guest.leave()
+    assert wait(lambda: (tick(), host.phase == s.CLOSED)[1])
+    # leaving closed the room's door: nobody can knock any more
+    refused = tcp.Connector("127.0.0.1", listener.port)
+    assert wait(lambda: refused.state != tcp.CONNECT_CONNECTING)
+    assert refused.state == tcp.CONNECT_FAILED
+
+
+def test_a_guest_that_cannot_reach_the_host_keeps_trying_and_then_gives_up():
+    listener = tcp.TcpListener(0, "127.0.0.1")
+    port = listener.port
+    listener.close()  # nobody is home
+    relink = tcp.GuestRelink("127.0.0.1", port, every_s=0.05)
+    seen = []
+    assert not wait(lambda: seen.append(relink.poll()) or seen[-1] is not None, 0.6)
+    relink.close()
+    assert relink.poll() is None

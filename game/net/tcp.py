@@ -13,6 +13,7 @@ import logging
 import socket
 import sys
 import threading
+import time
 from collections import deque
 
 from game import config
@@ -221,6 +222,48 @@ class Connector:
             self.state = CONNECT_OK
             return
         self.state = CONNECT_FAILED
+
+
+class HostRelink:
+    """The room's `Relinker` for the host: the same open door that let the guest in."""
+
+    def __init__(self, listener: TcpListener) -> None:
+        self._listener = listener
+
+    def poll(self) -> TcpTransport | None:
+        return self._listener.accept()
+
+    def close(self) -> None:
+        self._listener.close()
+
+
+class GuestRelink:
+    """The guest's `Relinker`: keeps knocking at the host's address, one try at a time, a second
+    apart, until a connection is made (the session closes it when the time is up)."""
+
+    def __init__(self, host: str, port: int, every_s: float = config.NET_REJOIN_TRY_S) -> None:
+        self._host, self._port, self._every_s = host, port, every_s
+        self._attempt: Connector | None = None
+        self._next_at = 0.0
+        self._closed = False
+
+    def poll(self) -> TcpTransport | None:
+        if self._closed:
+            return None
+        now = time.monotonic()
+        if self._attempt is None and now >= self._next_at:
+            self._attempt = Connector(self._host, self._port, config.NET_REJOIN_TRY_TIMEOUT_S)
+        if self._attempt is not None:
+            transport = self._attempt.result()
+            if transport is not None:
+                self._attempt, self._next_at = None, now + self._every_s
+                return transport
+            if self._attempt.state == CONNECT_FAILED:
+                self._attempt, self._next_at = None, now + self._every_s
+        return None
+
+    def close(self) -> None:
+        self._closed = True
 
 
 def local_address() -> str:

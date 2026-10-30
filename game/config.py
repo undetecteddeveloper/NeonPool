@@ -155,6 +155,10 @@ NET_COIN_S = 2.2  # the coin toss at the start of a game: nobody may shoot, the 
 NET_TURN_S = 60.0  # each shot (cue ball in hand included) gets this long, counted while balls rest
 NET_TURN_WARN_S = 10.0  # the clock blinks from here
 NET_TURN_GRACE_S = 1.0  # the host waits this much longer for the guest (its shot is in the post)
+NET_SILENT_S = 8.0  # nothing heard for this long while playing: the link is counted as broken
+NET_REJOIN_S = 60.0  # a broken link is waited for this long (the guest tries to come back)
+NET_REJOIN_TRY_S = 1.0  # the guest tries to reconnect this often
+NET_REJOIN_TRY_TIMEOUT_S = 2.0  # ... and gives each try this long
 NET_EMOTES = 3  # ready-made reactions: Nice!, Too bad, GG (codes 0..2)
 NET_EMOTE_GAP_S = 1.5  # a player can send one reaction per this long
 
