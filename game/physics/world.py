@@ -2,7 +2,9 @@
 
 Balls are numbered 0 (cue) .. 15 and `World.balls[n].number == n`.
 Model (MVP): equal-mass discs, constant rolling deceleration, restitution on ball-ball and
-cushion contacts, no spin. Order of every loop is by ball number, so results are reproducible.
+cushion contacts. Spin (follow / draw) lives on the cue ball only, as "slip" q (see config.SpinSet):
+sliding friction turns q into speed along the aim line. A shot with spin 0 never touches it.
+Order of every loop is by ball number, so results are reproducible.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from dataclasses import dataclass
 from game.config import (
     BALL_R,
     DEFAULT_FEEL,
+    DEFAULT_SPIN,
     FEEL_SETS,
     FOOT_SPOT,
     HEAD_SPOT,
@@ -25,9 +28,13 @@ from game.config import (
     RACK_ORDER,
     REST_SPEED,
     ROW_STEP,
+    SLIDE_GAIN,
+    SPIN_MAX_RATIO,
+    SPIN_SETS,
     TABLE_L,
     TABLE_W,
     FeelSet,
+    SpinSet,
 )
 from game.physics.shot import Shot
 
@@ -70,12 +77,21 @@ class Ball:
     vy: float = 0.0
     in_play: bool = False
     pocket: int | None = None  # set when pocketed
+    qx: float = 0.0  # slip still to be used up by sliding friction (m/s); only the cue ball has it
+    qy: float = 0.0
 
 
 class World:
-    def __init__(self, seed: int = 0, feel: FeelSet | None = None, rack: bool = True) -> None:
+    def __init__(
+        self,
+        seed: int = 0,
+        feel: FeelSet | None = None,
+        rack: bool = True,
+        spin: SpinSet | None = None,
+    ) -> None:
         self.rng = random.Random(seed)  # the only randomness allowed in the simulation
         self.feel = feel or FEEL_SETS[DEFAULT_FEEL]
+        self.spin = spin or SPIN_SETS[DEFAULT_SPIN]
         self.balls = [Ball(n) for n in range(N_BALLS)]
         if rack:
             self.rack()
@@ -84,7 +100,7 @@ class World:
     def rack(self) -> None:
         """Cue ball on the head spot, 15 balls in a triangle at the foot spot."""
         for b in self.balls:
-            b.vx = b.vy = 0.0
+            b.vx = b.vy = b.qx = b.qy = 0.0
             b.pocket = None
         self.place(CUE, *HEAD_SPOT)
         fx, fy = FOOT_SPOT
@@ -98,6 +114,7 @@ class World:
     def place(self, number: int, x: float, y: float, vx: float = 0.0, vy: float = 0.0) -> None:
         b = self.balls[number]
         b.x, b.y, b.vx, b.vy = x, y, vx, vy
+        b.qx = b.qy = 0.0
         b.in_play = True
         b.pocket = None
 
@@ -142,9 +159,17 @@ class World:
         speed = self.feel.v_max * shot.power
         cue.vx = speed * math.cos(shot.angle)
         cue.vy = speed * math.sin(shot.angle)
+        mag = min(self.spin.base + self.spin.gain * speed, SPIN_MAX_RATIO * speed)
+        slip = shot.spin * mag  # + follows the aim line, - runs against it
+        cue.qx = slip * math.cos(shot.angle)
+        cue.qy = slip * math.sin(shot.angle)
 
     def at_rest(self) -> bool:
-        return all(b.vx == 0.0 and b.vy == 0.0 for b in self.balls if b.in_play)
+        return all(
+            b.vx == 0.0 and b.vy == 0.0 and b.qx == 0.0 and b.qy == 0.0
+            for b in self.balls
+            if b.in_play
+        )
 
     def kinetic_energy(self) -> float:
         """Sum of 1/2 v^2 (unit mass); used by tests and tuning."""
@@ -169,13 +194,17 @@ class World:
         live = [b for b in self.balls if b.in_play]
 
         for b in live:
+            slipping = b.qx != 0.0 or b.qy != 0.0
+            if slipping:
+                self._slide(b, h)
+                slipping = b.qx != 0.0 or b.qy != 0.0
             s = math.hypot(b.vx, b.vy)
             if s > 0.0:
                 s2 = s - feel.roll_decel * h
-                if s2 < REST_SPEED:
+                if s2 < REST_SPEED and not slipping:  # a ball still slipping may creep on
                     b.vx = b.vy = 0.0
                 else:
-                    k = s2 / s
+                    k = max(s2, 0.0) / s
                     b.vx *= k
                     b.vy *= k
             b.x += b.vx * h
@@ -187,7 +216,7 @@ class World:
                 if (b.x - px) ** 2 + (b.y - py) ** 2 < pr * pr:
                     b.in_play = False
                     b.pocket = pi
-                    b.vx = b.vy = 0.0
+                    b.vx = b.vy = b.qx = b.qy = 0.0
                     events.append(BallPocketed(b.number, pi))
                     break
         live = [b for b in live if b.in_play]
@@ -206,6 +235,20 @@ class World:
                         touched = True
             if not touched:
                 break
+
+    def _slide(self, b: Ball, h: float) -> None:
+        """Sliding friction for one sub-step: use up some slip, turn it into speed along it."""
+        q = math.hypot(b.qx, b.qy)
+        used = min(q, self.spin.decay * h)
+        gain = SLIDE_GAIN * used / q
+        b.vx += gain * b.qx
+        b.vy += gain * b.qy
+        if used >= q:
+            b.qx = b.qy = 0.0
+        else:
+            k = 1.0 - used / q
+            b.qx *= k
+            b.qy *= k
 
     def _cushions(self, b: Ball, events: list[Event]) -> None:
         e = self.feel.cushion_e

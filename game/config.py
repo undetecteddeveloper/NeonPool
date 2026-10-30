@@ -56,6 +56,39 @@ FEEL_SETS: dict[str, FeelSet] = {
 FEEL_ORDER = ("TRON", "VUA", "CHAM")  # keys 1 / 2 / 3
 DEFAULT_FEEL = "VUA"
 
+# --- Spin: follow (high) and draw (low) on the cue ball --------------------------------------
+# Model (docs/GAME_DESIGN.md "Xoáy"): a struck ball slides on the cloth until it rolls. The part of
+# that slide a plain centre hit does not have is the cue ball's "slip" q (a vector, m/s, along
+# the aim line). Sliding friction uses q up at `decay` m/s^2 and turns every unit of it into
+# SLIDE_GAIN units of speed along q: follow pushes the ball on, draw pulls it back.
+SLIDE_GAIN = 2 / 7  # solid sphere: speed gained per unit of slip used up (Townsend, UIUC)
+
+
+@dataclass(frozen=True)
+class SpinSet:
+    """A named bundle of 'how strong spin is'. Chosen by the user by playing."""
+
+    key: str
+    base: float  # slip (m/s) given at spin = +-1 whatever the power: soft shots spin too
+    gain: float  # ... plus this multiple of the shot speed: hard shots spin more
+    decay: float  # m/s^2: how fast the slip is used up (3.5 * sliding friction * g)
+
+
+# A real cloth uses slip up fast (decay ~6.9) and a tip half a radius off centre gives slip ~1.25 x
+# the speed, but this table rolls far (little rolling friction): that sent the cue ball metres and
+# left soft shots with no spin at all (used up before the hit). So slip is mostly a fixed amount
+# (base) used up slowly (decay), with a little extra for power. All self-chosen; playtest decides.
+SPIN_SETS: dict[str, SpinSet] = {
+    "NHE": SpinSet("NHE", base=1.2, gain=0.1, decay=2.0),
+    "VUA": SpinSet("VUA", base=1.5, gain=0.1, decay=1.8),
+    "MANH": SpinSet("MANH", base=1.8, gain=0.1, decay=1.5),
+}
+SPIN_MAX_RATIO = 3.0  # slip never exceeds this multiple of the shot speed (a feather-light shot
+# must not get a push out of nothing)
+DEFAULT_SPIN = "VUA"
+SPIN_WHEEL_STEP = 0.25  # one notch of the mouse wheel moves the spin this much (-1 .. +1)
+SPIN_DIAL_TRAVEL = 0.62  # the dot on the dial reaches this fraction of the ball's radius
+
 # --- Screen / input (logical canvas is drawn once, then scaled to the window) ---
 LOGICAL_SIZE = (1280, 720)
 PX_PER_M = 350  # render only (invariant 3): metres -> logical pixels
