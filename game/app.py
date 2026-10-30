@@ -35,6 +35,7 @@ MAX_START_SCALE = 1.5
 WINDOW_MARGIN = (40, 130)  # room for the title bar, borders and taskbar
 TUBE_OFF_S = 0.14  # changing scene: the old picture folds into a line ...
 TUBE_ON_S = 0.2  # ... and the new one opens out of it
+PREFETCH_AFTER_S = 1.5  # the menu has been up this long: time to make the how-to-play pictures
 FPS_SMOOTH = 0.1  # the FPS counter follows the frame time this quickly (0..1 per frame)
 
 
@@ -47,6 +48,7 @@ class App:
         self.canvas = pg.Surface(self.view.canvas)
         self.audio = Audio()
         self.audio.volume = self.settings.volume
+        self.audio.music_volume = self.settings.music
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.menu = MenuScene(self)
         self.help = HelpPanel(self)  # a card over the menu or the table, not a scene
@@ -97,6 +99,7 @@ class App:
             setattr(self.settings, name, value)
         i18n.set_lang(self.settings.lang)
         self.audio.volume = self.settings.volume
+        self.audio.music_volume = self.settings.music
         settings.save(self.settings)
 
     # --- contract used by tools/smoke.py and tools/shot.py ---------------------------------
@@ -124,6 +127,18 @@ class App:
             self.fps += (1.0 / dt - self.fps) * FPS_SMOOTH
         self._tube = min(TUBE_OFF_S + TUBE_ON_S, self._tube + dt)
         self.help.update(dt)
+        if (  # the menu has settled (the title is lit): make the first picture before it is needed
+            self.help.prefetch
+            and self.scene is self.menu
+            and not self.help.is_open
+            and self.menu.idle_s() > PREFETCH_AFTER_S
+        ):
+            self.help.prefetch_one()
+        self.audio.update_music(
+            dt,
+            "menu" if self.scene is self.menu else "play",
+            duck=self.scene is self.play and self.play.rules.phase != PLAYING,
+        )
         if not (self.help.is_open and self.scene is self.play):  # the game waits behind the card
             self.scene.update(dt)
 
@@ -148,18 +163,20 @@ class App:
         screen = pg.display.get_surface() or self.screen
         self.sync_view()
         target = View.for_window(screen.get_size())
-        shake_x, shake_y = self.scene.shake_offset()
+        shake_x, shake_y = (0.0, 0.0) if self.help.is_open else self.scene.shake_offset()
         switching = self._tube < TUBE_OFF_S + TUBE_ON_S
         same_size = self.canvas.get_size() == screen.get_size()
         if not (shake_x or shake_y or switching) and same_size:
-            self.scene.draw(screen)  # the usual case: straight onto the screen, no copy
+            if not self.help.covers_scene(screen.get_size()):
+                self.scene.draw(screen)  # the usual case: straight onto the screen, no copy
             self.help.draw(screen)
         else:
             # shaking, switching scene, or the window is being resized and the assets are for
             # the old size: draw on the canvas, then shift / fold / stretch it for a moment
             folding_old = switching and self._tube < TUBE_OFF_S and self._old_frame is not None
             if not folding_old:  # while the old picture folds away the new one is not seen yet
-                self.scene.draw(self.canvas)
+                if not self.help.covers_scene(self.canvas.get_size()):
+                    self.scene.draw(self.canvas)
                 self.help.draw(self.canvas)
             frame = self.canvas
             if not same_size and not folding_old:
@@ -216,6 +233,7 @@ class App:
         pg.display.set_caption("NeonPool")
         screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)  # the whole desktop, at its resolution
         app = App(screen)
+        app.help.prefetch = True
         clock = pg.time.Clock()
         while app.running:
             dt = clock.tick(60) / 1000

@@ -1,8 +1,8 @@
 """The settings panel: a lit panel that slides up over the menu (the menu keeps moving behind).
 
-Language, volume, screen shake and the FPS counter. Mouse: click a row (or drag the volume bar);
-keys: up/down choose a row, left/right change it, Enter switches, Esc closes. Every change is
-applied at once and saved (App.change_settings), so it is still there next time.
+Language, volume, music volume, screen shake and the FPS counter. Mouse: click a row (or drag a
+volume bar); keys: up/down choose a row, left/right change it, Enter switches, Esc closes. Every
+change is applied at once and saved (App.change_settings), so it is still there next time.
 """
 
 from __future__ import annotations
@@ -16,12 +16,13 @@ from game.render import palette as C
 from game.render.draw import Aa, blit_dot, blit_rrect
 from game.render.view import View
 
-ROWS = ("lang", "volume", "shake", "fps", "done")
-PANEL = pg.Rect(400, 186, 480, 386)
+ROWS = ("lang", "volume", "music", "shake", "fps", "done")
+BARS = ("volume", "music")  # the rows that are a level meter
+PANEL = pg.Rect(400, 160, 480, 440)
 ROW_X, ROW_W, ROW_H = 424, 432, 44
-FIRST_ROW_Y, ROW_STEP = 268, 54
-DONE = pg.Rect(560, 498, 160, 44)
-TRACK = (642, 790)  # the volume bar, left and right ends (logical x)
+FIRST_ROW_Y, ROW_STEP = 242, 54
+DONE = pg.Rect(560, 526, 160, 44)
+TRACK = (642, 790)  # the level meters, left and right ends (logical x)
 SWITCH_W, SWITCH_H = 52, 24
 OPEN_S, CLOSE_S = 0.22, 0.16  # the panel slides up in / back down in this long
 SLIDE_PX = 46  # ... from this far below
@@ -40,7 +41,7 @@ class SettingsPanel:
         self.sel = 0
         self.k = 0.0  # 0 closed .. 1 fully open
         self._closing = False
-        self._dragging = False
+        self._dragging: str | None = None  # the level meter being dragged
         self._clock = 0.0
         self.fx = hud.ButtonFx()
 
@@ -49,7 +50,7 @@ class SettingsPanel:
         self.is_open, self._closing, self.sel = True, False, 0
 
     def close(self) -> None:
-        self._closing, self._dragging = True, False
+        self._closing, self._dragging = True, None
         self.app.audio.play_click()
 
     # --- changing values --------------------------------------------------------------------
@@ -57,9 +58,9 @@ class SettingsPanel:
         s = self.app.settings
         if row == "lang":
             self.app.change_settings(lang="en" if s.lang == "vi" else "vi")
-        elif row == "volume":
-            steps = round(s.volume / VOLUME_STEP) + direction
-            self._set_volume(steps * VOLUME_STEP)
+        elif row in BARS:
+            steps = round(getattr(s, row) / VOLUME_STEP) + direction
+            self._set_level(row, steps * VOLUME_STEP)
             return
         elif row == "shake":
             self.app.change_settings(shake=not s.shake)
@@ -70,14 +71,16 @@ class SettingsPanel:
             return
         self.app.audio.play_click()
 
-    def _set_volume(self, volume: float) -> None:
-        volume = round(min(1.0, max(0.0, volume)) / VOLUME_STEP) * VOLUME_STEP
-        if abs(volume - self.app.settings.volume) > 1e-6:
-            self.app.change_settings(volume=round(volume, 2))
-            self.app.audio.play_hover()  # a beep at the new volume
+    def _set_level(self, row: str, level: float) -> None:
+        """Set the effects volume or the music volume (the music itself shows the new level)."""
+        level = round(min(1.0, max(0.0, level)) / VOLUME_STEP) * VOLUME_STEP
+        if abs(level - getattr(self.app.settings, row)) > 1e-6:
+            self.app.change_settings(**{row: round(level, 2)})
+            if row == "volume":
+                self.app.audio.play_hover()  # a beep at the new volume
 
-    def _volume_at(self, x: float) -> None:
-        self._set_volume((x - TRACK[0]) / (TRACK[1] - TRACK[0]))
+    def _level_at(self, row: str, x: float) -> None:
+        self._set_level(row, (x - TRACK[0]) / (TRACK[1] - TRACK[0]))
 
     # --- input --------------------------------------------------------------------------------
     def handle_event(self, e: pg.event.Event) -> None:
@@ -97,7 +100,7 @@ class SettingsPanel:
                 self._change(ROWS[self.sel], 1)
         elif e.type == pg.MOUSEMOTION:
             if self._dragging:
-                self._volume_at(e.pos[0])
+                self._level_at(self._dragging, e.pos[0])
             hit = self._row_at(e.pos)
             if hit is not None:
                 self._choose(hit)
@@ -109,13 +112,13 @@ class SettingsPanel:
                 return
             self.sel = hit
             self.fx.press(ROWS[hit], self._clock)
-            if ROWS[hit] == "volume":
-                self._dragging = True
-                self._volume_at(e.pos[0])
+            if ROWS[hit] in BARS:
+                self._dragging = ROWS[hit]
+                self._level_at(ROWS[hit], e.pos[0])
             else:
                 self._change(ROWS[hit], 1)
         elif e.type == pg.MOUSEBUTTONUP and e.button == 1:
-            self._dragging = False
+            self._dragging = None
 
     def _row_at(self, pos) -> int | None:
         return next((i for i in range(len(ROWS)) if row_rect(i).collidepoint(pos)), None)
@@ -159,8 +162,8 @@ class SettingsPanel:
             hud.text(canvas, pv, t(f"settings.{row}"), 17, colour, (r.x + 18, r.centery - 6))
             if row == "lang":
                 self._chooser(canvas, pv, r, t("lang.name"), lit)
-            elif row == "volume":
-                self._volume_bar(canvas, pv, r, s.volume, lit)
+            elif row in BARS:
+                self._volume_bar(canvas, pv, r, getattr(s, row), lit)
             else:
                 self._switch(canvas, pv, r, s.shake if row == "shake" else s.show_fps, lit)
         hud.live_button(canvas, pv, DONE, t("settings.done"), self.fx, "done", self._clock)

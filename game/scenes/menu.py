@@ -62,6 +62,10 @@ class MenuScene:
         """The menu is shown again: the title stutters on again."""
         self._opened = self._clock
 
+    def idle_s(self) -> float:
+        """How long the menu has been showing (since it opened)."""
+        return self._clock - self._opened
+
     def _labels(self) -> list[str]:
         resume = self.app.game_in_progress()
         return [

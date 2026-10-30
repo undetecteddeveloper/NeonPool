@@ -1,14 +1,28 @@
-"""Sound effects synthesised in code (no asset files). No device => silent, game still runs."""
+"""Sound effects and music synthesised in code (no asset files). No device => silent, game still
+runs."""
 
 from __future__ import annotations
 
 import logging
+import os
+import threading
 from collections.abc import Iterable
 
 import numpy as np
 import pygame as pg
 
-from game.config import SAMPLE_RATE, SFX_MAX_PER_FRAME, SFX_MIN_SPEED, SFX_REF_SPEED
+from game import music
+from game.config import (
+    MUSIC_CHANNELS,
+    MUSIC_DUCK,
+    MUSIC_DUCK_S,
+    MUSIC_FADE_S,
+    MUSIC_GAIN,
+    SAMPLE_RATE,
+    SFX_MAX_PER_FRAME,
+    SFX_MIN_SPEED,
+    SFX_REF_SPEED,
+)
 from game.physics import BallHitBall, BallHitCushion, BallPocketed, Event
 
 log = logging.getLogger("neonpool")
@@ -137,11 +151,18 @@ class Audio:
         self.available = False
         self.muted = False
         self.volume = 1.0  # the player's volume (0..1), from the settings
+        self.music_volume = 0.5  # and the music's, on its own
         self._sounds: dict[str, pg.mixer.Sound] = {}
+        self._built: dict[str, np.ndarray] = {}  # tracks the thread has finished, not yet sounds
+        self._tracks: dict[str, pg.mixer.Sound] = {}
+        self._level = dict.fromkeys(music.TRACKS, 0.0)  # how far each track has faded in (0..1)
+        self._duck = 1.0  # 1 normal, MUSIC_DUCK while the result card is up
+        self._music_thread: threading.Thread | None = None
         try:
             if not pg.mixer.get_init():
                 pg.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=1, buffer=512)
             pg.mixer.set_num_channels(16)
+            pg.mixer.set_reserved(MUSIC_CHANNELS)  # the music's channels: effects never take them
             for name, fn in (
                 ("ball", synth_ball_hit),
                 ("cushion", synth_cushion),
@@ -165,6 +186,45 @@ class Audio:
         channels = pg.mixer.get_init()[2]
         data = samples if channels == 1 else np.repeat(samples[:, None], channels, axis=1)
         return pg.sndarray.make_sound(np.ascontiguousarray(data))
+
+    # --- music: one loop per place (the menu, the table), faded in and out ----------------------
+    def _build_music(self) -> None:
+        """Make every track (a thread: numpy only, the mixer is touched on the main thread)."""
+        for name, style in music.TRACKS.items():
+            self._built[name] = music.render(style)
+
+    def music_level(self, name: str) -> float:
+        return self._level[name]
+
+    def update_music(self, dt: float, track: str | None, duck: bool = False) -> None:
+        """Every frame: fade towards `track` ("menu", "play" or None); `duck` drops the music
+        under the result jingle. The first call starts making the tracks in the background."""
+        if not self.available:
+            return
+        if self._music_thread is None and not os.environ.get("NEONPOOL_NO_MUSIC"):
+            self._music_thread = threading.Thread(target=self._build_music, daemon=True)
+            self._music_thread.start()
+        for name in list(self._built):
+            self._tracks[name] = self._make(self._built.pop(name))
+        goal = MUSIC_DUCK if duck else 1.0
+        self._duck += (goal - self._duck) * min(1.0, dt / MUSIC_DUCK_S)
+        for i, name in enumerate(music.TRACKS):
+            sound = self._tracks.get(name)
+            if sound is None:
+                continue
+            level, target = self._level[name], 1.0 if name == track else 0.0
+            step = dt / MUSIC_FADE_S
+            level = min(target, level + step) if target > level else max(target, level - step)
+            self._level[name] = level
+            channel = pg.mixer.Channel(i)
+            if level <= 0.0:
+                if channel.get_busy():
+                    channel.stop()
+                continue
+            if not channel.get_busy():
+                channel.play(sound, loops=-1)
+            gain = level * self._duck * self.music_volume * MUSIC_GAIN
+            channel.set_volume(0.0 if self.muted else gain)
 
     def toggle_mute(self) -> bool:
         self.muted = not self.muted

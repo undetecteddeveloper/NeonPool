@@ -324,3 +324,26 @@ def test_the_studio_scene_never_leaves_sound_or_state_behind():
     assert scene.drag.active and [b.number for b in scene.world.in_play()] == [0, 3]
     again = pics._pose(v, {0: (0.5, 0.5)})
     assert not again.drag.active and [b.number for b in again.world.in_play()] == [0]
+
+
+# --- making the pages ahead of time ---------------------------------------------------------
+def test_the_pages_are_made_ahead_one_at_a_time_while_the_card_stands_still(app):
+    app.help.prefetch = True
+    open_help(app)
+    run(app, 0.5)  # the card stands still: it makes the rest, one a frame
+    assert len(app.help._pages) == len(TOPICS)
+    assert app.help.prefetch_one() is False  # nothing left to make
+
+
+def test_the_first_page_is_made_while_the_menu_idles_so_opening_does_not_stall(app):
+    app.help.prefetch = True
+    assert not app.help._pages
+    run(app, 1.0)
+    assert not app.help._pages  # the menu has only just opened: the title is still lighting up
+    run(app, 1.5)
+    assert any(page == 0 for page, _ in app.help._pages)
+
+
+def test_nothing_is_made_ahead_when_the_option_is_off(app):
+    run(app, 3.0)
+    assert not app.help._pages

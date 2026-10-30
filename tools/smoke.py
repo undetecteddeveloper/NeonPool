@@ -15,6 +15,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+os.environ.setdefault("NEONPOOL_NO_MUSIC", "1")  # no background thread while measuring
 
 ROOT = Path(__file__).resolve().parent.parent
 # the default settings, never the player's own file

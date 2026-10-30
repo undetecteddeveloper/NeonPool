@@ -41,9 +41,12 @@ def app(tmp_path, monkeypatch):
 # --- settings that are kept ----------------------------------------------------------------
 def test_settings_survive_a_restart(tmp_path):
     path = tmp_path / "s.json"
-    settings.save(settings.Settings(lang="en", volume=0.3, shake=False, show_fps=True), path)
+    settings.save(
+        settings.Settings(lang="en", volume=0.3, music=0.2, shake=False, show_fps=True), path
+    )
     back = settings.load(path)
-    assert (back.lang, back.volume, back.shake, back.show_fps) == ("en", 0.3, False, True)
+    assert (back.lang, back.volume, back.music) == ("en", 0.3, 0.2)
+    assert (back.shake, back.show_fps) == (False, True)
 
 
 def test_a_missing_or_broken_file_gives_the_defaults(tmp_path):
@@ -52,18 +55,24 @@ def test_a_missing_or_broken_file_gives_the_defaults(tmp_path):
     broken.write_text("{ not json", encoding="utf-8")
     assert settings.load(broken) == settings.Settings()
     odd = tmp_path / "odd.json"
-    odd.write_text(json.dumps({"lang": "fr", "volume": 7, "shake": "yes"}), encoding="utf-8")
+    odd.write_text(
+        json.dumps({"lang": "fr", "volume": 7, "music": -3, "shake": "yes"}), encoding="utf-8"
+    )
     s = settings.load(odd)
     assert s.lang == "vi" and s.volume == 1.0 and s.shake is True  # each value checked
+    assert s.music == 0.0  # clamped, like the volume
 
 
 def test_changing_a_setting_applies_it_and_saves_it_at_once(app, tmp_path):
-    app.change_settings(lang="en", volume=0.4, show_fps=True)
+    app.change_settings(lang="en", volume=0.4, music=0.6, show_fps=True)
     assert i18n.get_lang() == "en" and app.audio.volume == pytest.approx(0.4)
+    assert app.audio.music_volume == pytest.approx(0.6)
     on_disk = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
     assert on_disk["lang"] == "en" and on_disk["volume"] == 0.4 and on_disk["show_fps"] is True
+    assert on_disk["music"] == 0.6
     again = App(pg.display.get_surface())  # the game is started again
     assert i18n.get_lang() == "en" and again.settings.show_fps
+    assert again.audio.music_volume == pytest.approx(0.6)
 
 
 def test_the_menu_opens_settings_and_the_keys_change_every_row(app, tmp_path):
@@ -78,6 +87,11 @@ def test_the_menu_opens_settings_and_the_keys_change_every_row(app, tmp_path):
     before = app.settings.volume
     app.handle_event(key(pg.K_LEFT))  # volume, one step down
     assert app.settings.volume == pytest.approx(before - config.VOLUME_STEP)
+    app.handle_event(key(pg.K_DOWN))
+    before_music = app.settings.music
+    app.handle_event(key(pg.K_RIGHT))  # music, one step up
+    assert app.settings.music == pytest.approx(before_music + config.VOLUME_STEP)
+    assert app.settings.volume == pytest.approx(before - config.VOLUME_STEP)  # its own bar
     app.handle_event(key(pg.K_DOWN))
     app.handle_event(key(pg.K_RETURN))  # shake off
     app.handle_event(key(pg.K_DOWN))
@@ -98,6 +112,35 @@ def test_the_volume_bar_follows_a_click(app):
     x = settings_panel.TRACK[0] + (settings_panel.TRACK[1] - settings_panel.TRACK[0]) * 0.3
     app.menu.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(x, row.centery), button=1))
     assert app.settings.volume == pytest.approx(0.3)
+
+
+def test_the_music_bar_follows_a_click_and_a_drag_and_leaves_the_volume_alone(app):
+    panel = app.menu.settings
+    panel.open()
+    row = settings_panel.row_rect(settings_panel.ROWS.index("music"))
+    lo, hi = settings_panel.TRACK
+    volume = app.settings.volume
+    down = pg.event.Event(pg.MOUSEBUTTONDOWN, pos=(lo + (hi - lo) * 0.2, row.centery), button=1)
+    app.menu.handle_event(down)
+    assert app.settings.music == pytest.approx(0.2)
+    move = pg.event.Event(pg.MOUSEMOTION, pos=(lo + (hi - lo) * 0.9, row.centery), rel=(0, 0),
+                          buttons=(1, 0, 0))  # fmt: skip
+    app.menu.handle_event(move)
+    assert app.settings.music == pytest.approx(0.9)
+    app.menu.handle_event(pg.event.Event(pg.MOUSEBUTTONUP, pos=move.pos, button=1))
+    assert app.settings.volume == pytest.approx(volume)
+
+
+def test_every_row_of_the_settings_panel_fits_inside_it(app):
+    panel = settings_panel.PANEL
+    for i in range(len(settings_panel.ROWS)):
+        assert panel.contains(settings_panel.row_rect(i)), settings_panel.ROWS[i]
+    for lang in ("vi", "en"):
+        i18n.set_lang(lang)
+        app.menu.settings.open()
+        for _ in range(30):
+            app.update(1 / 60)
+            app.draw()
 
 
 def test_shake_off_means_the_screen_never_shakes(app):

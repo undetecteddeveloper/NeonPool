@@ -1,4 +1,5 @@
-"""The player's settings, kept when the game is closed: language, volume, screen shake, FPS counter.
+"""The player's settings, kept when the game is closed: language, volume, music volume, screen
+shake, FPS counter.
 
 Stored as a small JSON file in the user's own settings folder (Windows: %APPDATA%\\NeonPool), never
 next to the game. A missing or broken file gives the defaults; every value is checked on the way
@@ -23,7 +24,8 @@ LANGS = ("vi", "en")
 @dataclass
 class Settings:
     lang: str = "vi"
-    volume: float = 0.8  # 0..1, in steps of VOLUME_STEP
+    volume: float = 0.8  # sound effects, 0..1, in steps of VOLUME_STEP
+    music: float = 0.5  # background music, the same way
     shake: bool = True  # the screen shakes on the break and on very hard hits
     show_fps: bool = False  # frames per second in the top-left corner
 
@@ -43,9 +45,10 @@ def _clean(raw: dict) -> Settings:
     s = Settings()
     if raw.get("lang") in LANGS:
         s.lang = raw["lang"]
-    vol = raw.get("volume")
-    if isinstance(vol, int | float) and not isinstance(vol, bool):
-        s.volume = round(min(1.0, max(0.0, float(vol))), 2)
+    for name in ("volume", "music"):
+        vol = raw.get(name)
+        if isinstance(vol, int | float) and not isinstance(vol, bool):
+            setattr(s, name, round(min(1.0, max(0.0, float(vol))), 2))
     for name in ("shake", "show_fps"):
         if isinstance(raw.get(name), bool):
             setattr(s, name, raw[name])
