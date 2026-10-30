@@ -1,5 +1,5 @@
 """The player's settings, kept when the game is closed: language, volume, music volume, screen
-shake, FPS counter.
+shake, FPS counter, the name shown to the other player in a two-player game.
 
 Stored as a small JSON file in the user's own settings folder (Windows: %APPDATA%\\NeonPool), never
 next to the game. A missing or broken file gives the defaults; every value is checked on the way
@@ -17,6 +17,8 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from game.config import NET_NAME_MAX
+
 log = logging.getLogger("neonpool")
 LANGS = ("vi", "en")
 
@@ -28,6 +30,7 @@ class Settings:
     music: float = 0.5  # background music, the same way
     shake: bool = True  # the screen shakes on the break and on very hard hits
     show_fps: bool = False  # frames per second in the top-left corner
+    player_name: str = ""  # shown to the other player; empty: the game uses a default word
 
 
 def settings_path() -> Path:
@@ -52,6 +55,10 @@ def _clean(raw: dict) -> Settings:
     for name in ("shake", "show_fps"):
         if isinstance(raw.get(name), bool):
             setattr(s, name, raw[name])
+    if isinstance(raw.get("player_name"), str):
+        s.player_name = "".join(c for c in raw["player_name"] if c.isprintable()).strip()[
+            :NET_NAME_MAX
+        ]
     return s
 
 

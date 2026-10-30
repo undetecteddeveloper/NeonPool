@@ -24,6 +24,10 @@ class FrozenScene:
     def clear(self) -> None:
         self.snap = self.base = None
 
+    def rebake(self) -> None:
+        """What is painted on the dark picture changed: make it again (the scene itself is kept)."""
+        self.base = None
+
     def covers(self, size: tuple[int, int]) -> bool:
         """The scene need not be drawn: its picture is held for this canvas size."""
         return self.snap is not None and self.snap.get_size() == size

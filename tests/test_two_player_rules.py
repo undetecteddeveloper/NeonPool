@@ -1,5 +1,6 @@
 """Two-player 8-ball (AC4 turn state, AC5 rules). Events are scripted, as in test_eight_ball."""
 
+from game import config
 from game.physics.world import BallHitBall, BallHitCushion, BallPocketed
 from game.rules.eight_ball import (
     FOUL_SCRATCH,
@@ -188,3 +189,27 @@ def test_group_left_and_eight_next_per_player():
     assert m.group_left(0) == 0 and m.eight_is_next(0)
     assert m.group_left(1) == 7 and not m.eight_is_next(1)
     assert Match().group_left(0) is None
+
+
+# --- the score on the result card, by the solo rule, for each player ---
+def test_the_winner_s_score_is_the_solo_budget_less_their_own_shots_and_fouls():
+    m = with_groups(solid_player=0, gone=tuple(range(1, 8)))
+    m.shots, m.fouls = [9, 7], [2, 1]
+    shoot(m, hit(8), down(8), cushion(3))  # shot number 10 for player 0
+    assert m.winner == 0 and m.shots == [10, 7]
+    assert m.score(0) == config.SCORE_WIN_BASE - 10 * 10 - 50 * 2  # 800
+
+
+def test_the_losers_score_is_so_much_for_each_ball_of_their_own_group_that_went_down():
+    m = with_groups(solid_player=0, gone=(10, 11, 12, 13, 3))  # four stripes and a solid are down
+    shoot(m, hit(2), down(8), cushion(3))  # player 0 sinks the 8 early and loses
+    assert m.winner == 1
+    assert m.score(0) == config.SCORE_PER_BALL_LOST * 1  # one solid; the 8 is not counted
+    assert m.score(1) == max(config.SCORE_WIN_MIN, config.SCORE_WIN_BASE - 10 * m.shots[1])
+
+
+def test_a_player_with_no_group_yet_scores_nothing_and_a_win_never_drops_below_the_floor():
+    m = Match()
+    assert m.score(0) == 0
+    m.shots, m.fouls, m.winner = [500, 0], [0, 0], 0
+    assert m.score(0) == config.SCORE_WIN_MIN

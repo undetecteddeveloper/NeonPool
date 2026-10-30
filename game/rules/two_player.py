@@ -19,6 +19,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from game.config import (
+    SCORE_PER_BALL_LOST,
+    SCORE_PER_FOUL,
+    SCORE_PER_SHOT,
+    SCORE_WIN_BASE,
+    SCORE_WIN_MIN,
+)
 from game.physics.world import Event
 from game.rules.eight_ball import (
     FOUL_NO_CUSHION,
@@ -109,6 +116,19 @@ class Match:
 
     def eight_is_next(self, player: int) -> bool:
         return self.group_left(player) == 0 and 8 not in self._judge.pocketed
+
+    def score(self, player: int) -> int:
+        """A player's number on the result card, by the solo rule (config `SCORE_*`): a winner keeps
+        what is left of a fixed budget after their own shots and fouls; the other player gets so
+        much for each ball of their own group that went down (the 8 excluded)."""
+        if self.winner == player:
+            spent = SCORE_PER_SHOT * self.shots[player] + SCORE_PER_FOUL * self.fouls[player]
+            return max(SCORE_WIN_MIN, SCORE_WIN_BASE - spent)
+        group = self.groups[player]
+        if group is None:
+            return 0
+        mine = SOLIDS if group == SOLID else STRIPES
+        return SCORE_PER_BALL_LOST * len(mine & self._judge.pocketed)
 
     # --- one shot -------------------------------------------------------------------------------
     def on_shot(self) -> None:
