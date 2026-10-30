@@ -21,7 +21,7 @@ Phiên này: Chặng 0 (đo, chốt kiến trúc) + Chặng 1 (hai máy CÙNG WI
 | Xoáy | Có (`Shot.spin` i8, nấc 1/32 — đúng nấc của bảng xoáy) | người dùng chốt; xoáy đã có sẵn |
 | Cơ đối thủ | Chỉ giữ gói MỚI NHẤT, làm mượt bằng lọc mũ τ = 1 khung (không đệm) | yêu cầu "không bộ đệm > 1 gói" |
 | Bắt tay | `PROTOCOL_VERSION` + chuỗi `GAME_VERSION`; lệch → `REJECT(VERSION)` | tiêu chí phiên bản |
-| Giao diện | Phác 2–3 hướng bằng ảnh cho menu 5 nút, màn Chơi mạng, bảng hai người; người dùng chọn rồi mới code (task 9) | `ui.md` |
+| Giao diện | Đã phác bằng ảnh và người dùng CHỐT (2026-10-30): menu giữ 4 nút, bấm Chơi mở một bảng nổi Chơi đơn / Chơi đôi rồi đổi sang tạo/vào phòng; khung tên trên bàn; thẻ hai cột có điểm (chi tiết: GAME_DESIGN "Chơi mạng" + "lần 15") | `ui.md` |
 
 ## Task (mỗi task một commit `feat(net): ...`)
 Chặng 0
@@ -34,10 +34,11 @@ Chặng 1
 6. `net/session.py` (bắt tay, tung xu, lượt, điểm kiểm, đếm lệch) + test (AC4, AC6).
 7. `net/tcp.py` nối thẳng LAN + test ổ cắm thật trên 127.0.0.1 (+ `netbench.py --tcp`).
 8. `PlayScene` tách móc nối (bước mô phỏng, vẽ bàn / bảng bên / lớp phủ), tập một mình y hệt (AC1, dấu vân tay + ảnh trước/sau).
-9. Phác giao diện, người dùng chọn.
-10. Menu 5 nút + tên người chơi trong Cài đặt + màn Chơi mạng (tạo / vào phòng) + ô nhập chữ dùng chung.
-11. `NetPlayScene`: tung xu, bảng hai người, cơ đối thủ, bi trắng trong tay, thẻ Thắng/Thua (không điểm), mất kết nối (AC9, AC10).
-12. Smoke hai instance qua loopback trong `gate.py` (AC8), PROGRESS.md, cổng đầy đủ.
+9. Phác giao diện, người dùng chọn (ĐÃ LÀM: 32 ảnh, hai vòng hỏi).
+10. `Match.score` (điểm hai người) + tên người chơi trong cài đặt + ô nhập chữ dùng chung (`hud.text_field`) + bảng nổi dùng chung (`render/floating.py`, Cài đặt dùng lại).
+11. Bảng Chơi (Chơi đơn / Chơi đôi → tên, Tạo phòng, Vào phòng, đang chờ, lỗi) nối với `tcp.py`/`Session`.
+12. `NetPlayScene`: tung xu, khung tên trên bàn, cơ đối thủ, bi trắng trong tay, thẻ hai cột + đếm số, mất kết nối (AC9, AC10).
+13. Smoke hai instance qua loopback trong `gate.py` (AC8), PROGRESS.md, cổng đầy đủ.
 
 ## Tiêu chí chấp nhận → test
 | # | Tiêu chí | Test |
