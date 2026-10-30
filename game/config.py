@@ -141,6 +141,17 @@ SCORE_PER_FOUL = 50  # ... and this for every foul ...
 SCORE_WIN_MIN = 100  # ... but a win is never worth less than this
 SCORE_PER_BALL_LOST = 50  # a lost game only counts the balls that went down (the 8 excluded)
 
+# --- Network play (docs/ARCHITECTURE.md "Chơi mạng") ---
+GAME_VERSION = "0.1"  # two builds with different values never meet; bump it with any change that
+# can alter a shot's result (the physics numbers are also checked: protocol.physics_fingerprint)
+NET_PORT = 47474  # where a room listens on the local network
+NET_AIM_HZ = 30  # at most this many cue-position packets a second
+NET_DESYNC_M = 0.0005  # a checkpoint ball this far (m) from the local one counts as a desync
+NET_NAME_MAX = 16  # longest player name (characters)
+NET_CONNECT_TIMEOUT_S = 5.0  # joining a room: give up after this long
+NET_HANDSHAKE_TIMEOUT_S = 5.0  # a connection that says nothing for this long is dropped
+NET_REMOTE_CUE_TAU_S = 1 / 60  # the other player's cue closes on its newest position in ~1 frame
+
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---
 RACK_ORDER = (1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 6, 13, 14, 7, 15)
