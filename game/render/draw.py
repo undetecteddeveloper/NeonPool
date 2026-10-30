@@ -116,6 +116,11 @@ def _halo_px(glow: float) -> int:
     return math.ceil(7 * glow * C.LOOK.reach) if glow > 0 else 0
 
 
+def _rr_pad(edge: float, glow: float) -> int:
+    """Logical px a glass rectangle's sprite reaches past the rectangle (halo and edge line)."""
+    return _halo_px(round(glow * GLOW_STEPS) / GLOW_STEPS) + math.ceil(edge) + 1
+
+
 def rrect_sprite(
     v: View, w: float, h: float, radius: float, fill, edge: float, edge_color, glow: float
 ) -> tuple[pg.Surface, int]:
@@ -127,7 +132,7 @@ def rrect_sprite(
     key = (round(v.s, 4), w, h, radius, fill, edge, edge_color, glow)
     if key not in _rr_cache:
         _trim(_rr_cache, RR_CACHE_MAX)
-        pad = _halo_px(glow) + math.ceil(edge) + 1
+        pad = _rr_pad(edge, glow)
         bv = v.framed().scaled(v.ss())
         ow, oh = w + 2 * pad, h + 2 * pad
         body = bv.rect(pad, pad, w, h)
@@ -164,6 +169,38 @@ def blit_rrect(
 ) -> None:
     spr, pad = rrect_sprite(v, w, h, radius, fill, edge, edge_color, glow)
     blit_pm(canvas, spr, v.pt((x - pad, y - pad)))
+
+
+def blit_rrect_stretch(
+    canvas: pg.Surface,
+    v: View,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    radius: float,
+    fill=C.PANEL,
+    edge: float = 1.5,
+    edge_color=C.CYAN_DIM,
+    glow: float = 0.0,
+) -> None:
+    """`blit_rrect` for a rectangle whose HEIGHT changes (a panel gliding between sizes). A sprite
+    per height would be made every frame (tens of ms each), so one short sprite is made once and
+    the frame is built from it: its top and bottom ends as they are, and one row from its middle
+    (the same all the way down: two straight edges) stretched in between."""
+    far = radius + 2 * _rr_pad(edge, glow)  # from the edge down to where nothing of a corner shows
+    spr, pad = rrect_sprite(v, w, 2 * far + 4, radius, fill, edge, edge_color, glow)
+    wd, hs = spr.get_size()
+    full, end = v.i(h + 2 * pad), v.i(pad + far)
+    if full <= 2 * end or hs <= 2 * end:  # too short to have a middle: a sprite of its own
+        blit_rrect(canvas, v, x, y, w, h, radius, fill, edge, edge_color, glow)
+        return
+    px, py = (round(c) for c in v.pt((x - pad, y - pad)))
+    pm = pg.BLEND_PREMULTIPLIED
+    canvas.blit(spr, (px, py), pg.Rect(0, 0, wd, end), special_flags=pm)
+    middle = pg.transform.scale(spr.subsurface((0, hs // 2, wd, 1)), (wd, full - 2 * end))
+    canvas.blit(middle, (px, py + end), special_flags=pm)
+    canvas.blit(spr, (px, py + full - end), pg.Rect(0, hs - end, wd, end), special_flags=pm)
 
 
 def blit_dot(

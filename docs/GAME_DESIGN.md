@@ -86,6 +86,11 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 Riêng tư: nối thẳng làm bạn kia thấy địa chỉ mạng của mình; chấp nhận giữa bạn bè nhưng sau chặng 1 giao diện KHÔNG hiện địa chỉ mạng (chỉ mã phòng).
 Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng: phải bấm cho phép (mạng riêng) thì người kia mới vào được.
 
+## Phản hồi lần 16 (2026-10-31, người dùng xem ảnh bảng Chơi: "khoảng trống thừa khá nhiều"; chọn đủ phương án khuyến nghị)
+- Bảng Chơi KHÔNG còn cao cố định 440 cho mọi bước (đổi từ lần 15, nơi bảng được dựng một cỡ). Mỗi bước cao vừa nội dung, luôn căn giữa màn hình: Chơi đơn / Chơi đôi 344, nhập tên 412, chờ bạn 404, nhập địa chỉ 342, đang kết nối 230 (đơn vị logic). Dưới nút thấp nhất luôn cách khung 18, không bước nào còn khoảng trống thừa.
+- Đổi bước có hoạt ảnh (~0,32 s): chữ và nút cũ mờ đi, khung trượt sang chiều cao mới (cả hai phía), chữ mới hiện dần. Bảng Cài đặt giữ cỡ cố định (nội dung đầy sẵn), điểm ảnh không đổi.
+- Hệ quả bố cục: ở bước nhập tên, dòng lỗi (ví dụ không mở được phòng) nằm CHỖ dòng gợi ý "Hai máy cùng một mạng wifi" (trước đây hai dòng xếp chồng); ở bước nhập địa chỉ, nút Vào đứng sát ô gõ, dòng lỗi vẫn chiếm một dòng giữa hai thứ đó.
+
 ## Phản hồi lần 15 (2026-10-30, người dùng yêu cầu đổi game thành multiplayer; chọn đủ phương án khuyến nghị: có xoáy khi chơi mạng, đổi lượt khi chỉ bỏ bi đối thủ vào lỗ)
 - Menu GIỮ bốn nút (người dùng không chọn 5 nút: nút cuối sẽ chạm y=724 trên khung cao 720). Bấm "Chơi" mở bảng nổi (như Cài đặt) có hai nút lớn "Chơi đơn" (đổi thành "Chơi tiếp" khi đang có ván tập một mình dở) và "Chơi đôi"; chọn Chơi đôi thì chính bảng đó đổi sang bước nhập tên, Tạo phòng / Vào phòng. Chữ trên màn: "Chơi đơn" / "Chơi đôi" (en: "Solo" / "Two players"), không dùng "Tập một mình" / "Chơi mạng" (đó là tên trong tài liệu).
 - Người dùng chọn qua ảnh (`tools/_out/20261030-multiplayer/`): bảng Chơi đôi = MỘT bảng đổi theo bước; khung tên phía trên bàn; thẻ kết quả hai cột có Điểm, đếm lên như thẻ chơi đơn, bỏ đường kẻ ngang giữa Điểm và Số cú/Lỗi (chỉ ở thẻ chơi đôi; thẻ chơi đơn giữ đường kẻ).

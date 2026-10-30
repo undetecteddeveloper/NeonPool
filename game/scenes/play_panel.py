@@ -36,25 +36,32 @@ ITEMS = {
     JOINING: ("addr", "go", "back"),
     CONNECTING: ("cancel",),
 }
-PANEL = pg.Rect(400, 150, 480, 440)
+PANEL = pg.Rect(400, 150, 480, 440)  # the column and the centre; the height is the step's
 X, W = PANEL.x + 44, PANEL.w - 88  # the column everything sits in
-BACK = pg.Rect(PANEL.centerx - 80, PANEL.bottom - 62, 160, 44)
-FIELD = pg.Rect(X, PANEL.y + 122, W, 46)
+# each step is only as tall as what it holds; the frame sits centred and glides between heights
+HEIGHT = {CHOOSE: 344, SETUP: 412, HOSTING: 404, JOINING: 342, CONNECTING: 230}
+TOP = {step: PANEL.centery - h // 2 for step, h in HEIGHT.items()}  # where each step's frame starts
+
+
+def _at(step: str, y: int, h: int) -> pg.Rect:
+    return pg.Rect(X, TOP[step] + y, W, h)
+
+
+def _back(step: str) -> pg.Rect:
+    return pg.Rect(PANEL.centerx - 80, TOP[step] + HEIGHT[step] - 62, 160, 44)
+
+
 RECTS = {
-    CHOOSE: {
-        "solo": pg.Rect(X, PANEL.y + 92, W, 76),
-        "duo": pg.Rect(X, PANEL.y + 180, W, 76),
-        "back": BACK,
-    },
+    CHOOSE: {"solo": _at(CHOOSE, 92, 76), "duo": _at(CHOOSE, 180, 76), "back": _back(CHOOSE)},
     SETUP: {
-        "name": FIELD,
-        "create": pg.Rect(X, PANEL.y + 200, W, 50),
-        "join": pg.Rect(X, PANEL.y + 266, W, 50),
-        "back": BACK,
+        "name": _at(SETUP, 122, 46),
+        "create": _at(SETUP, 192, 50),
+        "join": _at(SETUP, 254, 50),
+        "back": _back(SETUP),
     },
-    HOSTING: {"cancel": BACK},
-    JOINING: {"addr": FIELD, "go": pg.Rect(X, PANEL.y + 232, W, 50), "back": BACK},
-    CONNECTING: {"cancel": BACK},
+    HOSTING: {"cancel": _back(HOSTING)},
+    JOINING: {"addr": _at(JOINING, 122, 46), "go": _at(JOINING, 206, 50), "back": _back(JOINING)},
+    CONNECTING: {"cancel": _back(CONNECTING)},
 }
 ADDRESS_MAX = 40
 FIELDS = ("name", "addr")
@@ -89,6 +96,7 @@ def spin_key() -> str:
 
 class PlayPanel(FloatPanel):
     RECT = PANEL
+    RESIZES = True
 
     def __init__(self, app) -> None:
         super().__init__()
@@ -120,6 +128,19 @@ class PlayPanel(FloatPanel):
     def _rects(self) -> dict[str, pg.Rect]:
         return RECTS[self.step]
 
+    def fit_h(self) -> float:
+        return HEIGHT[self.step]
+
+    def prewarm(self, v: View) -> None:
+        """Every step's sprites, not just the first one's: a step is then a plain change."""
+        if self._warm == v.s:
+            return
+        step, sel = self.step, self.sel
+        for each in ITEMS:
+            self.step, self.sel, self._warm = each, 0, 0.0
+            super().prewarm(v)
+        self.step, self.sel = step, sel
+
     # --- opening, closing, steps ---
     def open(self) -> None:
         self.name = self.app.settings.player_name
@@ -139,9 +160,11 @@ class PlayPanel(FloatPanel):
         self._text_input(False)
         self.is_open = self._closing = False
         self.k = 0.0
+        self._h = self._morph = None
         self._frozen.clear()
 
     def _goto(self, step: str, sel: int | None = None) -> None:
+        self._morph_begin(HEIGHT[step])  # (a picture of the step we leave, while it is still here)
         self.step = step
         if sel is None:
             sel = 1 if step == SETUP and self.name.strip() else 0
@@ -276,7 +299,7 @@ class PlayPanel(FloatPanel):
                     self._choose(i)
                     self._activate(item)
                     return
-            if self.step == CHOOSE and not PANEL.collidepoint(e.pos):
+            if self.step == CHOOSE and not self.rect().collidepoint(e.pos):
                 self.close()  # a click outside the first step closes it, as in Settings
 
     def _key(self, key: int) -> None:
@@ -330,7 +353,7 @@ class PlayPanel(FloatPanel):
     # --- drawing ---
     def _paint_live(self, canvas: pg.Surface, pv: View) -> None:
         step, rects = self.step, self._rects()
-        cx = PANEL.centerx
+        cx, top = PANEL.centerx, TOP[step]
         item = self._item()
 
         def button(key: str, label: str, sub: str | None = None) -> None:
@@ -343,46 +366,39 @@ class PlayPanel(FloatPanel):
             button("duo", t("play.duo"), t("play.duo_sub"))
             button("back", t("play.back"))
         elif step == SETUP:
-            hud.label(canvas, pv, t("net.name"), (X, PANEL.y + 104), C.TEXT_DIM, 13)
-            hud.text_field(canvas, pv, FIELD, self.name, focus=item == "name", clock=self._clock,
-                           placeholder=t("net.name_hint"))  # fmt: skip
+            hud.label(canvas, pv, t("net.name"), (X, top + 104), C.TEXT_DIM, 13)
+            hud.text_field(canvas, pv, rects["name"], self.name, focus=item == "name",
+                           clock=self._clock, placeholder=t("net.name_hint"))  # fmt: skip
             button("create", t("net.create"))
             button("join", t("net.join"))
-            hud.text(
-                canvas, pv, t("net.same_wifi"), 13, C.TEXT_DIM, (cx, PANEL.y + 334), center=True
-            )
-            if self.error:
-                hud.text(
-                    canvas, pv, t(self.error), 13, C.ERROR, (cx, PANEL.y + 334 + 22), center=True
-                )
+            # one line under the buttons: the hint, or (instead of it) what went wrong
+            line, color = (self.error, C.ERROR) if self.error else ("net.same_wifi", C.TEXT_DIM)
+            hud.text(canvas, pv, t(line), 13, color, (cx, top + 326), center=True)
             button("back", t("play.back"))
         elif step == HOSTING:
-            hud.label(
-                canvas, pv, t("net.addr_title"), (cx, PANEL.y + 106), C.TEXT_DIM, 13, center=True
-            )
-            blit_rrect(canvas, pv, X, PANEL.y + 128, W, 74, 8, C.BG, 1.6, C.CYAN, 0.7)
+            hud.label(canvas, pv, t("net.addr_title"), (cx, top + 106), C.TEXT_DIM, 13, center=True)
+            blit_rrect(canvas, pv, X, top + 128, W, 74, 8, C.BG, 1.6, C.CYAN, 0.7)
             size = 40 if len(self.address) <= 15 else 30
-            hud.glow_text(canvas, pv, self.address, size, C.WHITE, C.CYAN, (cx, PANEL.y + 166),
+            hud.glow_text(canvas, pv, self.address, size, C.WHITE, C.CYAN, (cx, top + 166),
                           face="display")  # fmt: skip
-            hud.text(
-                canvas, pv, t("net.addr_howto"), 13, C.TEXT_DIM, (cx, PANEL.y + 232), center=True
-            )
+            hud.text(canvas, pv, t("net.addr_howto"), 13, C.TEXT_DIM, (cx, top + 232), center=True)
             pulse = 0.5 + 0.5 * math.sin(self._clock * 3.0)
-            blit_dot(canvas, pv, (cx - 96, PANEL.y + 288), 4, C.lerp(C.AMBER, C.WHITE, 0.3 * pulse),
+            blit_dot(canvas, pv, (cx - 96, top + 288), 4, C.lerp(C.AMBER, C.WHITE, 0.3 * pulse),
                      0.6 + pulse)  # fmt: skip
-            hud.text(canvas, pv, t("net.waiting"), 17, C.AMBER, (cx - 80, PANEL.y + 282), bold=True)
+            hud.text(canvas, pv, t("net.waiting"), 17, C.AMBER, (cx - 80, top + 282), bold=True)
             if self.error:
-                hud.text(canvas, pv, t(self.error), 13, C.ERROR, (cx, PANEL.y + 322), center=True)
+                hud.text(canvas, pv, t(self.error), 13, C.ERROR, (cx, top + 314), center=True)
             button("cancel", t("net.cancel"))
         elif step == JOINING:
-            hud.label(canvas, pv, t("net.type_addr"), (X, PANEL.y + 104), C.TEXT_DIM, 13)
-            hud.text_field(canvas, pv, FIELD, self.addr, focus=item == "addr", clock=self._clock,
-                           placeholder=t("net.addr_hint"), error=bool(self.error))  # fmt: skip
+            hud.label(canvas, pv, t("net.type_addr"), (X, top + 104), C.TEXT_DIM, 13)
+            hud.text_field(canvas, pv, rects["addr"], self.addr, focus=item == "addr",
+                           clock=self._clock, placeholder=t("net.addr_hint"),
+                           error=bool(self.error))  # fmt: skip
             if self.error:
-                hud.text(canvas, pv, t(self.error), 13, C.ERROR, (X, PANEL.y + 184))
+                hud.text(canvas, pv, t(self.error), 13, C.ERROR, (X, top + 184))
             button("go", t("net.go"))
             button("back", t("play.back"))
         else:  # CONNECTING
-            hud.text(canvas, pv, t("net.connecting"), 20, C.AMBER, (cx, PANEL.y + 200), bold=True,
+            hud.text(canvas, pv, t("net.connecting"), 20, C.AMBER, (cx, top + 124), bold=True,
                      center=True)  # fmt: skip
             button("cancel", t("net.cancel"))
