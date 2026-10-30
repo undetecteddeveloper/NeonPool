@@ -14,7 +14,7 @@ import math
 
 import pygame as pg
 
-from game.config import GRAB_RADIUS_M, NOTICE_S, PX_PER_M
+from game.config import GRAB_RADIUS_M, NET_COIN_S, NOTICE_S, PX_PER_M
 from game.i18n import t
 from game.net import protocol as p
 from game.net import session as net_session
@@ -34,7 +34,7 @@ GROUP_NOTICES = {
     "solid": ("notice.group_solid", "net.notice.group_them_solid"),
     "stripe": ("notice.group_stripe", "net.notice.group_them_stripe"),
 }
-COIN_S = 2.2  # the coin toss: it spins for COIN_FLIP_S, then says who breaks
+COIN_S = NET_COIN_S  # the coin toss: it spins for COIN_FLIP_S, then says who breaks
 COIN_FLIP_S = 1.5
 COIN_R = 46.0
 ESC_AGAIN_S = 3.0  # a second Esc within this long leaves the game

@@ -151,6 +151,12 @@ NET_NAME_MAX = 16  # longest player name (characters)
 NET_CONNECT_TIMEOUT_S = 5.0  # joining a room: give up after this long
 NET_HANDSHAKE_TIMEOUT_S = 5.0  # a connection that says nothing for this long is dropped
 NET_REMOTE_CUE_TAU_S = 1 / 60  # the other player's cue closes on its newest position in ~1 frame
+NET_COIN_S = 2.2  # the coin toss at the start of a game: nobody may shoot, the clock waits
+NET_TURN_S = 60.0  # each shot (cue ball in hand included) gets this long, counted while balls rest
+NET_TURN_WARN_S = 10.0  # the clock blinks from here
+NET_TURN_GRACE_S = (
+    1.0  # the host waits this much longer for the guest, whose shot needs time to come
+)
 
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---

@@ -194,6 +194,77 @@ def test_a_guest_can_claim_its_clock_ran_out_and_the_host_decides():
     assert host.match.turn == HOST
 
 
+# --- AC11: the clock of the shot ---
+def test_ac11_the_clock_waits_for_the_coin_and_for_rolling_balls():
+    sim, host, guest = started()
+    run(sim, (host, guest), config.NET_COIN_S - 0.3)  # the coin is still in the air
+    assert host.turn_left_s == guest.turn_left_s == config.NET_TURN_S
+    assert not host.clock_running
+    run(sim, (host, guest), 1.3)
+    assert host.clock_running and host.turn_left_s < config.NET_TURN_S - 0.9
+    shooter = on_turn(host, guest)
+    assert shooter.shoot(Shot(0.0, 0.9, 0.0)) is not None
+    assert shooter.turn_left_s == config.NET_TURN_S  # a new shot: a whole clock again
+    run(sim, (host, guest), 0.5)
+    assert not shooter.settled and not shooter.clock_running
+    frozen = shooter.turn_left_s
+    run(sim, (host, guest), 0.5)
+    assert shooter.turn_left_s == frozen  # nothing counts while the balls roll
+
+
+def pass_turn_to(sim, host, guest, player):
+    """If the turn is not `player`'s, let it run out once so that it is (no foul, no ball in hand).
+    The coin is let land first, so that the clock is running when this returns."""
+    run(sim, (host, guest), config.NET_COIN_S + 0.1)
+    if host.match.turn != player:
+        assert host.timeout_turn()
+        assert run(sim, (host, guest), 1.0, lambda: guest.match.turn == player)
+        host.take_judged(), guest.take_judged()
+
+
+def test_ac11_the_host_calls_time_on_its_own_turn_after_60_seconds():
+    sim, host, guest = started()
+    pass_turn_to(sim, host, guest, HOST)
+    run(sim, (host, guest), config.NET_TURN_S - 2.0)
+    assert host.match.turn == HOST  # not yet
+    assert run(sim, (host, guest), 4.0, lambda: guest.match.turn == GUEST)
+    assert host.match.turn == guest.match.turn == GUEST
+    assert host.take_judged()[-1].timed_out and guest.take_judged()[-1].timed_out
+    assert host.match.fouls == [0, 0] and not host.match.cue_in_hand
+    assert guest.turn_left_s > config.NET_TURN_S - 0.2  # the next player starts with a whole clock
+
+
+def test_ac11_the_guest_s_own_clock_ends_its_turn_and_the_host_agrees():
+    sim, host, guest = started(latency=0.03)
+    pass_turn_to(sim, host, guest, GUEST)
+    assert run(sim, (host, guest), config.NET_TURN_S + 0.5, lambda: guest._timeout_sent)
+    assert not guest.can_shoot  # no more shots once it has said time is up
+    assert run(sim, (host, guest), 1.0, lambda: host.match.turn == HOST)
+    run(sim, (host, guest), 0.5)
+    assert host.match.turn == guest.match.turn == HOST
+    assert not guest._timeout_sent and guest.turn_left_s > config.NET_TURN_S - 0.5
+
+
+def test_ac11_the_host_calls_time_itself_when_the_guest_says_nothing():
+    sim, host, guest = started()
+    pass_turn_to(sim, host, guest, GUEST)
+    guest._tick_clock = lambda dt: None  # this guest never speaks up
+    run(sim, (host, guest), config.NET_TURN_S + config.NET_TURN_GRACE_S - 2.0)
+    assert host.match.turn == GUEST  # the host is still waiting: it gives the guest a moment longer
+    assert run(sim, (host, guest), 4.0, lambda: host.match.turn == HOST)
+
+
+def test_ac11_a_shot_at_the_last_moment_is_not_refused_for_being_late():
+    sim, host, guest = started(latency=0.1)
+    give_guest_the_turn(sim, host, guest)
+    run(sim, (host, guest), config.NET_TURN_S + 5.0, lambda: guest.turn_left_s < 0.05)
+    assert guest.turn_left_s < 0.05 and not guest._timeout_sent
+    assert guest.shoot(Shot(0.0, 0.6, 0.0)) is not None
+    run(sim, (host, guest), 8.0, lambda: host.checkpoints == guest.checkpoints and guest.settled)
+    assert host.rejected_shots == 0 and guest.rejected_shots == 0
+    assert host.last_shooter == GUEST and same_table(host, guest)
+
+
 # --- a shot, the verdict, the checkpoint ---
 def test_the_break_is_played_on_both_machines_and_the_referee_s_table_is_everywhere():
     sim, host, guest = started(latency=0.02, jitter=0.005)

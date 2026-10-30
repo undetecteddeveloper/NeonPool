@@ -112,6 +112,9 @@ class Session:
         self._fingerprint = p.physics_fingerprint() if fingerprint is None else fingerprint
         self._acc = 0.0
         self._silent = 0.0
+        self._toss_left = 0.0  # the coin is still in the air: no clock yet
+        self._turn_used = 0.0  # seconds of the clock spent on the shot being waited for
+        self._timeout_sent = False  # (guest) our clock ran out and the host has been told
         self._live = False  # a shot is rolling here
         self._inbox: deque = deque()
         self._judged: list[MatchShot] = []
@@ -144,11 +147,23 @@ class Session:
 
     @property
     def can_shoot(self) -> bool:
-        return self.my_turn and self.settled and not self.match.cue_in_hand
+        return (
+            self.my_turn and self.settled and not self._timeout_sent and not self.match.cue_in_hand
+        )
 
     @property
     def can_place(self) -> bool:
-        return self.my_turn and self.settled and self.match.cue_in_hand
+        return self.my_turn and self.settled and not self._timeout_sent and self.match.cue_in_hand
+
+    @property
+    def clock_running(self) -> bool:
+        """The clock of the player on turn is counting: the toss is over and every ball is still."""
+        return self.playing and not self.match.over and self._toss_left <= 0 and self.settled
+
+    @property
+    def turn_left_s(self) -> float:
+        """Seconds the player on turn has left for this shot."""
+        return max(0.0, config.NET_TURN_S - self._turn_used)
 
     def take_judged(self) -> list[MatchShot]:
         """The shots (and lost turns) judged since the last call, in order."""
@@ -242,9 +257,32 @@ class Session:
         self._drain_inbox()
         events = self._advance_world(dt)
         self._drain_inbox()
+        self._tick_clock(dt)
         self.remote_cue.update(dt)
         self._send_due()
         return events
+
+    def _tick_clock(self, dt: float) -> None:
+        if self._toss_left > 0:
+            self._toss_left -= dt
+        elif self.clock_running:
+            self._turn_used += dt
+            if self.me == HOST:  # the referee calls time (the guest gets a moment longer: its shot
+                late = (
+                    config.NET_TURN_GRACE_S if self.match.turn == GUEST else 0.0
+                )  # is in the post)
+                if self._turn_used >= config.NET_TURN_S + late:
+                    self.timeout_turn()
+            elif (
+                self.match.turn == GUEST
+                and self._turn_used >= config.NET_TURN_S
+                and not self._timeout_sent
+            ):
+                self._timeout_sent = True  # our clock ran out: say so; the host decides
+                self._send(p.TurnTimeout(GUEST))
+
+    def _restart_clock(self) -> None:
+        self._turn_used, self._timeout_sent = 0.0, False
 
     # --- receiving ---
     def _pump(self) -> None:
@@ -321,6 +359,8 @@ class Session:
         self.match = Match(breaker)
         self.breaker = breaker
         self.phase = PLAYING
+        self._toss_left = config.NET_COIN_S
+        self._restart_clock()
 
     # --- the shot ---
     def _host_receives_shot(self, msg: p.ShotMsg) -> None:
@@ -342,6 +382,7 @@ class Session:
         self.seq = msg.seq
         self.last_shot, self.last_shooter = msg.to_shot(), self.match.turn
         self.shots_started += 1
+        self._restart_clock()
         self.world.apply(self.last_shot)
         self.match.on_shot()
         self._live = True
@@ -382,6 +423,7 @@ class Session:
         self._send(cp)
         self._resync_due = False
         self.checkpoints += 1
+        self._restart_clock()
 
     def _drain_inbox(self) -> None:
         """Apply what is waiting, in order, while this machine's balls are still."""
@@ -419,6 +461,7 @@ class Session:
         self._live = False
         self._acc = 0.0
         self.checkpoints += 1
+        self._restart_clock()
         if cp.kind != p.CHECK_RESYNC and cp.state.last is not None:
             self._judged.append(cp.state.last)
 
