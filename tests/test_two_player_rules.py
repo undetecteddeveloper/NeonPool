@@ -12,7 +12,7 @@ from game.rules.eight_ball import (
     STRIPE,
     WON,
 )
-from game.rules.two_player import Match
+from game.rules.two_player import LOST_DROPPED, LOST_SURRENDER, REASONS, Match
 
 
 def hit(ball: int, speed: float = 1.0) -> BallHitBall:
@@ -172,6 +172,25 @@ def test_ac4_timeout_passes_the_turn():
     res = m.timeout()
     assert m.turn == 0 and res.timed_out and res.shooter == 1
     assert not m.cue_in_hand and m.fouls == [0, 0]
+
+
+# --- AC12: giving the game up ------------------------------------------------------------------
+def test_ac12_surrender_gives_the_game_to_the_other_player_with_the_solo_scores():
+    m = with_groups(solid_player=0, gone=(10, 11))  # two of player 1's stripes are down
+    res = m.surrender(1)
+    assert m.over and m.winner == 0 and not m.cue_in_hand
+    assert res.shooter == 1 and res.outcome == LOST and res.reason == LOST_SURRENDER
+    assert m.score(1) == 2 * config.SCORE_PER_BALL_LOST
+    assert m.score(0) == config.SCORE_WIN_BASE  # the winner shot nothing
+
+
+def test_ac12_the_reason_for_losing_is_kept_for_the_card_and_the_wire():
+    m = after_break()
+    assert m.surrender(0, LOST_DROPPED).reason == LOST_DROPPED
+    copy = Match()
+    copy.load(m.snapshot())
+    assert copy.over and copy.winner == 1 and copy.last.reason == LOST_DROPPED
+    assert LOST_SURRENDER in REASONS and LOST_DROPPED in REASONS
 
 
 # --- the referee's word travels as a MatchState ---------------------------------------------

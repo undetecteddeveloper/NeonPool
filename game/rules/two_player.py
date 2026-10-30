@@ -46,10 +46,12 @@ from game.rules.eight_ball import (
 
 PLAYERS = 2
 OPPOSITE = {SOLID: STRIPE, STRIPE: SOLID}
+LOST_SURRENDER = "net.lost_surrender"  # the player gave the game up (or walked away from it)
+LOST_DROPPED = "net.lost_dropped"  # the player was gone for longer than the room waits
 # small codes for the wire (game/net/protocol.py): the index of a value is its code
 GROUPS = (None, SOLID, STRIPE)
 FOULS = (FOUL_SCRATCH, FOUL_NO_HIT, FOUL_WRONG_BALL, FOUL_NO_CUSHION)
-REASONS = (None, LOST_EARLY, LOST_FOUL)
+REASONS = (None, LOST_EARLY, LOST_FOUL, LOST_SURRENDER, LOST_DROPPED)
 OUTCOMES = (None, WON, LOST, RERACK)
 
 
@@ -178,6 +180,14 @@ class Match:
         shooter = self.turn
         self.turn, self.cue_in_hand = 1 - shooter, False
         self.last = MatchShot(shooter, timed_out=True)
+        return self.last
+
+    def surrender(self, player: int, reason: str = LOST_SURRENDER) -> MatchShot:
+        """`player` loses the game here and now (gave up, walked away, or was gone too long).
+        No shot is judged: the other player simply wins."""
+        self.over, self.winner = True, 1 - player
+        self.cue_in_hand = False
+        self.last = MatchShot(player, outcome=LOST, reason=reason)
         return self.last
 
     def rerack(self) -> None:

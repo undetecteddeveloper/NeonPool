@@ -18,7 +18,7 @@ from game.physics.shot import Shot
 from game.physics.world import N_BALLS
 from game.rules.two_player import FOULS, GROUPS, OUTCOMES, REASONS, MatchShot, MatchState
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 MAX_FRAME = 1024  # bytes of type + payload; a checkpoint is ~330
 _LEN = struct.Struct("<H")
 
@@ -30,6 +30,7 @@ SHOT_NOT_READY = 3  # balls still moving, game over, or the cue ball is still in
 CHECK_AFTER_SHOT = 0  # the referee judged a shot
 CHECK_RESYNC = 1  # a shot was refused (or the table was set by hand): take the referee's table
 CHECK_TIMEOUT = 2  # the turn was lost to the clock
+CHECK_END = 3  # the game ended without a last shot (surrender, gone too long): take the result
 BYE_LEAVE = 1
 BYE_VERSION = 2
 AIM_HIDDEN, AIM_RESTING, AIM_PULLING = 0, 1, 2
@@ -175,15 +176,19 @@ class Hello:
 
 @dataclass(frozen=True)
 class Welcome:
+    """The host lets the guest in. `token` is the key to this room: whoever shows it with a
+    `Resume` may take the guest's seat again after the link broke."""
+
     TYPE: ClassVar[int] = 2
     name: str
+    token: int
 
     def pack(self) -> bytes:
-        return _text(self.name)
+        return _text(self.name) + struct.pack("<I", self.token)
 
     @classmethod
     def unpack(cls, r: _Reader) -> Welcome:
-        return cls(r.text())
+        return cls(r.text(), r.u32())
 
 
 @dataclass(frozen=True)
@@ -326,7 +331,7 @@ class Checkpoint:
 
     @classmethod
     def unpack(cls, r: _Reader) -> Checkpoint:
-        seq, kind, mask = r.u16(), r.choice(3), r.u16()
+        seq, kind, mask = r.u16(), r.choice(4), r.u16()
         balls = []
         for n in range(N_BALLS):
             pocket, x, y = r.i8(), r.f64(), r.f64()
@@ -364,6 +369,56 @@ class Emote:
     @classmethod
     def unpack(cls, r: _Reader) -> Emote:
         return cls(r.u8())
+
+
+@dataclass(frozen=True)
+class Rematch:
+    """The sender wants another game in this room (each side sends it once the game is over)."""
+
+    TYPE: ClassVar[int] = 50
+
+    def pack(self) -> bytes:
+        return b""
+
+    @classmethod
+    def unpack(cls, r: _Reader) -> Rematch:
+        return cls()
+
+
+@dataclass(frozen=True)
+class Surrender:
+    """The guest gives the game up; the host (the referee) answers with a CHECK_END checkpoint."""
+
+    TYPE: ClassVar[int] = 51
+
+    def pack(self) -> bytes:
+        return b""
+
+    @classmethod
+    def unpack(cls, r: _Reader) -> Surrender:
+        return cls()
+
+
+@dataclass(frozen=True)
+class Resume:
+    """The guest is back on a new connection after the old one broke: same builds, room token."""
+
+    TYPE: ClassVar[int] = 52
+    proto: int
+    build: str
+    fingerprint: int
+    token: int
+
+    def pack(self) -> bytes:
+        return (
+            struct.pack("<H", self.proto)
+            + _text(self.build)
+            + struct.pack("<II", self.fingerprint, self.token)
+        )
+
+    @classmethod
+    def unpack(cls, r: _Reader) -> Resume:
+        return cls(r.u16(), r.text(), r.u32(), r.u32())
 
 
 @dataclass(frozen=True)
@@ -417,6 +472,9 @@ Message = (
     | Checkpoint
     | TurnTimeout
     | Emote
+    | Rematch
+    | Surrender
+    | Resume
     | Ping
     | Pong
     | Bye
@@ -435,6 +493,9 @@ MESSAGE_TYPES: dict[int, type] = {
         Checkpoint,
         TurnTimeout,
         Emote,
+        Rematch,
+        Surrender,
+        Resume,
         Ping,
         Pong,
         Bye,
@@ -485,7 +546,12 @@ def _unpack_state(r: _Reader) -> MatchState:
         raise ProtocolError("match state contradicts itself")
     last = None
     if flags >> 3 & 1:
-        shooter, outcome, reason, group = r.choice(2), r.choice(4), r.choice(3), r.choice(3)
+        shooter, outcome, reason, group = (
+            r.choice(2),
+            r.choice(4),
+            r.choice(len(REASONS)),
+            r.choice(3),
+        )
         timed_out = r.flag()
         fouls = tuple(FOULS[r.choice(len(FOULS))] for _ in range(r.choice(len(FOULS) + 1)))
         pocketed = tuple(r.choice(16) for _ in range(r.choice(16)))

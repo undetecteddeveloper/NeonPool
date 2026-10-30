@@ -92,6 +92,7 @@ class Session:
         self.world: World | None = None
         self.match: Match | None = None
         self.breaker: int | None = None  # who breaks: the coin toss, told to both
+        self.token = 0  # the key to this room, made by the host and given to the guest in WELCOME
         self.seq = 0  # the number of the last shot started
         self.remote_cue = RemoteCue()
         self.emotes: list[int] = []
@@ -300,11 +301,12 @@ class Session:
             self.names[GUEST] = p.clean_name(msg.name)
             seed = self._rng.getrandbits(32) if self._rng else secrets.randbits(32)
             breaker = self._rng.randrange(2) if self._rng else secrets.randbelow(2)
-            self._send(p.Welcome(self.name))
+            self.token = self._rng.getrandbits(32) if self._rng else secrets.randbits(32)
+            self._send(p.Welcome(self.name, self.token))
             self._send(p.Start(seed, breaker, self._feel, self._spin))
             self._begin(seed, breaker, self._feel, self._spin)
         elif self.me == GUEST and isinstance(msg, p.Welcome):
-            self.names[HOST] = p.clean_name(msg.name)
+            self.names[HOST], self.token = p.clean_name(msg.name), msg.token
         elif self.me == GUEST and isinstance(msg, p.Reject):
             self._close(CLOSE_BUSY if msg.reason == p.REJECT_BUSY else CLOSE_VERSION)
         elif self.me == GUEST and isinstance(msg, p.Start):

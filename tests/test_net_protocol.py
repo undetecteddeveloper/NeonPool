@@ -41,9 +41,13 @@ def samples() -> list:
         0, ("solid", "stripe"), False, True, 1, False, frozenset(), (9, 8), (2, 3),
         MatchShot(0, (), (8,), None, "lost", "result.lost_early"),
     )  # fmt: skip
+    ended = MatchState(
+        1, ("solid", "stripe"), False, True, 0, False, frozenset({2, 9}), (5, 4), (0, 1),
+        MatchShot(1, outcome="lost", reason="net.lost_surrender"),
+    )  # fmt: skip
     return [
         p.Hello(p.PROTOCOL_VERSION, config.GAME_VERSION, p.physics_fingerprint(), "Lan Anh ✓"),
-        p.Welcome("Bình"),
+        p.Welcome("Bình", 3_000_000_000),
         p.Reject(p.REJECT_VERSION),
         p.Start(123456789, 1, "VUA", "VUA"),
         p.Aim(255, p.AIM_PULLING, 65535, 200),
@@ -53,8 +57,12 @@ def samples() -> list:
         p.Checkpoint(5, p.CHECK_AFTER_SHOT, sample_balls(), sample_state()),
         p.Checkpoint(6, p.CHECK_RESYNC, sample_balls(), sample_state(last=False)),
         p.Checkpoint(7, p.CHECK_TIMEOUT, sample_balls(), over),
+        p.Checkpoint(8, p.CHECK_END, sample_balls(), ended),
         p.TurnTimeout(1),
         p.Emote(2),
+        p.Rematch(),
+        p.Surrender(),
+        p.Resume(p.PROTOCOL_VERSION, config.GAME_VERSION, p.physics_fingerprint(), 4_000_000_001),
         p.Ping(4_000_000_000),
         p.Pong(1),
         p.Bye(p.BYE_LEAVE),
@@ -144,6 +152,17 @@ def test_ac3_a_checkpoint_with_a_bad_ball_or_state_is_refused():
     )
     with pytest.raises(p.ProtocolError):  # "not over" yet "winner 1"
         p.decode(p.encode(p.Checkpoint(1, 0, sample_balls(), contradictory)))
+
+
+def test_ac3_the_end_checkpoint_and_the_new_reasons_stop_at_their_last_code():
+    good = p.encode(p.Checkpoint(1, p.CHECK_END, sample_balls(), sample_state()))
+    assert p.decode(good).kind == p.CHECK_END
+    bad_kind = bytearray(good)
+    bad_kind[2 + 1 + 2] = p.CHECK_END + 1  # the byte after the seq
+    with pytest.raises(p.ProtocolError):
+        p.decode(bytes(bad_kind))
+    end = next(m for m in samples() if isinstance(m, p.Checkpoint) and m.kind == p.CHECK_END)
+    assert p.decode(p.encode(end)).state.last.reason == "net.lost_surrender"
 
 
 def test_the_frame_reader_cuts_a_stream_into_frames_however_it_arrives():

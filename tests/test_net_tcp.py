@@ -43,9 +43,9 @@ def test_frames_cross_in_both_directions_whole_and_in_order():
     sent = [p.encode(p.Ping(i)) for i in range(500)]
     for f in sent:
         client.send(f)
-    server.send(p.encode(p.Welcome("Hoa")))
+    server.send(p.encode(p.Welcome("Hoa", 7)))
     assert drain(server, 500) == sent
-    assert drain(client, 1) == [p.encode(p.Welcome("Hoa"))]
+    assert drain(client, 1) == [p.encode(p.Welcome("Hoa", 7))]
     listener.close()
 
 
