@@ -205,8 +205,8 @@ def test_a_scene_change_folds_the_old_picture_into_a_line(app):
     for _ in range(3):
         app.update(1 / 60)
         app.draw()
-    app.go_help()
-    assert app.scene is app.help  # the game is in the new scene at once ...
+    app.go_play()
+    assert app.scene is app.play  # the game is in the new scene at once ...
     app.update(app_module.TUBE_OFF_S * 0.5)
     app.draw()
     screen = pg.display.get_surface()

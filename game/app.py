@@ -24,7 +24,7 @@ from game.render import palette as C
 from game.render.view import View
 from game.render.viewport import window_to_logical
 from game.rules.eight_ball import PLAYING
-from game.scenes.help import HelpScene
+from game.scenes.help import HelpPanel
 from game.scenes.menu import MenuScene
 from game.scenes.play import PlayScene
 
@@ -49,7 +49,7 @@ class App:
         self.audio.volume = self.settings.volume
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.menu = MenuScene(self)
-        self.help = HelpScene(self)
+        self.help = HelpPanel(self)  # a card over the menu or the table, not a scene
         self.scene = self.menu
         self.running = True
         self.fps = 60.0
@@ -75,15 +75,11 @@ class App:
     def go_play(self) -> None:
         self._switch(self.play)
 
-    def go_help(self) -> None:
-        """Open the how-to-play screen; Esc returns to the scene that opened it."""
+    def open_help(self) -> None:
+        """Open the how-to-play card over the current scene (menu or table); Esc closes it."""
         self.play.drag.cancel()
         self.play.placing = False
-        self.help.back = self.scene
-        self._switch(self.help)
-
-    def leave_help(self) -> None:
-        self._switch(self.help.back or self.menu)
+        self.help.open()
 
     def go_menu(self) -> None:
         self.play.drag.cancel()
@@ -118,13 +114,18 @@ class App:
         if e.type in _MOUSE_EVENTS:
             pos = window_to_logical(e.pos, self._window_size(), LOGICAL_SIZE)
             e = pg.event.Event(e.type, {**e.dict, "pos": pos})
+        if self.help.is_open:  # the card takes every key and click while it is there
+            self.help.handle_event(e)
+            return
         self.scene.handle_event(e)
 
     def update(self, dt: float) -> None:
         if dt > 0:
             self.fps += (1.0 / dt - self.fps) * FPS_SMOOTH
         self._tube = min(TUBE_OFF_S + TUBE_ON_S, self._tube + dt)
-        self.scene.update(dt)
+        self.help.update(dt)
+        if not (self.help.is_open and self.scene is self.play):  # the game waits behind the card
+            self.scene.update(dt)
 
     def sync_view(self, force: bool = False) -> None:
         """Rebuild sharp assets for the current window size (after it stopped changing)."""
@@ -152,12 +153,14 @@ class App:
         same_size = self.canvas.get_size() == screen.get_size()
         if not (shake_x or shake_y or switching) and same_size:
             self.scene.draw(screen)  # the usual case: straight onto the screen, no copy
+            self.help.draw(screen)
         else:
             # shaking, switching scene, or the window is being resized and the assets are for
             # the old size: draw on the canvas, then shift / fold / stretch it for a moment
             folding_old = switching and self._tube < TUBE_OFF_S and self._old_frame is not None
             if not folding_old:  # while the old picture folds away the new one is not seen yet
                 self.scene.draw(self.canvas)
+                self.help.draw(self.canvas)
             frame = self.canvas
             if not same_size and not folding_old:
                 frame = pg.transform.smoothscale(self.canvas, screen.get_size())

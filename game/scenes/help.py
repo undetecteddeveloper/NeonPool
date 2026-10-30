@@ -1,8 +1,15 @@
-"""How to play: six topics, one per page: a real picture of the game on the left, a few numbered
-sentences on the right (the numbers match the numbers drawn on the picture).
+"""How to play: a small carousel that opens over whatever is behind it (the menu, or the table
+during a game), which goes dark. Six topics, one per page: a real picture of the game and a few
+numbered sentences (the numbers match the numbers drawn on the picture). Arrows (or the keys)
+turn the pages round and round.
+
+Motion, like an old tube: the card opens out of a bright horizontal line and closes back into it;
+turning a page folds the old page into a line and opens the new one out of it.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import pygame as pg
 
@@ -10,12 +17,11 @@ from game import i18n
 from game.i18n import t
 from game.render import hud
 from game.render import palette as C
-from game.render.draw import blit_dot, blit_rrect
+from game.render.draw import Aa, blit_dot, blit_rrect
 from game.render.guide_art import Annot
-from game.render.synth import Synthwave
 from game.render.view import View
 from game.scenes import help_pictures
-from game.scenes.help_pictures import ART_H
+from game.scenes.help_pictures import ART_W
 
 # (key prefix, number of sentences, marker in front of each sentence: a step number or None)
 TOPICS = (
@@ -26,121 +32,355 @@ TOPICS = (
     ("guide.p5", 3, (None, None, None)),
     ("guide.p6", 1, (None,)),
 )
-CARD = pg.Rect(60, 92, 1160, 500)
-ART_POS = (CARD.x + 24, CARD.y + (CARD.h - ART_H) / 2)
-TEXT_X, TEXT_W = 740, 450
-PREV = pg.Rect(60, 612, 170, 46)
-NEXT = pg.Rect(1050, 612, 170, 46)
-DOTS = [pg.Rect(640 - 3 * 26 + 4 + i * 26, 624, 18, 22) for i in range(len(TOPICS))]
-HORIZON = 604  # the night behind: a low horizon, the floor grid under the page buttons
+OPEN_S, CLOSE_S = 0.28, 0.2  # the card opens out of a line / folds back into it in this long
+DIM_ALPHA = 228  # how dark the scene behind goes (nearly black: only a glimmer of it shows)
+FLIP_OFF_S, FLIP_ON_S = 0.12, 0.18  # turning a page: the old one folds, the new one opens
+EDGE_PAD = 24  # the card's glow reaches this far past its edge (logical px)
+DOT_STEP = 26
 
 
-class HelpScene:
+@dataclass(frozen=True)
+class Layout:
+    """Where everything stands (logical px). Two named layouts; the module uses `LAYOUT`."""
+
+    card: pg.Rect
+    content: pg.Rect  # the part that flips: picture, page label, topic title, sentences
+    art_k: float  # the picture's size, relative to ART_W x ART_H
+    art: tuple[float, float]  # top-left of the picture
+    label: tuple[float, float]  # "Page 1/6"
+    title: tuple[float, float]
+    title_size: float
+    text: tuple[float, float]  # top-left of the first sentence
+    text_w: float
+    text_size: float
+    prev: pg.Rect
+    next: pg.Rect
+    close: pg.Rect
+    dots_y: float
+    header: tuple[float, float]  # the title of the card, left-middle
+
+
+def _wide() -> Layout:
+    """A: a wide card: picture on the left, words on the right, round arrows outside the card."""
+    card = pg.Rect(150, 112, 980, 496)
+    content = pg.Rect(card.x + 16, card.y + 70, card.w - 32, 362)
+    art = (card.x + 34, content.y + 46)
+    tx = art[0] + ART_W * 0.76 + 30
+    return Layout(
+        card=card,
+        content=content,
+        art_k=0.76,
+        art=art,
+        label=(tx, content.y + 30),
+        title=(tx, content.y + 50),
+        title_size=24,
+        text=(tx, content.y + 94),
+        text_w=card.right - 34 - tx,
+        text_size=15,
+        prev=pg.Rect(card.x - 74, card.centery - 26, 52, 52),
+        next=pg.Rect(card.right + 22, card.centery - 26, 52, 52),
+        close=pg.Rect(card.right - 34 - 36, card.y + 18, 36, 36),
+        dots_y=card.bottom - 32,
+        header=(card.x + 34, card.y + 36),
+    )
+
+
+def _inside() -> Layout:
+    """B: the same card, but the arrows sit in its bottom row, either side of the dots."""
+    wide = _wide()
+    card = pg.Rect(wide.card.x, 101, wide.card.w, 518)
+    content = pg.Rect(card.x + 16, card.y + 70, card.w - 32, wide.content.h)
+    dx, dy = content.x - wide.content.x, content.y - wide.content.y
+    return Layout(
+        **{
+            **wide.__dict__,
+            "card": card,
+            "content": content,
+            "art": (wide.art[0] + dx, wide.art[1] + dy),
+            "label": (wide.label[0] + dx, wide.label[1] + dy),
+            "title": (wide.title[0] + dx, wide.title[1] + dy),
+            "text": (wide.text[0] + dx, wide.text[1] + dy),
+            "prev": pg.Rect(card.x + 34, card.bottom - 62, 64, 40),
+            "next": pg.Rect(card.right - 34 - 64, card.bottom - 62, 64, 40),
+            "close": pg.Rect(card.right - 34 - 36, card.y + 18, 36, 36),
+            "dots_y": card.bottom - 42,
+            "header": (card.x + 34, card.y + 36),
+        }
+    )
+
+
+LAYOUTS = {"wide": _wide(), "inside": _inside()}
+LAYOUT = LAYOUTS["wide"]
+
+
+def dot_rect(i: int, layout: Layout | None = None) -> pg.Rect:
+    layout = layout or LAYOUT
+    left = layout.card.centerx - len(TOPICS) * DOT_STEP / 2 + 4
+    return pg.Rect(round(left + i * DOT_STEP), round(layout.dots_y - 11), 18, 22)
+
+
+# --- drawing helpers ---------------------------------------------------------------------------
+def _light_line(canvas: pg.Surface, v: View, x: float, y: float, w: float, strength: float) -> None:
+    """A bright horizontal line (the tube's picture folded flat), glowing `strength` 0..1."""
+    blit_rrect(canvas, v, x, y - 1.5, w, 3, 1.5, C.WHITE, 1.0, C.CYAN, round(0.4 + strength, 1))
+
+
+def _fold(canvas: pg.Surface, v: View, rect: pg.Rect, surf: pg.Surface, k: float) -> None:
+    """`surf` (the page of `rect`, device px) squeezed towards its middle: k 1 whole .. 0 a line."""
+    dev = v.rect(*rect)
+    h = round(dev.h * k)
+    if h >= 2:
+        shown = surf if h >= dev.h else pg.transform.smoothscale(surf, (dev.w, h))
+        canvas.blit(shown, (dev.x, dev.centery - h // 2))
+    if k < 0.96:
+        _light_line(canvas, v, rect.x, rect.centery, rect.w, 1 - k)
+
+
+def _chevron(canvas: pg.Surface, v: View, c: tuple[float, float], d: int, colour) -> None:
+    """A "<" (d = 1) or ">" (d = -1) drawn as a line."""
+    size = 9.0
+    layer = Aa(canvas, v, v.rect(c[0] - size - 4, c[1] - size - 4, 2 * size + 8, 2 * size + 8), 3)
+    pts = [
+        (c[0] + d * size * 0.45, c[1] - size),
+        (c[0] - d * size * 0.45, c[1]),
+        (c[0] + d * size * 0.45, c[1] + size),
+    ]
+    pg.draw.lines(layer.surf, colour, False, [layer.pt(p) for p in pts], round(layer.n(3.0)))
+    layer.done()
+
+
+def _cross(canvas: pg.Surface, v: View, c: tuple[float, float], colour) -> None:
+    size = 6.5
+    layer = Aa(canvas, v, v.rect(c[0] - size - 4, c[1] - size - 4, 2 * size + 8, 2 * size + 8), 3)
+    for a, b in (((-1, -1), (1, 1)), ((-1, 1), (1, -1))):
+        p = (c[0] + a[0] * size, c[1] + a[1] * size)
+        q = (c[0] + b[0] * size, c[1] + b[1] * size)
+        pg.draw.line(layer.surf, colour, layer.pt(p), layer.pt(q), round(layer.n(2.6)))
+    layer.done()
+
+
+class HelpPanel:
     def __init__(self, app) -> None:
         self.app = app
-        self.page = 0
-        self.back = None  # the scene Esc returns to (set by App.go_help)
+        self.is_open = False
+        self.page = 0  # kept between visits: H in a game goes back to where you left off
+        self.k = 0.0  # 0 closed .. 1 fully open
+        self._closing = False
         self._hover: object = None
         self._clock = 0.0
+        self._flip_at: float | None = None  # when the last page turn started
+        self._veil: tuple[tuple, pg.Surface] | None = None
+        self._from = 0  # the page that is folding away
         self.fx = hud.ButtonFx()
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
         self.view = v
-        self._pictures: dict[tuple, pg.Surface] = {}
-        self.synth = Synthwave(v, HORIZON, sun=False, dim=0.6)
+        self._pages: dict[tuple, pg.Surface] = {}
+        self._fill: tuple[int, int, int] | None = None
 
-    def shake_offset(self) -> tuple[float, float]:
-        return 0.0, 0.0
+    def _card_fill(self) -> tuple[int, int, int]:
+        """The colour of the card's inside (the frame tints it a little): a page is painted on it,
+        so no lighter rectangle shows round the picture."""
+        if self._fill is None:
+            card, v = LAYOUT.card, self.view
+            probe = pg.Surface(v.rect(card.x - 30, card.y - 30, card.w + 60, card.h + 60).size)
+            probe.fill(C.BG)
+            pv = v.shifted(*v.ipt((card.x - 30, card.y - 30)))
+            blit_rrect(probe, pv, card.x, card.y, card.w, card.h, 10, C.PANEL, 1.8, C.VIOLET, 1.0)
+            self._fill = tuple(probe.get_at(pv.ipt((card.x + 40, card.centery)))[:3])
+        return self._fill
 
-    def update(self, dt: float) -> None:
-        self._clock += dt
-        self.synth.update(dt)
-        chosen = self._hover if self._hover in ("prev", "next") else None
-        self.fx.update(dt, chosen, {"prev": PREV, "next": NEXT}, self._clock)
+    # --- opening and closing -------------------------------------------------------------------
+    def open(self) -> None:
+        self.is_open, self._closing, self._flip_at = True, False, None
+        self._hover = None
 
-    def _picture(self, index: int) -> pg.Surface:
-        """The picture of a topic: made when first shown, and again after a language change."""
-        key = (index, i18n.get_lang())
-        if key not in self._pictures:
-            self._pictures[key] = help_pictures.build(index, self.view)
-        return self._pictures[key]
-
-    # --- input -------------------------------------------------------------------------------
-    def go(self, page: int) -> None:
-        if page != self.page and 0 <= page < len(TOPICS):
-            self.synth.pulse(PREV.centerx if page < self.page else NEXT.centerx, self._clock)
-            self.page = page
+    def close(self) -> None:
+        if self.is_open and not self._closing:
+            self._closing = True
             self.app.audio.play_click()
 
+    def go(self, page: int, via: str | None = None) -> None:
+        """Turn to `page` (the arrows wrap round). `via` is the button that flashes."""
+        page %= len(TOPICS)
+        if via:
+            self.fx.press(via, self._clock)
+        if page != self.page:
+            self._from, self.page, self._flip_at = self.page, page, self._clock
+            self.app.audio.play_click()
+
+    # --- input ---------------------------------------------------------------------------------
     def handle_event(self, e: pg.event.Event) -> None:
+        if self._closing:
+            return
         if e.type == pg.KEYDOWN:
             if e.key in (pg.K_ESCAPE, pg.K_h):
-                self.app.leave_help()
-            elif e.key in (pg.K_RIGHT, pg.K_d, pg.K_RETURN, pg.K_SPACE):
-                self.go(self.page + 1)
+                self.close()
+            elif e.key in (pg.K_RIGHT, pg.K_d, pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
+                self.go(self.page + 1, "next")
             elif e.key in (pg.K_LEFT, pg.K_a):
-                self.go(self.page - 1)
+                self.go(self.page - 1, "prev")
         elif e.type == pg.MOUSEMOTION:
-            self.synth.point_to(e.pos)
             target = self._target(e.pos)
-            if target is not None and target != self._hover:
+            if target not in (None, "card") and target != self._hover:
                 self.app.audio.play_hover()
             self._hover = target
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             target = self._target(e.pos)
-            if target in ("prev", "next"):
-                self.fx.press(target, self._clock)
-                self.go(self.page + (1 if target == "next" else -1))
+            if target is None:
+                self.close()  # a click outside the card closes it
+            elif target == "close":
+                self.fx.press("close", self._clock)
+                self.close()
+            elif target in ("prev", "next"):
+                self.go(self.page + (1 if target == "next" else -1), target)
             elif isinstance(target, int):
                 self.go(target)
 
-    @staticmethod
-    def _target(pos) -> object:
-        if PREV.collidepoint(pos):
+    def _target(self, pos) -> object:
+        layout = LAYOUT
+        if layout.prev.collidepoint(pos):
             return "prev"
-        if NEXT.collidepoint(pos):
+        if layout.next.collidepoint(pos):
             return "next"
-        return next((i for i, r in enumerate(DOTS) if r.collidepoint(pos)), None)
+        if layout.close.collidepoint(pos):
+            return "close"
+        dot = next((i for i in range(len(TOPICS)) if dot_rect(i).collidepoint(pos)), None)
+        if dot is not None:
+            return dot
+        return "card" if layout.card.collidepoint(pos) else None
 
-    # --- drawing -----------------------------------------------------------------------------
-    def draw(self, canvas: pg.Surface) -> None:
-        v, i = self.view, self.page
-        self.synth.draw(canvas, self._clock)
-        hud.glow_text(canvas, v, t("guide.title"), 40, C.WHITE, C.MAGENTA, (60, 50), face="display",
-                      align="left")  # fmt: skip
-        hud.keycap(canvas, v, t("keycap.esc"), (1220 - 120, 42), 36)
-        hud.text(canvas, v, t("guide.back_label"), 14, C.TEXT_DIM, (1220 - 76, 46))
-        blit_rrect(canvas, v, CARD.x, CARD.y, CARD.w, CARD.h, 10, C.PANEL, 1.6, C.VIOLET, 0.5)
-        canvas.blit(self._picture(i), v.ipt(ART_POS))
-        hud.label(canvas, v, t("guide.page").format(n=i + 1, of=len(TOPICS)), (TEXT_X, 128),
+    # --- time ----------------------------------------------------------------------------------
+    def update(self, dt: float) -> None:
+        if not self.is_open:
+            return
+        self._clock += dt
+        if self._closing:
+            self.k = max(0.0, self.k - dt / CLOSE_S)
+            if self.k == 0.0:
+                self.is_open, self._closing = False, False
+        else:
+            self.k = min(1.0, self.k + dt / OPEN_S)
+        if self._flip_at is not None and self._clock - self._flip_at >= FLIP_OFF_S + FLIP_ON_S:
+            self._flip_at = None
+        chosen = self._hover if self._hover in ("prev", "next", "close") else None
+        rects = {"prev": LAYOUT.prev, "next": LAYOUT.next, "close": LAYOUT.close}
+        self.fx.update(dt, chosen, rects, self._clock)
+
+    # --- one page, made once ---------------------------------------------------------------------
+    def _page(self, index: int) -> pg.Surface:
+        """The flipping part of a page, in device px: made when first shown, and again after a
+        language or window-size change."""
+        key = (index, i18n.get_lang())
+        if key not in self._pages:
+            self._pages[key] = self._make_page(index)
+        return self._pages[key]
+
+    def _make_page(self, index: int) -> pg.Surface:
+        v, layout = self.view, LAYOUT
+        surf = pg.Surface(v.rect(*layout.content).size)
+        surf.fill(self._card_fill())
+        cv = v.shifted(*v.ipt(layout.content.topleft))  # draw with the page's own corner as origin
+        pic = help_pictures.build(index, View(v.s * layout.art_k))
+        surf.blit(pic, cv.ipt(layout.art))
+        prefix, count, markers = TOPICS[index]
+        hud.label(surf, cv, t("guide.page").format(n=index + 1, of=len(TOPICS)), layout.label,
                   C.TEXT_DIM, 11)  # fmt: skip
-        hud.text(canvas, v, t(f"{TOPICS[i][0]}.title"), 28, C.CYAN, (TEXT_X, 148), bold=True)
-        self._sentences(canvas, i)
-        for key, rect, label in (("prev", PREV, "guide.prev"), ("next", NEXT, "guide.next")):
-            off = (key == "prev" and i == 0) or (key == "next" and i == len(TOPICS) - 1)
-            hud.live_button(canvas, v, rect, t(label), self.fx, key, self._clock,
-                            primary=False, enabled=not off)  # fmt: skip
-        for k, r in enumerate(DOTS):
-            lit = k == i
-            colour = C.ACCENT if lit else C.PANEL_EDGE
-            blit_dot(canvas, v, r.center, 5 if lit else 4, colour, 0.9 if lit else 0.0)
-
-    def _sentences(self, canvas: pg.Surface, topic: int, size: int = 18) -> None:
-        """The topic's sentences, each behind its step number (or a small dot)."""
-        v = self.view
-        prefix, count, markers = TOPICS[topic]
-        step, y = round(size * 1.55), 202.0
+        hud.text(surf, cv, t(f"{prefix}.title"), layout.title_size, C.CYAN, layout.title, bold=True)
+        size = layout.text_size
+        step, y = round(size * 1.5), layout.text[1]
         for i in range(count):
-            self._marker(canvas, markers[i], (TEXT_X + 12, y + size * 0.36))
-            for line in hud.wrap(v, t(f"{prefix}.b{i + 1}"), size, TEXT_W - 36):
-                hud.text(canvas, v, line, size, C.TEXT, (TEXT_X + 36, y))
+            self._marker(surf, cv, markers[i], (layout.text[0] + 10, y + size * 0.36))
+            for line in hud.wrap(cv, t(f"{prefix}.b{i + 1}"), size, layout.text_w - 30):
+                hud.text(surf, cv, line, size, C.TEXT, (layout.text[0] + 30, y))
                 y += step
             y += step * 0.45
+        return surf
 
-    def _marker(self, canvas: pg.Surface, n: int | None, c: tuple[float, float]) -> None:
-        a = Annot(canvas, self.view)
+    @staticmethod
+    def _marker(surf: pg.Surface, cv: View, n: int | None, c: tuple[float, float]) -> None:
+        a = Annot(surf, cv)
         if n is None:
             a.disc(c, 3.5, C.ACCENT)
         else:
             a.step(n, c)
+
+    # --- drawing ---------------------------------------------------------------------------------
+    def draw(self, canvas: pg.Surface) -> None:
+        if not self.is_open:
+            return
+        v, layout = self.view, LAYOUT
+        e = 1 - (1 - self.k) ** 3
+        canvas.blit(self._dim(canvas.get_size(), round(DIM_ALPHA * e)), (0, 0))
+        card = layout.card
+        opening = self.k < 1.0
+        if opening:  # only a band round the middle line is lit, and it grows to the whole card
+            half = card.h * e / 2
+            canvas.set_clip(v.rect(card.x - EDGE_PAD, card.centery - half, card.w + 2 * EDGE_PAD,
+                                   2 * half))  # fmt: skip
+        self._paint(canvas, v)
+        if opening:
+            canvas.set_clip(None)
+            glow = 1 - e
+            for y in (card.centery - half, card.centery + half):
+                _light_line(canvas, v, card.x, y, card.w, glow)
+
+    def _dim(self, size: tuple[int, int], alpha: int) -> pg.Surface:
+        """The dark veil over the scene behind (made again only when its size or alpha change)."""
+        if self._veil is None or self._veil[0] != (size, alpha):
+            veil = pg.Surface(size, pg.SRCALPHA)
+            veil.fill((*C.OUTLINE, alpha))
+            self._veil = ((size, alpha), veil)
+        return self._veil[1]
+
+    def _paint(self, canvas: pg.Surface, v: View) -> None:
+        layout = LAYOUT
+        card = layout.card
+        blit_rrect(canvas, v, card.x, card.y, card.w, card.h, 10, C.PANEL, 1.8, C.VIOLET, 1.0)
+        hud.glow_text(canvas, v, t("guide.title"), 26, C.WHITE, C.MAGENTA, layout.header,
+                      face="display", align="left")  # fmt: skip
+        self._content(canvas, v)
+        for key, rect, d in (("prev", layout.prev, 1), ("next", layout.next, -1)):
+            self._arrow_button(canvas, v, rect, d, key)
+        self._close_button(canvas, v, layout.close)
+        for i in range(len(TOPICS)):
+            lit = i == self.page
+            colour = C.ACCENT if lit else C.PANEL_EDGE
+            blit_dot(canvas, v, dot_rect(i).center, 5 if lit else 4, colour, 0.9 if lit else 0.0)
+
+    def _content(self, canvas: pg.Surface, v: View) -> None:
+        rect = LAYOUT.content
+        if self._flip_at is None:
+            canvas.blit(self._page(self.page), v.ipt(rect.topleft))
+            return
+        age = self._clock - self._flip_at
+        if age < FLIP_OFF_S:  # the old page folds into a line ...
+            _fold(canvas, v, rect, self._page(self._from), (1 - age / FLIP_OFF_S) ** 2)
+        else:  # ... and the new one opens out of it
+            u = min(1.0, (age - FLIP_OFF_S) / FLIP_ON_S)
+            _fold(canvas, v, rect, self._page(self.page), 1 - (1 - u) ** 2)
+
+    def _arrow_button(self, canvas, v: View, rect: pg.Rect, d: int, key: str) -> None:
+        lit, press = self.fx.lit.get(key, 0.0), self.fx.press_k(key, self._clock)
+        grow = 1.0 + 0.08 * lit - 0.1 * press
+        w, h = rect.w * grow, rect.h * grow
+        fill = C.lerp(C.lerp(C.PANEL, C.PANEL_HOT, lit), C.lerp(C.CYAN, C.WHITE, 0.3), 0.35 * press)
+        edge = C.lerp(C.PANEL_EDGE, C.CYAN, lit)
+        blit_rrect(canvas, v, rect.centerx - w / 2, rect.centery - h / 2, w, h, min(w, h) / 2, fill,
+                   1.6, edge, lit)  # fmt: skip
+        nudge = 3.0 * lit * d  # the chevron leans the way it points
+        _chevron(
+            canvas, v, (rect.centerx + nudge, rect.centery), d, C.lerp(C.TEXT_DIM, C.WHITE, lit)
+        )
+
+    def _close_button(self, canvas, v: View, rect: pg.Rect) -> None:
+        lit, press = self.fx.lit.get("close", 0.0), self.fx.press_k("close", self._clock)
+        grow = 1.0 + 0.08 * lit - 0.1 * press
+        w, h = rect.w * grow, rect.h * grow
+        fill = C.lerp(C.PANEL, C.PANEL_HOT, lit)
+        edge = C.lerp(C.PANEL_EDGE, C.CYAN, lit)
+        blit_rrect(
+            canvas, v, rect.centerx - w / 2, rect.centery - h / 2, w, h, 8, fill, 1.4, edge, lit
+        )
+        _cross(canvas, v, rect.center, C.lerp(C.TEXT_DIM, C.WHITE, lit))

@@ -69,7 +69,8 @@ def main() -> int:
     if args.scene == "play":
         app.go_play()
     if args.scene == "help":
-        app.go_help()
+        # the how-to-play card over the menu (over the table: --scene play --do "key h")
+        app.open_help()
         app.help.page = args.page
     app.skip_transition()  # photograph the scene itself, not the switch
     if args.lang:

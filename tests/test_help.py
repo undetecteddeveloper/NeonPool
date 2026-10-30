@@ -1,4 +1,4 @@
-"""The how-to-play screen: opening and leaving it, its pages, its words, its real pictures."""
+"""The how-to-play card: opening and closing it, its pages, its words, its real pictures."""
 
 import pygame as pg
 import pytest
@@ -11,11 +11,13 @@ from game.render.layout import to_px
 from game.render.view import View
 from game.scenes import help as help_scene
 from game.scenes import help_pictures as pics
-from game.scenes.help import CARD, NEXT, PREV, TEXT_W, TEXT_X, TOPICS
+from game.scenes.help import FLIP_OFF_S, FLIP_ON_S, TOPICS, dot_rect
 
 
-@pytest.fixture
-def app():
+@pytest.fixture(params=list(help_scene.LAYOUTS))
+def app(request, monkeypatch):
+    """Every test runs on every layout: the two differ only in where things stand."""
+    monkeypatch.setattr(help_scene, "LAYOUT", help_scene.LAYOUTS[request.param])
     pg.init()
     a = App(pg.display.set_mode(config.LOGICAL_SIZE))
     yield a
@@ -31,33 +33,64 @@ def click(pos):
     return pg.event.Event(pg.MOUSEBUTTONDOWN, pos=pos, button=1)
 
 
+def run(app, seconds):
+    """Let `seconds` of game time pass, drawing every frame."""
+    for _ in range(round(seconds * 60)):
+        app.update(1 / 60)
+        app.draw()
+
+
+def open_help(app):
+    app.open_help()
+    run(app, 0.6)  # the card has opened out
+    assert app.help.k == 1.0
+
+
 # --- getting in and out ---------------------------------------------------------------------
-def test_the_menu_has_a_how_to_play_button_that_opens_the_help(app):
+def test_the_menu_has_a_how_to_play_button_that_opens_the_card_over_the_menu(app):
     app.handle_event(key(pg.K_DOWN))  # play -> how to play
     app.handle_event(key(pg.K_RETURN))
-    assert app.scene is app.help
+    assert app.help.is_open and app.scene is app.menu  # no other screen: the menu stays behind
 
 
-def test_escape_goes_back_to_the_menu_it_came_from(app):
-    app.go_help()
+def test_escape_closes_the_card_and_the_menu_is_still_there(app):
+    open_help(app)
     app.handle_event(key(pg.K_ESCAPE))
-    assert app.scene is app.menu
+    assert app.help.is_open  # it folds back into its line first ...
+    run(app, help_scene.CLOSE_S + 0.1)
+    assert not app.help.is_open and app.scene is app.menu  # ... and then it is gone
 
 
-def test_h_in_a_game_opens_the_help_and_escape_returns_to_the_same_game(app):
+def test_h_in_a_game_opens_the_card_over_the_table_and_the_game_waits(app):
     app.go_play()
+    app.skip_transition()
     app.play.rules.shots = 3
     app.handle_event(key(pg.K_h))
-    assert app.scene is app.help
-    app.handle_event(key(pg.K_ESCAPE))
-    assert app.scene is app.play and app.play.rules.shots == 3
+    assert app.help.is_open and app.scene is app.play
+    open_help(app)
+    clock = app.play._clock
+    run(app, 0.5)
+    assert app.play._clock == clock  # the table is paused behind the card
+    app.handle_event(key(pg.K_h))  # H again closes it
+    run(app, help_scene.CLOSE_S + 0.1)
+    assert not app.help.is_open and app.play.rules.shots == 3
+    app.update(1 / 60)
+    assert app.play._clock > clock  # and the game goes on
 
 
-def test_opening_the_help_cancels_an_aim_in_progress(app):
+def test_opening_the_card_cancels_an_aim_in_progress(app):
     app.go_play()
     app.play.drag.begin((100, 100))
     app.handle_event(key(pg.K_h))
     assert not app.play.drag.active
+
+
+def test_while_the_card_is_open_the_scene_behind_gets_no_keys_and_no_clicks(app):
+    open_help(app)
+    sel = app.menu.sel
+    app.handle_event(key(pg.K_DOWN))
+    app.handle_event(click(app.menu._rects()[3].center))  # the Quit button is under the card
+    assert app.menu.sel == sel and app.running
 
 
 def test_the_side_panel_lists_the_help_key():
@@ -66,26 +99,107 @@ def test_the_side_panel_lists_the_help_key():
 
 
 # --- pages ----------------------------------------------------------------------------------
-def test_pages_turn_with_keys_and_stop_at_both_ends(app):
-    app.go_help()
+def test_pages_turn_with_keys_and_go_round_at_both_ends(app):
+    open_help(app)
     h = app.help
     app.handle_event(key(pg.K_LEFT))
-    assert h.page == 0
-    for _ in range(len(TOPICS) + 3):
+    assert h.page == len(TOPICS) - 1  # before the first comes the last
+    app.handle_event(key(pg.K_RIGHT))
+    assert h.page == 0  # and after the last comes the first
+    for _ in range(len(TOPICS) + 2):
         app.handle_event(key(pg.K_RIGHT))
-    assert h.page == len(TOPICS) - 1
-    app.handle_event(key(pg.K_LEFT))
-    assert h.page == len(TOPICS) - 2
+    assert h.page == 2
 
 
-def test_pages_turn_with_the_buttons_and_the_dots(app):
-    app.go_help()
-    app.handle_event(click(NEXT.center))
+def test_pages_turn_with_the_arrows_and_the_dots(app):
+    open_help(app)
+    layout = help_scene.LAYOUT
+    app.handle_event(click(layout.next.center))
     assert app.help.page == 1
-    app.handle_event(click(PREV.center))
+    app.handle_event(click(layout.prev.center))
     assert app.help.page == 0
-    app.handle_event(click(help_scene.DOTS[4].center))
+    app.handle_event(click(dot_rect(4).center))
     assert app.help.page == 4
+
+
+def test_the_close_button_and_a_click_outside_the_card_close_it_but_a_click_on_it_does_not(app):
+    open_help(app)
+    layout = help_scene.LAYOUT
+    app.handle_event(click(layout.card.center))
+    run(app, 0.4)
+    assert app.help.is_open and app.help.k == 1.0
+    app.handle_event(click(layout.close.center))
+    run(app, help_scene.CLOSE_S + 0.1)
+    assert not app.help.is_open
+    open_help(app)
+    app.handle_event(click((layout.card.x - 90, layout.card.y - 20)))  # on the dark
+    run(app, help_scene.CLOSE_S + 0.1)
+    assert not app.help.is_open
+
+
+def test_the_card_stays_where_you_left_off(app):
+    open_help(app)
+    app.handle_event(key(pg.K_RIGHT))
+    app.handle_event(key(pg.K_ESCAPE))
+    run(app, 0.5)
+    open_help(app)
+    assert app.help.page == 1
+
+
+def test_arrows_and_the_close_button_light_up_under_the_pointer(app):
+    open_help(app)
+    layout = help_scene.LAYOUT
+    app.handle_event(
+        pg.event.Event(pg.MOUSEMOTION, pos=layout.next.center, rel=(0, 0), buttons=(0,) * 3)
+    )
+    run(app, 0.3)
+    assert app.help.fx.lit["next"] == 1.0 and app.help.fx.lit["prev"] == 0.0
+
+
+# --- the tube-like motion -------------------------------------------------------------------
+def _bright(screen, rect, step=6):
+    return sum(sum(screen.get_at((x, rect.centery))[:3]) for x in range(rect.x, rect.right, step))
+
+
+def test_the_card_opens_out_of_a_bright_line_in_its_middle(app):
+    card = help_scene.LAYOUT.card
+    app.open_help()
+    app.update(0.03)
+    app.draw()
+    screen = pg.display.get_surface()
+    assert 0.0 < app.help.k < 0.3
+    line = _bright(screen, card.inflate(-60, 0))  # along the middle of the card
+    above = sum(
+        sum(screen.get_at((x, card.y + 24))[:3]) for x in range(card.x + 30, card.right - 30, 6)
+    )
+    assert line > above + 3000  # a lit line, with the dark of the scene above it
+    run(app, 0.5)
+    assert app.help.k == 1.0
+
+
+def test_turning_a_page_folds_the_old_one_into_a_line_and_opens_the_new_one(app):
+    open_help(app)
+    content = help_scene.LAYOUT.content
+    screen = pg.display.get_surface()
+    app.handle_event(key(pg.K_RIGHT))
+    assert app.help._flip_at is not None
+    run(app, FLIP_OFF_S - 0.01)  # the old page has all but folded away
+    thin = _bright(screen, content.inflate(-80, 0))
+    top = sum(
+        sum(screen.get_at((x, content.y + 20))[:3])
+        for x in range(content.x + 60, content.right - 60, 6)
+    )
+    assert thin > top + 3000
+    run(app, FLIP_ON_S + 0.1)
+    assert app.help._flip_at is None  # the new page is whole again
+
+
+def test_keys_pressed_while_a_page_turns_still_count(app):
+    open_help(app)
+    for _ in range(3):
+        app.handle_event(key(pg.K_RIGHT))
+        run(app, 0.05)
+    assert app.help.page == 3
 
 
 # --- words ------------------------------------------------------------------------------------
@@ -101,19 +215,26 @@ def test_every_topic_has_its_words_in_both_languages(lang):
 
 @pytest.mark.parametrize("lang", ["vi", "en"])
 def test_the_words_fit_inside_the_card(app, lang):
-    """No sentence runs out of its column and the last line stays above the bottom of the card."""
+    """No sentence runs out of its column and the last line stays above the bottom of the page."""
     i18n.set_lang(lang)
-    v = app.help.view
+    v, layout = app.help.view, help_scene.LAYOUT
+    size = layout.text_size
     for i, (prefix, count, _) in enumerate(TOPICS):
-        y = 190.0
+        y = layout.text[1]
         for k in range(count):
-            lines = hud.wrap(v, i18n.t(f"{prefix}.b{k + 1}"), 19, TEXT_W - 36)
+            lines = hud.wrap(v, i18n.t(f"{prefix}.b{k + 1}"), size, layout.text_w - 30)
             for line in lines:
-                assert hud.text_width(v, line, 19) <= TEXT_W - 36 + 0.5, (lang, prefix, line)
-            y += round(19 * 1.4) * (len(lines) + 0.45)
-        assert y < CARD.bottom - 24, (lang, i, y)
+                assert hud.text_width(v, line, size) <= layout.text_w - 30 + 0.5, (
+                    lang,
+                    prefix,
+                    line,
+                )
+            y += round(size * 1.5) * (len(lines) + 0.45)
+        y -= round(size * 1.5) * 0.45  # no gap after the last sentence
+        assert y < layout.content.bottom - 8, (lang, i, y)
         title = i18n.t(f"{prefix}.title")
-        assert TEXT_X + hud.text_width(v, title, 30, True) < CARD.right - 20, (lang, title)
+        right = layout.title[0] + hud.text_width(v, title, layout.title_size, True)
+        assert right < layout.card.right - 20, (lang, title)
 
 
 def test_wrap_breaks_between_words_and_keeps_a_long_word_whole(app):
@@ -124,13 +245,22 @@ def test_wrap_breaks_between_words_and_keeps_a_long_word_whole(app):
     assert hud.wrap(v, "", 19, 100) == []
 
 
+def test_the_card_sits_inside_the_screen_with_room_for_its_arrows(app):
+    w, h = config.LOGICAL_SIZE
+    layout = help_scene.LAYOUT
+    for r in (layout.card, layout.prev, layout.next, layout.close):
+        assert 0 <= r.x and r.right <= w and 0 <= r.y and r.bottom <= h, r
+    assert layout.card.contains(layout.close) and layout.card.contains(layout.content)
+
+
 # --- pictures: real game frames with marks --------------------------------------------------
 @pytest.mark.parametrize("lang", ["vi", "en"])
 def test_every_picture_can_be_made_in_both_languages(app, lang):
     i18n.set_lang(lang)
-    app.go_help()
+    app.open_help()
     for i in range(len(TOPICS)):
         app.help.page = i
+        app.update(1 / 60)
         app.draw()
 
 
@@ -139,6 +269,15 @@ def test_the_pictures_are_the_size_of_the_art_area():
     for build in pics.PICTURES:
         w, h = build(v).get_size()
         assert abs(w - pics.ART_W) <= 2 and abs(h - pics.ART_H) <= 2, build.__name__
+
+
+def test_the_pictures_are_made_small_not_shrunk_from_big_ones(app):
+    """The card shows a picture at its own size: made at that scale, so lines stay sharp."""
+    k = help_scene.LAYOUT.art_k
+    pic = pics.build(0, View(k))
+    assert (
+        abs(pic.get_width() - pics.ART_W * k) <= 2 and abs(pic.get_height() - pics.ART_H * k) <= 2
+    )
 
 
 def _px(pic: pg.Surface, p) -> tuple[int, int, int]:
@@ -165,8 +304,8 @@ def test_the_cue_ball_in_hand_picture_shows_the_real_pulsing_ring():
     cx, cy = to_px(0.62, 0.64)
     crop_x, crop_y = 60, 250  # the crop used by picture_hand
     # walk right from the ball's centre: the pink-violet ring is a few px outside the ball
-    run = [_px(pic, (cx - crop_x + dx, cy - crop_y)) for dx in range(12, 24)]
-    assert any(r > 180 and g < 120 and b > 140 for r, g, b in run)  # pink-violet, not night blue
+    run_ = [_px(pic, (cx - crop_x + dx, cy - crop_y)) for dx in range(12, 24)]
+    assert any(r > 180 and g < 120 and b > 140 for r, g, b in run_)  # pink-violet, not night blue
 
 
 def test_the_result_pictures_are_the_game_s_own_cards(app):

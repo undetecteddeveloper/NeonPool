@@ -91,8 +91,11 @@ def main() -> int:
     app.play.new_game()
     app.play.rules.phase = LOST
     card = measure(app, 60)
-    # the how-to-play screen: the first frame of each page also makes its picture (ms, one-off)
-    app.go_help()
+    # the how-to-play card over the menu: the first frame of each page also makes its picture
+    # (ms, one-off); then the card opening out of its line and a page turning, then at rest
+    app.go_menu()
+    app.skip_transition()
+    app.open_help()
     for page in range(6):
         app.help.page = page
         t0 = time.perf_counter()
@@ -100,7 +103,11 @@ def main() -> int:
         app.draw()
         first = (time.perf_counter() - t0) * 1000
         print(f"smoke hướng dẫn trang {page + 1}: khung đầu (làm hình) {first:.0f} ms")
+    app.help.k = 0.0
+    opening = measure(app, 18)
     app.help.page = 2
+    app.help.go(3)
+    turning = measure(app, 18)
     guide = measure(app, 60)
     pg.quit()
 
@@ -110,6 +117,8 @@ def main() -> int:
         & report("cú phá", breaking)
         & report("bi trắng trong tay", in_hand)
         & report("bảng kết quả", card)
+        & report("hướng dẫn (đang mở ra)", opening)
+        & report("hướng dẫn (đang lật trang)", turning)
         & report("hướng dẫn", guide)
     )
     return 0 if ok else 1

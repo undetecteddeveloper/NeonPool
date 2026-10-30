@@ -251,7 +251,7 @@ class PlayScene:
         if key == pg.K_r:
             self.new_game()
         elif key == pg.K_h:
-            self.app.go_help()
+            self.app.open_help()
         elif key == pg.K_ESCAPE:
             if self.drag.active:
                 self.drag.cancel()

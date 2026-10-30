@@ -94,7 +94,7 @@ class MenuScene:
         if item == "play":
             self.app.go_play()
         elif item == "help":
-            self.app.go_help()
+            self.app.open_help()
         elif item == "settings":
             self.settings.open()
         else:
