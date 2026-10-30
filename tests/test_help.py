@@ -14,10 +14,8 @@ from game.scenes import help_pictures as pics
 from game.scenes.help import TOPICS, dot_rect
 
 
-@pytest.fixture(params=list(help_scene.LAYOUTS))
-def app(request, monkeypatch):
-    """Every test runs on every layout: the two differ only in where things stand."""
-    monkeypatch.setattr(help_scene, "LAYOUT", help_scene.LAYOUTS[request.param])
+@pytest.fixture
+def app():
     pg.init()
     a = App(pg.display.set_mode(config.LOGICAL_SIZE))
     yield a

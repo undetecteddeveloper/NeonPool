@@ -57,33 +57,17 @@ class Style:
         return self.bars * 4 * self.beat_s
 
 
-# --- the named styles: the menu's two, and the table's three (docs/GAME_DESIGN.md "round 11") --
+# --- the two styles the game plays (chosen by the user from candidates, docs/GAME_DESIGN.md) ---
 MENU_DUSK = Style(  # slow and dreamy: long pads, a soft arpeggio, a few bells
     "menu_dusk", 84, ((57, MINOR), (53, MAJOR), (60, MAJOR), (55, MAJOR)),
     pad=0.9, arp=0.5, arp_shape=(0, 1, 2, 3, 2, 1), bass=0.55, bell=0.22, bell_every=5, echo=0.38,
-)  # fmt: skip
-MENU_CITY = Style(  # a little drive: a soft kick, a ticking hat, a pulsing bass
-    "menu_city", 100, ((62, MINOR), (58, MAJOR), (65, MAJOR), (60, MAJOR)),
-    pad=0.55, arp=0.45, arp_shape=(0, 2, 1, 3), bass=0.5, bass_per_beat=2, kick=0.45, hat=0.2,
-    echo=0.3, seed=11,
 )  # fmt: skip
 PLAY_GROOVE = Style(  # medium tempo, a light kick on 1 and 3, a hopping bass, bright chords
     "play_groove", 104, ((60, MAJOR7), (55, MAJOR), (57, MINOR7), (53, MAJOR7)),
     pad=0.45, arp=0.42, arp_shape=(0, 2, 1, 3, 2, 1), bass=0.5, bass_per_beat=2,
     bass_steps=(0, 0, 12, 0, 0, 7, 12, 0), kick=0.42, hat=0.16, echo=0.3, seed=21,
 )  # fmt: skip
-PLAY_GLIDE = Style(  # a shimmer of quick arpeggio notes over an easy beat, a few bells
-    "play_glide", 100, ((57, MINOR7), (53, MAJOR7), (60, MAJOR), (55, MAJOR)),
-    pad=0.5, arp=0.27, arp_per_beat=4, arp_shape=(0, 1, 2, 3, 2, 1), bass=0.45, bass_per_beat=2,
-    bass_steps=(0, 0, 0, 12), kick=0.32, hat=0.13, hat_offsets=(0.25, 0.75), bell=0.2,
-    bell_every=6, echo=0.4, seed=22,
-)  # fmt: skip
-PLAY_BOUNCE = Style(  # the liveliest of the three: a back-beat clap and a bouncing bass
-    "play_bounce", 108, ((62, MAJOR), (57, MAJOR), (59, MINOR), (55, MAJOR)),
-    pad=0.42, arp=0.45, arp_shape=(0, 1, 2, 1), bass=0.55, bass_per_beat=2,
-    bass_steps=(0, 12, 0, 12, 0, 12, 7, 12), kick=0.45, snare=0.22, hat=0.18, echo=0.28, seed=23,
-)  # fmt: skip
-STYLES = {s.name: s for s in (MENU_DUSK, MENU_CITY, PLAY_GROOVE, PLAY_GLIDE, PLAY_BOUNCE)}
+STYLES = {s.name: s for s in (MENU_DUSK, PLAY_GROOVE)}
 TRACKS = {"menu": MENU_DUSK, "play": PLAY_GROOVE}  # what the game plays now
 
 

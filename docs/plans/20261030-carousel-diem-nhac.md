@@ -40,8 +40,8 @@ Nội dung người chơi thấy: `GAME_DESIGN.md` "Phản hồi lần 10". Brie
 | T3 | Nhạc: `music.py`, `Audio.update_music`, `Settings.music`, hàng Cài đặt, `tools/music_preview.py` | `music.py`, `audio.py`, `settings.py`, `scenes/settings.py` |
 | T4 | Tài liệu: GAME_DESIGN, ARCHITECTURE, PROGRESS | `docs/`, `PROGRESS.md` |
 
-## Còn chờ người dùng
-Chọn bố cục khung (`wide` / `inside`) sau khi xem ảnh; nghe `tools/_out/music/*.wav` và chọn một bản menu, một bản chơi. Bản không chọn bị xoá khỏi code.
+## Đã chốt
+Người dùng chọn bố cục `wide` và giữ nhạc `menu_dusk` / `play_groove`; bản không chọn đã xoá khỏi code.
 
 ## Bổ sung lần 11 (2026-10-30)
 **Số chạy ở thẻ kết quả** (`tests/test_tally.py`)
@@ -50,7 +50,7 @@ Chọn bố cục khung (`wide` / `inside`) sau khi xem ảnh; nghe `tools/_out/
 - AC16 Số vừa dừng loé sáng `TALLY_FLASH_S`; nút Chơi ván mới dùng được ngay khi đang đếm; thẻ không đếm (ảnh hướng dẫn) vẽ số đủ; bàn chơi tạm dừng thì đếm cũng dừng.
 
 **Nhạc lúc chơi** (`tests/test_music.py`)
-- AC17 Ba bản `play_*` đều ≥ 98 BPM, có kick, bass nhịp tám và hi-hat; bản đang dùng có kick; `play_bounce` có thêm vỗ tay.
+- AC17 Bản `play_*` (ban đầu có ba ứng viên, nay còn `play_groove`) ≥ 98 BPM, có kick, bass nhịp tám và hi-hat; bản đang dùng có kick; `play_bounce` có thêm vỗ tay.
 
 **Lỗi FPS khi mở Cài đặt** (`tests/test_neon.py`, `tests/test_settings_and_controls.py`)
 - AC18 Mở Cài đặt chỉ dựng MỘT sprite khung bảng, không phải mỗi khung; quầng sáng làm tròn theo 1/8; kho đệm sprite bỏ 1/3 mục cũ nhất khi đầy chứ không xoá cả kho; bảng được dựng sẵn khi menu rảnh (game thật).

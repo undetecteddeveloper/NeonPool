@@ -44,7 +44,7 @@ DOT_STEP = 26
 
 @dataclass(frozen=True)
 class Layout:
-    """Where everything stands (logical px). Two named layouts; the module uses `LAYOUT`."""
+    """Where everything stands (logical px); the module uses `LAYOUT`."""
 
     card: pg.Rect
     content: pg.Rect  # the part that flips: picture, page label, topic title, sentences
@@ -64,7 +64,7 @@ class Layout:
 
 
 def _wide() -> Layout:
-    """A: a wide card: picture on the left, words on the right, round arrows outside the card."""
+    """A wide card: picture on the left, words on the right, round arrows outside the card."""
     card = pg.Rect(150, 112, 980, 496)
     content = pg.Rect(card.x + 16, card.y + 70, card.w - 32, 362)
     art = (card.x + 34, content.y + 46)
@@ -88,32 +88,7 @@ def _wide() -> Layout:
     )
 
 
-def _inside() -> Layout:
-    """B: the same card, but the arrows sit in its bottom row, either side of the dots."""
-    wide = _wide()
-    card = pg.Rect(wide.card.x, 101, wide.card.w, 518)
-    content = pg.Rect(card.x + 16, card.y + 70, card.w - 32, wide.content.h)
-    dx, dy = content.x - wide.content.x, content.y - wide.content.y
-    return Layout(
-        **{
-            **wide.__dict__,
-            "card": card,
-            "content": content,
-            "art": (wide.art[0] + dx, wide.art[1] + dy),
-            "label": (wide.label[0] + dx, wide.label[1] + dy),
-            "title": (wide.title[0] + dx, wide.title[1] + dy),
-            "text": (wide.text[0] + dx, wide.text[1] + dy),
-            "prev": pg.Rect(card.x + 34, card.bottom - 62, 64, 40),
-            "next": pg.Rect(card.right - 34 - 64, card.bottom - 62, 64, 40),
-            "close": pg.Rect(card.right - 34 - 36, card.y + 18, 36, 36),
-            "dots_y": card.bottom - 42,
-            "header": (card.x + 34, card.y + 36),
-        }
-    )
-
-
-LAYOUTS = {"wide": _wide(), "inside": _inside()}
-LAYOUT = LAYOUTS["wide"]
+LAYOUT = _wide()
 
 
 def dot_rect(i: int, layout: Layout | None = None) -> pg.Rect:
