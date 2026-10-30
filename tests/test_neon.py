@@ -566,3 +566,35 @@ def test_the_real_game_prewarms_the_settings_panel_while_the_menu_idles():
     _frames(app, 60 * 3)  # the menu has been up a while: the pictures first, then the panel
     assert len(_panel_sprites()) == 1
     pg.quit()
+
+
+def test_the_result_card_grows_in_from_one_sprite_not_one_per_frame():
+    pg.init()
+    v = View(1.0)
+    canvas = pg.Surface(v.canvas)
+
+    def card(age):
+        hud.draw_result(
+            canvas, v, won=True, reason=None, score=0, rows=[("", 0), ("", 0)], hover=None, age=age
+        )
+
+    card(0.05)  # the first frame makes the sprite
+    made = len(draw._rr_cache)
+    for i in range(12):  # the card keeps growing: every size is the same sprite, shrunk
+        card(0.02 + 0.02 * i)
+    assert len(draw._rr_cache) == made
+    pg.quit()
+
+
+def test_prewarming_makes_the_result_card_sprites_before_any_game_ends():
+    pg.init()
+    v = View(1.0)
+    draw._rr_cache.clear()
+    hud._result_warm[0] = 0.0
+    hud.prewarm_result(v)
+    card = hud.RESULT_CARD
+    assert [k for k in draw._rr_cache if (k[1], k[2]) == (card.w, card.h)]
+    n = len(draw._rr_cache)
+    hud.prewarm_result(v)  # once per view scale
+    assert len(draw._rr_cache) == n
+    pg.quit()

@@ -142,6 +142,26 @@ def synth_notice() -> np.ndarray:
     return _to_int16(_notes([1047, 1568], 0.07, 0.07, tail=0.12), gain=0.6)
 
 
+# --- the result card's numbers counting up: ticks that climb a scale, then a bell ----------------
+TICK_NOTES = (784, 880, 988, 1175, 1319, 1568, 1760, 1976)  # a pentatonic climb, G5 up to B6
+
+
+def synth_tick(freq: float) -> np.ndarray:
+    """One step of a counting number: a very short soft blip."""
+    return _to_int16(_square(freq, 0.04, 0.011), gain=0.5)
+
+
+def synth_ting(low: float, high: float) -> np.ndarray:
+    """A number has stopped: a small glassy bell of two notes."""
+    t = _t(0.6)
+    x = (
+        0.8 * np.sin(2 * np.pi * low * t) * _decay(t, 0.22)
+        + 0.5 * np.sin(2 * np.pi * high * t) * _decay(t, 0.16)
+        + 0.2 * np.sin(2 * np.pi * low * 2.76 * t) * _decay(t, 0.06)
+    )
+    return _to_int16(x * np.minimum(1.0, t / 0.002), gain=0.65)
+
+
 def volume_for_speed(speed: float) -> float:
     return float(min(1.0, 0.12 + 0.88 * (max(speed, 0.0) / SFX_REF_SPEED) ** 0.7))
 
@@ -175,6 +195,9 @@ class Audio:
                 ("lose", synth_lose),
                 ("foul", synth_foul),
                 ("notice", synth_notice),
+                ("ting_win", lambda: synth_ting(1319, 1976)),  # bright: E6 and B6
+                ("ting_lose", lambda: synth_ting(440, 659)),  # lower: A4 and E5
+                *((f"tick{i}", lambda f=f: synth_tick(f)) for i, f in enumerate(TICK_NOTES)),
             ):
                 self._sounds[name] = self._make(fn())
             self.available = True
@@ -258,6 +281,15 @@ class Audio:
 
     def play_notice(self) -> None:
         self._play("notice", 0.45)
+
+    def play_tally_tick(self, pitch: float) -> None:
+        """A counting number stepped; `pitch` 0..1 is how far up the scale it has climbed."""
+        i = round(min(1.0, max(0.0, pitch)) * (len(TICK_NOTES) - 1))
+        self._play(f"tick{i}", 0.4)
+
+    def play_tally_ting(self, won: bool, big: bool) -> None:
+        """A number stopped: bright after a win, lower after a loss; the score's is loudest."""
+        self._play("ting_win" if won else "ting_lose", 0.55 if big else 0.32)
 
     def play_shot(self, power: float) -> None:
         self._play("cue", 0.25 + 0.75 * power)

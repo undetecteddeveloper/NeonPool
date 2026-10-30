@@ -16,7 +16,16 @@ import pygame as pg
 from game.i18n import t
 from game.render import fonts, glow
 from game.render import palette as C
-from game.render.draw import Aa, BallSprites, blit_add, blit_dot, blit_pm, blit_rrect
+from game.render.draw import (
+    Aa,
+    BallSprites,
+    blit_add,
+    blit_dot,
+    blit_pm,
+    blit_rrect,
+    rrect_sprite,
+    veil,
+)
 from game.render.layout import PANEL_H, PANEL_W, PANEL_X, PANEL_Y
 from game.render.view import View
 
@@ -598,7 +607,72 @@ RESULT_BUTTONS = {
 RESULT_SCORE_Y, RESULT_SCORE_H = 140, 44  # the score line under the title (and the reason)
 RESULT_ROWS_Y, RESULT_ROW_STEP = 218, 46  # shots and fouls under the hairline below it
 RESULT_IN_S = 0.3  # the card grows in
-_dim_cache: dict[tuple[int, int], pg.Surface] = {}
+RESULT_DIM_ALPHA = 185  # how dark the table behind the card goes
+
+
+def draw_result_frame(
+    canvas: pg.Surface, v: View, *, won: bool, reason: str | None, row_names: list[str]
+) -> None:
+    """The card's parts that never move: frame, title, why, the labels and the hairline."""
+    c = RESULT_CARD
+    mood = C.OK if won else C.ERROR
+    blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, mood, 1.0)
+    title = t("result.won") if won else t("result.lost")
+    glow_text(
+        canvas, v, title, 46, C.WHITE, mood, (c.centerx, c.y + 54), strength=1.3, face="display"
+    )
+    if reason:
+        for i, line in enumerate(wrap(v, reason, 14, c.w - 60)[:2]):
+            text(canvas, v, line, 14, C.TEXT_DIM, (c.centerx, c.y + 98 + i * 19), center=True)
+    top = c.y + RESULT_SCORE_Y
+    label(canvas, v, t("result.score"), (c.x + 44, top + RESULT_SCORE_H / 2 - 5), C.TEXT, 14)
+    blit_rrect(canvas, v, c.x + 44, top + RESULT_SCORE_H + 18, c.w - 88, 1.5, 0.75, C.PANEL_EDGE, 0)
+    for i, name in enumerate(row_names):
+        label(canvas, v, name, (c.x + 44, c.y + RESULT_ROWS_Y + i * RESULT_ROW_STEP + 12), size=12)
+
+
+def draw_result_live(
+    canvas: pg.Surface,
+    v: View,
+    *,
+    score: int,
+    values: list[int],
+    fx: ButtonFx | None,
+    clock: float,
+    flashes: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> None:
+    """The card's parts that move: the numbers (they count up: see game/tally.py; `flashes`,
+    score first, are 1 just after a number stopped and fade to 0, making it glow whiter) and the
+    two buttons."""
+    c = RESULT_CARD
+    fl = [round(f * 4) / 4 for f in flashes]  # in steps: a flash is a few sprites, not one a frame
+    gold = C.lerp(C.SUN_TOP, C.WHITE, 0.6 * fl[0])
+    seg_number(canvas, v, score, 4, (c.right - 44, c.y + RESULT_SCORE_Y), RESULT_SCORE_H, gold,
+               glow_k=0.7 + 0.9 * fl[0], align="right")  # fmt: skip
+    for i, value in enumerate(values):
+        row = c.y + RESULT_ROWS_Y + i * RESULT_ROW_STEP
+        seg_number(canvas, v, value, 3, (c.right - 44, row), 30,
+                   C.lerp(C.CYAN, C.WHITE, 0.6 * fl[1 + i]), glow_k=0.7 + 0.9 * fl[1 + i],
+                   align="right")  # fmt: skip
+    fx = fx or ButtonFx(lit={"new": 1.0}, chosen="new")
+    for key, rect in RESULT_BUTTONS.items():
+        live_button(canvas, v, rect, t(f"result.{key}"), fx, key, clock, primary=key == "new")
+
+
+_result_warm = [0.0]  # the view scale the card's sprites were last made for
+
+
+def prewarm_result(v: View) -> None:
+    """Draw the card once off screen (growing and whole, win and loss) so its sprites exist
+    before the first game ends: the real game calls this while the menu idles."""
+    if _result_warm[0] == v.s:
+        return
+    _result_warm[0] = v.s
+    probe = pg.Surface(v.canvas)
+    for won in (True, False):
+        for age in (RESULT_IN_S / 2, 1.0):
+            rows = [("", 0), ("", 0)]
+            draw_result(probe, v, won=won, reason=None, score=0, rows=rows, hover=None, age=age)
 
 
 def draw_result(
@@ -613,44 +687,29 @@ def draw_result(
     age: float = 1.0,
     fx: ButtonFx | None = None,
     clock: float = 0.0,
+    flashes: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> None:
-    """The end-of-game card: dims the table, a big lit title, why, the score on its own line,
-    shots and fouls in arcade digits and two buttons. `age` (s since the game ended) lets the
-    card grow in."""
-    size = canvas.get_size()
-    if size not in _dim_cache:
-        _dim_cache.clear()
-        dim = pg.Surface(size, pg.SRCALPHA)
-        dim.fill((*C.OUTLINE, 185))
-        _dim_cache[size] = dim
-    canvas.blit(_dim_cache[size], (0, 0))
+    """The end-of-game card: dims the table, then the frame growing in, then the whole card.
+    (PlayScene pastes a baked copy of the table and the card's unmoving parts once it has settled,
+    and only calls `draw_result_live` after that.)"""
+    canvas.blit(veil(canvas.get_size(), RESULT_DIM_ALPHA), (0, 0))
     c = RESULT_CARD
     k = min(1.0, max(0.0, age / RESULT_IN_S))
     if k < 1.0:  # growing in: just the lit frame, getting bigger
+        # ONE full-size sprite, shrunk a little each frame (never enlarged): a new sprite for
+        # every size meant 20-50 ms a frame while the card opened
         e = 1 - (1 - k) ** 3
-        w, h = c.w * (0.7 + 0.3 * e), c.h * (0.7 + 0.3 * e)
-        mood = C.OK if won else C.ERROR
-        blit_rrect(canvas, v, c.centerx - w / 2, c.centery - h / 2, w, h, 10, C.PANEL, 1.8, mood, e)
+        spr, _ = rrect_sprite(v, c.w, c.h, 10, C.PANEL, 1.8, C.OK if won else C.ERROR, 1.0)
+        f = 0.7 + 0.3 * e
+        small = pg.transform.smoothscale(
+            spr, (max(1, round(spr.get_width() * f)), max(1, round(spr.get_height() * f)))
+        )
+        cx, cy = v.pt((c.centerx, c.centery))
+        blit_pm(canvas, small, (cx - small.get_width() / 2, cy - small.get_height() / 2))
         return
-    mood = C.OK if won else C.ERROR
-    blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, mood, 1.0)
-    cx = c.centerx
-    title = t("result.won") if won else t("result.lost")
-    glow_text(canvas, v, title, 46, C.WHITE, mood, (cx, c.y + 54), strength=1.3, face="display")
-    if reason:
-        for i, line in enumerate(wrap(v, reason, 14, c.w - 60)[:2]):
-            text(canvas, v, line, 14, C.TEXT_DIM, (cx, c.y + 98 + i * 19), center=True)
-    top = c.y + RESULT_SCORE_Y
-    label(canvas, v, t("result.score"), (c.x + 44, top + RESULT_SCORE_H / 2 - 5), C.TEXT, 14)
-    seg_number(canvas, v, score, 4, (c.right - 44, top), RESULT_SCORE_H, C.SUN_TOP, align="right")
-    blit_rrect(canvas, v, c.x + 44, top + RESULT_SCORE_H + 18, c.w - 88, 1.5, 0.75, C.PANEL_EDGE, 0)
-    for i, (name, value) in enumerate(rows):
-        row = c.y + RESULT_ROWS_Y + i * RESULT_ROW_STEP
-        label(canvas, v, name, (c.x + 44, row + 12), size=12)
-        seg_number(canvas, v, value, 3, (c.right - 44, row), 30, C.CYAN, align="right")
-    fx = fx or ButtonFx(lit={"new": 1.0}, chosen="new")
-    for key, rect in RESULT_BUTTONS.items():
-        live_button(canvas, v, rect, t(f"result.{key}"), fx, key, clock, primary=key == "new")
+    draw_result_frame(canvas, v, won=won, reason=reason, row_names=[n for n, _ in rows])
+    draw_result_live(canvas, v, score=score, values=[x for _, x in rows], fx=fx, clock=clock,
+                     flashes=flashes)  # fmt: skip
 
 
 # --- buttons that move: lit, pressed, a light running round, a frame that glides ----------------

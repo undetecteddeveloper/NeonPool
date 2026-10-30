@@ -26,6 +26,7 @@ from game.input.drag import DragAim, Knob
 from game.physics import BallHitBall, BallHitCushion, BallPocketed, Shot, World, first_contact
 from game.render import draw, hud
 from game.render import palette as C
+from game.render.frozen import FrozenScene
 from game.render.fx import Fx
 from game.render.layout import (
     FIELD_H,
@@ -41,8 +42,10 @@ from game.render.layout import (
 )
 from game.render.view import View
 from game.rules.eight_ball import LOST, PLAYING, RERACK, WON, EightBall
+from game.tally import Tally
 
 # notices hang under the table, in the free strip below it (on the cloth they hid rolling balls)
+RESULT_FREEZE_S = 1.7  # the card has been up this long: the waves on the table have died out
 BANNER_AT = (OUTER_X + OUTER_W / 2, OUTER_Y + OUTER_H + 12)
 CALLOUT_AT = (FIELD_X + FIELD_W / 2, FIELD_Y + FIELD_H / 2)  # the big arcade word pops here
 # notice key -> (call-out word key, colour, sound)
@@ -76,6 +79,10 @@ class PlayScene:
         self._lunge = None  # the cue darting at the ball: (at, centre, shot dir, pull, power)
         self.pocket_times: dict[int, float] = {}  # ball -> when it went in (the panel strikes it)
         self._ended_at = -99.0  # when the game ended (the result card grows in)
+        self._tally: Tally | None = None  # the card's numbers counting up (None: show them whole)
+        self._ticks: dict[str, int] = {}  # how many ticks of each number have sounded
+        self._tinged: set[str] = set()  # the numbers whose bell has rung
+        self._frozen = FrozenScene()  # the table behind the result card, once it will not change
         self._pointer: tuple[float, float] | None = None  # where the mouse is (logical)
         self._cue_alpha = 0.0  # the cue fades in while the pointer is on the cue ball
         self.knob = Knob(0.0)  # the cue as a dial round the cue ball: where the shot goes
@@ -88,6 +95,8 @@ class PlayScene:
         self.view = v
         self.sprites = draw.BallSprites(v)
         self.table = draw.build_table(v)
+        if hasattr(self, "_frozen"):
+            self._frozen.clear()
 
     # --- game flow -------------------------------------------------------------------
     def new_game(self) -> None:
@@ -101,6 +110,8 @@ class PlayScene:
         self._notice, self._notice_left, self._callout, self._lunge = None, 0.0, None, None
         self.pocket_times.clear()
         self._break_pending = True
+        self._tally = None
+        self._frozen.clear()
 
     def _can_aim(self) -> bool:
         return (
@@ -158,6 +169,10 @@ class PlayScene:
         elif res.outcome in (WON, LOST):
             self._ended_at = self._clock
             (self.app.audio.play_win if res.outcome == WON else self.app.audio.play_lose)()
+            self._tally = Tally(
+                {"score": self.rules.score, "shots": self.rules.shots, "fouls": self.rules.fouls}
+            )
+            self._ticks, self._tinged = dict.fromkeys(self._tally.targets, 0), set()
 
     # --- events ----------------------------------------------------------------------
     def handle_event(self, e: pg.event.Event) -> None:
@@ -277,9 +292,26 @@ class PlayScene:
         if self.rules.phase != PLAYING:
             chosen = self._hover or "new"  # Enter starts a new game: that button is lit
             self.result_fx.update(dt, chosen, hud.RESULT_BUTTONS, self._clock)
+            self._tally_sounds()
         if self._live and self.world.at_rest():
             self._end_shot()
         self._fade_cue(dt)
+
+    def _tally_sounds(self) -> None:
+        """The card's numbers tick while they climb and ring a bell when they stop."""
+        tally, audio = self._tally, self.app.audio
+        if tally is None:
+            return
+        age = self._clock - self._ended_at
+        won = self.rules.phase == WON
+        for name in tally.targets:
+            ticks = tally.ticks_done(name, age)
+            if ticks > self._ticks.get(name, 0):  # several in one frame: only the last is heard
+                self._ticks[name] = ticks
+                audio.play_tally_tick(tally.tick_pitch(name, ticks))
+            if tally.finished(name, age) and name not in self._tinged and tally.targets[name]:
+                self._tinged.add(name)
+                audio.play_tally_ting(won, big=name == "score")
 
     def _over_cue(self) -> bool:
         """The pointer is on the cue ball (where pressing would start a shot)."""
@@ -343,6 +375,13 @@ class PlayScene:
 
     def draw(self, canvas: pg.Surface) -> None:
         v = self.view
+        if self._frozen.covers(canvas.get_size()) and self.rules.phase != PLAYING:
+            # the card has settled and the table behind it is a picture: paste it, draw the rest
+            self._frozen.paste_baked(
+                canvas, hud.RESULT_DIM_ALPHA, lambda base: self._draw_result_frame(base, v)
+            )
+            self._draw_result_live(canvas, v)
+            return
         canvas.blit(self.table, (0, 0))
         draw.draw_balls(canvas, v, self.world.balls, self.sprites)
         self.fx.draw(canvas, v, self.sprites)
@@ -403,6 +442,8 @@ class PlayScene:
                 center=True,
             )
         if over:
+            if self._clock - self._ended_at >= RESULT_FREEZE_S:
+                self._frozen.under(canvas)  # the table as it is now: its waves have died out
             self._draw_result(canvas, v)
 
     def _draw_lunge(self, canvas: pg.Surface, v: View) -> None:
@@ -421,15 +462,53 @@ class PlayScene:
             fade = 1 - (age - draw.LUNGE_S) / draw.FADE_S
             draw.draw_cue(canvas, v, centre, d, 0.0, power, self._clock, alpha=fade)
 
+    def _shown_numbers(self) -> tuple[dict[str, int], tuple[float, float, float]]:
+        """What the card's numbers show now (they count up), and how much each glows."""
+        tally, age = self._tally, self._clock - self._ended_at
+        if tally is None:  # not counting (a game photographed, or ended some other way): whole
+            whole = {
+                "score": self.rules.score,
+                "shots": self.rules.shots,
+                "fouls": self.rules.fouls,
+            }
+            return whole, (0.0, 0.0, 0.0)
+        shown = {name: tally.value(name, age) for name in tally.targets}
+        return shown, tuple(tally.flash(name, age) for name in tally.targets)
+
+    def _draw_result_frame(self, canvas: pg.Surface, v: View) -> None:
+        """The card's parts that never move (baked into the picture of the settled card)."""
+        res = self.rules.last
+        hud.draw_result_frame(
+            canvas,
+            v,
+            won=self.rules.phase == WON,
+            reason=t(res.reason) if res and res.reason else None,
+            row_names=[t("hud.shots"), t("hud.fouls")],
+        )
+
+    def _draw_result_live(self, canvas: pg.Surface, v: View) -> None:
+        shown, flashes = self._shown_numbers()
+        hud.draw_result_live(
+            canvas,
+            v,
+            score=shown["score"],
+            values=[shown["shots"], shown["fouls"]],
+            fx=self.result_fx,
+            clock=self._clock,
+            flashes=flashes,
+        )
+
     def _draw_result(self, canvas: pg.Surface, v: View) -> None:
         res = self.rules.last
+        shown, flashes = self._shown_numbers()
         hud.draw_result(
             canvas,
             v,
             won=self.rules.phase == WON,
             reason=t(res.reason) if res and res.reason else None,
-            score=self.rules.score,
-            rows=[(t("hud.shots"), self.rules.shots), (t("hud.fouls"), self.rules.fouls)],
+            score=shown["score"],
+            rows=[(t("hud.shots"), shown["shots"]), (t("hud.fouls"), shown["fouls"])],
+            flashes=flashes,
             hover=self._hover,
             age=self._clock - self._ended_at,
             fx=self.result_fx,

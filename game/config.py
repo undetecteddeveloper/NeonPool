@@ -88,6 +88,12 @@ SAMPLE_RATE = 44100
 SFX_MAX_PER_FRAME = 6  # cap sounds started per frame so a break is not a wall of noise
 SFX_REF_SPEED = 6.0  # m/s that maps to full volume
 SFX_MIN_SPEED = 0.05  # m/s; softer impacts make no sound (no ticking at the end of a roll)
+# --- The numbers on the result card count up one after the other (game/tally.py) ---
+TALLY_SPANS = (("score", 1.1), ("shots", 0.6), ("fouls", 0.5))  # in order: name, seconds it runs
+TALLY_START_S = 0.7  # after the game ends: the card has grown in and the jingle is on its way
+TALLY_GAP_S = 0.15  # a pause between one number and the next
+TALLY_MAX_TICKS = 14  # a counting number ticks at most this many times (one per step when fewer)
+TALLY_FLASH_S = 0.4  # a number that has just stopped glows brighter for this long
 MUSIC_GAIN = 0.7  # the music setting at 100% plays this loud (the effects stay in front)
 MUSIC_FADE_S = 1.0  # one track fades out while the next fades in (menu <-> game)
 MUSIC_DUCK = 0.3  # the music drops to this while the result card is up (the jingle plays)

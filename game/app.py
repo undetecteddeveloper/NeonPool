@@ -132,9 +132,10 @@ class App:
             and self.scene is self.menu
             and not self.help.is_open
             and self.menu.idle_s() > PREFETCH_AFTER_S
-            and not self.help.prefetch_one()  # the pictures are done: now the settings panel
+            and not self.help.prefetch_one()  # the pictures are done: now the panels
         ):
             self.menu.settings.prewarm(self.view)
+            hud.prewarm_result(self.view)
         self.audio.update_music(
             dt,
             "menu" if self.scene is self.menu else "play",
