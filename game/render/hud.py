@@ -27,7 +27,7 @@ from game.render.draw import (
     rrect_sprite,
     veil,
 )
-from game.render.layout import PANEL_H, PANEL_W, PANEL_X, PANEL_Y
+from game.render.layout import PANEL_H, PANEL_W, PANEL_X, PANEL_Y, TABLE_GLOW
 from game.render.view import View
 
 MINI = 22  # side of a small ball in the "balls left" grid (logical px)
@@ -993,18 +993,63 @@ def turn_bar(canvas: pg.Surface, v: View, rect: pg.Rect, frac: float, *, warn: b
     )
 
 
-def versus(canvas: pg.Surface, v: View, cx: float, wins: tuple[int, int]) -> None:
-    """Between the two name plates: "VS" in the first game, then the score of the room, yours
-    first (games won by each player in this room)."""
-    if not any(wins):
+def versus(canvas: pg.Surface, v: View, cx: float, wins: tuple[int, int], *, first: bool,
+           board: Scoreboard, clock: float) -> None:  # fmt: skip
+    """Between the two name plates: "VS" in the first game of the room, then its score, yours
+    first (games won by each player). A number that changes rolls to its new value, glows and
+    shows a "+1" beside it, as the counters of the side panel do (`board` remembers the change)."""
+    if first and not any(wins):
         text(canvas, v, "VS", 20, C.VIOLET, (cx, PLATE_Y + 31), bold=True, center=True)
         return
     n, h = (2 if max(wins) > 9 else 1), 30
     text(canvas, v, t("net.score"), 10, C.TEXT_DIM, (cx, PLATE_Y + 8), center=True, track=1.5)
-    top = PLATE_Y + 18
-    seg_number(canvas, v, wins[0], n, (cx - 16, top), h, C.CYAN, glow_k=0.8, align="right")
+    top, width = PLATE_Y + 18, digits_width(n, h)
     text(canvas, v, ":", 26, C.VIOLET, (cx, PLATE_Y + 33), bold=True, center=True)
-    seg_number(canvas, v, wins[1], n, (cx + 16, top), h, C.CYAN, glow_k=0.8)
+    for name, count, x, side in (
+        ("vs0", wins[0], cx - 16 - width, -1),
+        ("vs1", wins[1], cx + 16, 1),
+    ):
+        fl = round(board.flash(name, count, clock) * 4) / 4  # (quarters: few sprites)
+        rolling_number(canvas, v, board, name, count, n, (x, top), h, C.lerp(C.CYAN, C.WHITE, fl),
+                       0.8 + 0.8 * fl, clock)  # fmt: skip
+        if fl > 0 and board.previous.get(name, count) < count:
+            ax = x - 14 if side < 0 else x + width + 14
+            text(canvas, v, "+1", 16, C.lerp(C.BG, C.OK, fl), (ax, top + 8 - 6 * (1 - fl)),
+                 bold=True, center=True)  # fmt: skip
+
+
+COIN_R = 46.0  # the coin of the toss (logical px)
+
+
+def toss_coin(canvas: pg.Surface, v: View, cx: float, top: float, squash: float, face: int) -> None:
+    """The coin of the toss with its top at `top`, turned `squash` (1 face-on .. 0 edge-on): a
+    plate in the colour of the face showing (0: cyan, 1: magenta). Widths come in steps of 4 px so
+    that a spin makes a few sprites, which `prewarm_net` makes before the first game."""
+    w = max(6.0, round(2 * COIN_R * squash / 4) * 4.0)
+    colour = C.MAGENTA if face == 1 else C.CYAN
+    blit_rrect(canvas, v, cx - w / 2, top, w, 2 * COIN_R, min(w, 2 * COIN_R) / 2, C.PANEL_HOT,
+               2.0, colour, 0.9)  # fmt: skip
+
+
+_dim_sheets: dict[tuple[int, int], pg.Surface] = {}
+
+
+def dim_rect(canvas: pg.Surface, v: View, rect: pg.Rect, k: float) -> None:
+    """Darken `rect` of the canvas as it is darkened behind a card, `k` 0 (not at all) .. 1.
+    One dark sheet per size, only its opacity changes: nothing new is made while it fades."""
+    k = round(max(0.0, min(1.0, k)) * 16) / 16
+    if k <= 0:
+        return
+    r = v.rect(rect.x, rect.y, rect.w, rect.h)
+    sheet = _dim_sheets.get(r.size)
+    if sheet is None:
+        if len(_dim_sheets) >= 4:
+            _dim_sheets.clear()
+        sheet = pg.Surface(r.size, pg.SRCALPHA)
+        sheet.fill((*C.OUTLINE, RESULT_DIM_ALPHA))
+        _dim_sheets[r.size] = sheet
+    sheet.set_alpha(round(255 * k))
+    canvas.blit(sheet, r.topleft)
 
 
 # --- reactions: three small buttons, and a bubble beside the plate of whoever said it -----------
@@ -1192,6 +1237,10 @@ def prewarm_net(v: View) -> None:
     for colour_warn in (False, True):
         turn_bar(probe, v, pg.Rect(0, 0, PLATE_W, PLATE_H), 0.5, warn=colour_warn, blink_on=True)
     turn_bar(probe, v, pg.Rect(0, 0, PLATE_W, PLATE_H), 0.5, warn=True, blink_on=False)
+    dim_rect(probe, v, pg.Rect(*TABLE_GLOW), 1.0)
+    for face in (0, 1):
+        for width in [6, *range(8, 2 * round(COIN_R) + 1, 4)]:
+            toss_coin(probe, v, 0, 0, width / (2 * COIN_R), face)
 
 
 def draw_notice_frame(canvas: pg.Surface, v: View, title: str, line: str, mood=C.ERROR) -> None:

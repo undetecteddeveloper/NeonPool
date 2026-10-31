@@ -17,6 +17,7 @@ from collections.abc import Callable, Generator
 from game import config
 from game.net import protocol as p
 from game.net import session as net_session
+from game.net import toss
 from game.net.session import Session
 from game.net.transport import SimRoom
 from game.physics import Shot
@@ -215,7 +216,16 @@ class Harness:
         for s in self.sessions():
             s._toss_left = 0.0
         if self.app.net is not None:
-            self.app.net._started_at -= 10.0
+            self.app.net._started_at -= 30.0
+
+    def replay_toss(self) -> None:
+        """The start of this game once more from the beginning (the look, the point coming in
+        after a rematch, the coin), on both machines."""
+        self.ensure_net()
+        for s in self.sessions():
+            s._toss_left = toss.total_s(s.game_no > 1)
+        scene = self.app.net
+        scene._started_at, scene._toss_age = scene._clock, 0.0
 
     def set_clock(self, seconds_left: float) -> None:
         """The clock of the shot being waited for has `seconds_left` to go (on both machines)."""

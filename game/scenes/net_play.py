@@ -18,10 +18,10 @@ import pygame as pg
 
 from game.config import (
     GRAB_RADIUS_M,
-    NET_COIN_S,
     NET_EMOTES,
     NET_LINK_CARD_DELAY_S,
     NET_REJOIN_S,
+    NET_TOSS_SCORE_AT_S,
     NET_TURN_S,
     NET_TURN_WARN_S,
     NOTICE_S,
@@ -30,11 +30,11 @@ from game.config import (
 from game.i18n import t
 from game.net import protocol as p
 from game.net import session as net_session
+from game.net import toss
 from game.physics import Shot
 from game.render import draw, hud
 from game.render import palette as C
-from game.render.draw import blit_rrect
-from game.render.layout import OUTER_W, OUTER_X, to_m, to_px
+from game.render.layout import OUTER_W, OUTER_X, TABLE_GLOW, to_m, to_px
 from game.render.view import View
 from game.rules.eight_ball import LOST, LOST_EARLY, LOST_FOUL, PLAYING, RERACK, WON
 from game.rules.two_player import LOST_DROPPED, LOST_SURRENDER, MatchShot
@@ -46,9 +46,9 @@ GROUP_NOTICES = {
     "solid": ("notice.group_solid", "net.notice.group_them_solid"),
     "stripe": ("notice.group_stripe", "net.notice.group_them_stripe"),
 }
-COIN_S = NET_COIN_S  # the coin toss: it spins for COIN_FLIP_S, then says who breaks
-COIN_FLIP_S = 1.5
-COIN_R = 46.0
+COIN_R = hud.COIN_R  # the coin of the toss; its times are game/net/toss.py
+COIN_HOP_PX = 64.0  # how high it is thrown
+TABLE_RECT = pg.Rect(*TABLE_GLOW)  # what goes dark while the coin is tossed (not the plates)
 # why the other player lost -> what you are told (the reason is theirs: t(reason) is for the loser)
 WON_REASONS = {
     LOST_EARLY: "net.won_early",
@@ -125,7 +125,14 @@ class NetPlayScene(PlayScene):
         self._me, self._them = session.me, 1 - session.me
         self._game_no = session.game_no  # a rematch makes a new one: and a new scene
         self._seen_shots = session.shots_started
-        self._started_at = self._clock  # the coin toss runs from here
+        self._started_at = self._clock  # the start of the game (the look, the coin) runs from here
+        self._toss = toss.Toss(session.game_no > 1, session.breaker)
+        self._toss_age = 0.0  # ... as it was at the last update (for the sounds)
+        self._vs_board = hud.Scoreboard()  # the score between the plates rolls when it changes
+        before = list(session.wins)
+        if session.prev_winner is not None:  # a rematch: the point of the last game comes in late
+            before[session.prev_winner] -= 1
+        self._wins_before = (before[self._me], before[self._them])
         self._card: str | None = None  # a small card over the table: "esc" or "sure"
         self._card_at = -99.0
         self._card_sel = 0  # which of its buttons is chosen
@@ -157,7 +164,7 @@ class NetPlayScene(PlayScene):
         return self.session.names[player] or t("net.default_name")
 
     def _toss_done(self) -> bool:
-        return self._clock - self._started_at >= COIN_S
+        return self._clock - self._started_at >= self._toss.total_s
 
     def leave(self) -> None:
         self.session.leave()
@@ -399,9 +406,29 @@ class NetPlayScene(PlayScene):
             self._end_with_note()
         self._update_extras(dt)
 
+    def _toss_sounds(self) -> None:
+        """The start of the game has its sounds: the point added, the throw, a tick for each time
+        the coin turns over, the landing. Only what happens between two frames sounds: a jump
+        (the dev tool skipping the toss) is silent."""
+        age, before = self._clock - self._started_at, self._toss_age
+        self._toss_age = age
+        if not 0 < age - before < 0.5:
+            return
+        tt, audio = self._toss, self.app.audio
+        if self.session.prev_winner is not None and before < NET_TOSS_SCORE_AT_S <= age:
+            audio.play_tally_ting(self.session.prev_winner == self._me, True)
+        if before < tt.flip_at <= age:
+            audio.play_coin_up()
+        turned, all_turns = tt.faces_seen(age), 6 + tt.breaker
+        if turned > tt.faces_seen(before):
+            audio.play_tally_tick(turned / all_turns)
+        if before < tt.land_at <= age:
+            audio.play_coin_land()
+
     def _update_extras(self, dt: float) -> None:
         """The clock's beeps, the reactions, the small cards."""
         s, audio = self.session, self.app.audio
+        self._toss_sounds()
         left = math.ceil(s.turn_left_s)
         if left > NET_TURN_WARN_S or not s.playing:
             self._warned = -1
@@ -543,8 +570,8 @@ class NetPlayScene(PlayScene):
                 m.group_left(player),
                 turn=m.turn == player and not m.over and s.playing,
             )  # fmt: skip
-        wins = (s.wins[self._me], s.wins[self._them])
-        hud.versus(canvas, v, OUTER_X + OUTER_W / 2, wins)
+        hud.versus(canvas, v, OUTER_X + OUTER_W / 2, self._shown_wins(), first=s.game_no == 1,
+                   board=self._vs_board, clock=self._clock)  # fmt: skip
         if s.playing and not m.over and self._toss_done():
             turn_rect = mine if m.turn == self._me else theirs
             warn = s.clock_running and s.turn_left_s <= NET_TURN_WARN_S
@@ -581,31 +608,36 @@ class NetPlayScene(PlayScene):
         super()._draw_overlays(canvas, v, over)
         self._draw_toss(canvas, v)
 
+    def _shown_wins(self) -> tuple[int, int]:
+        """The score between the plates: after a rematch it starts as it was and gets the point
+        of the last game NET_TOSS_SCORE_AT_S in (it rolls, the board sees the change)."""
+        if self._clock - self._started_at < NET_TOSS_SCORE_AT_S:
+            return self._wins_before
+        return self._wins()
+
     def _draw_toss(self, canvas: pg.Surface, v: View) -> None:
-        """The coin that says who breaks: it spins, slows, and lands on the breaker's name."""
-        age = self._clock - self._started_at
-        if age >= COIN_S:
+        """The start of the game: the table goes dark, the coin waits with its line, is thrown,
+        spins, slows and lands on the breaker's name; the table lights up again."""
+        age, tt = self._clock - self._started_at, self._toss
+        hud.dim_rect(canvas, v, TABLE_RECT, tt.dim(age))  # (the plates and the side panel stay lit)
+        phase = tt.phase(age)
+        if phase in (toss.LEAD, toss.DONE):
             return
-        k = min(1.0, age / COIN_FLIP_S)
-        end = math.pi * (6 + self.session.breaker)  # lands face-on, showing the breaker's name
-        theta = end * (1 - (1 - k) ** 3)
-        face = round(theta / math.pi) % 2
+        theta = tt.spin(age)
         squash = abs(math.cos(theta))
+        face = round(theta / math.pi) % 2
         cx, cy = CALLOUT_AT
-        w = max(6.0, round(2 * COIN_R * squash / 4) * 4.0)  # in steps: a sprite is cached per width
-        colour = C.MAGENTA if face == 1 else C.CYAN
-        radius = min(w, 2 * COIN_R) / 2
-        blit_rrect(canvas, v, cx - w / 2, cy - COIN_R, w, 2 * COIN_R, radius, C.PANEL_HOT, 2.0,
-                   colour, 0.9)  # fmt: skip
+        bob = 3.0 * math.sin(age * 4.0) if phase == toss.HOLD else 0.0
+        top = cy - COIN_R - COIN_HOP_PX * tt.hop(age) + bob
+        hud.toss_coin(canvas, v, cx, top, squash, face)
         if squash > 0.45:
-            hud.text(canvas, v, self._name(face), 14, C.WHITE, (cx, cy), bold=True, center=True)
-        if age < COIN_FLIP_S:
-            hud.text(
-                canvas, v, t("net.coin"), 17, C.TEXT, (cx, cy + COIN_R + 26), bold=True, center=True
-            )
+            hud.text(canvas, v, self._name(face), 14, C.WHITE, (cx, top + COIN_R), bold=True,
+                     center=True)  # fmt: skip
+        if phase == toss.LAND:
+            words, size, colour = t("net.breaks", name=self._name(tt.breaker)), 18, C.WHITE
         else:
-            who = t("net.breaks", name=self._name(self.session.breaker))
-            hud.text(canvas, v, who, 18, C.WHITE, (cx, cy + COIN_R + 26), bold=True, center=True)
+            words, size, colour = t("net.coin"), 17, C.TEXT
+        hud.text(canvas, v, words, size, colour, (cx, cy + COIN_R + 26), bold=True, center=True)
 
     # --- the result card: both players, and a card for a connection that ended ---
     def _result_numbers(self) -> tuple[list[list[int]], list[list[float]]]:
@@ -638,7 +670,16 @@ class NetPlayScene(PlayScene):
         return (t("result.score"), t("hud.shots"), t("hud.fouls"), t("net.wins_row"))
 
     def _wins(self) -> tuple[int, int]:
+        """Games won in this room so far: yours, theirs."""
         return (self.session.wins[self._me], self.session.wins[self._them])
+
+    def _card_wins(self) -> tuple[int, int]:
+        """The row of the result card: the games won BEFORE this one. Its point is added at the
+        start of the next game, between the plates (the player sees it come in)."""
+        won = list(self.session.wins)
+        if self.session.match.over and self.session.counted:
+            won[self.session.match.winner] -= 1
+        return (won[self._me], won[self._them])
 
     def _again_view(self) -> tuple[tuple[str, bool], tuple[str, tuple[int, int, int]] | None]:
         """The Rematch button (its words, can it be pressed) and the line above the buttons."""
@@ -663,7 +704,7 @@ class NetPlayScene(PlayScene):
         reason, won = self._result_words()
         names, won_by = self._names_row()
         hud.draw_net_result_frame(canvas, v, won=won, reason=reason, names=names, won_by=won_by,
-                                  row_names=self._row_names(), wins=self._wins())  # fmt: skip
+                                  row_names=self._row_names(), wins=self._card_wins())  # fmt: skip
 
     def _draw_result_live(self, canvas: pg.Surface, v: View) -> None:
         if self._ended_note is not None:
@@ -685,6 +726,6 @@ class NetPlayScene(PlayScene):
         values, flashes = self._result_numbers()
         again, note = self._again_view()
         hud.draw_net_result(canvas, v, won=won, reason=reason, names=names, won_by=won_by,
-                            row_names=self._row_names(), wins=self._wins(), values=values,
+                            row_names=self._row_names(), wins=self._card_wins(), values=values,
                             flashes=flashes, again=again, note=note, age=age, fx=self.result_fx,
                             clock=self._clock)  # fmt: skip

@@ -279,7 +279,7 @@ def picture_duo(v: View) -> pg.Surface:
     theirs = pg.Rect(OUTER_X + OUTER_W - hud.PLATE_W, hud.PLATE_Y, hud.PLATE_W, hud.PLATE_H)
     hud.name_plate(wide, v, mine, t("guide.duo_me"), t("group.solid"), 5, turn=True)
     hud.name_plate(wide, v, theirs, t("guide.duo_them"), t("group.stripe"), 7, turn=False)
-    hud.versus(wide, v, OUTER_X + OUTER_W / 2, (2, 1))
+    hud.versus(wide, v, OUTER_X + OUTER_W / 2, (2, 1), first=False, board=hud.Scoreboard(), clock=0)
     hud.turn_bar(wide, v, mine, 0.6, warn=False, blink_on=True)
     hud.emote_bubble(wide, v, theirs, False, t("net.emote.2"), 0.5)
     crop = pg.Rect(OUTER_X - 10, 16, OUTER_W + 20, 82)

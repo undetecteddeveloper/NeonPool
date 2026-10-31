@@ -138,7 +138,7 @@
   "net.left": "LEFT",
   "net.turn_them": "{name}'s turn",
   "net.placing_them": "{name} is placing the cue ball",
-  "net.coin": "Tossing a coin…",
+  "net.coin": "Coin toss decides who breaks",
   "net.breaks": "{name} breaks",
   "net.notice.foul_them": "{name} — {reason}",
   "net.notice.group_them_solid": "{name} plays SOLIDS, you play STRIPES",

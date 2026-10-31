@@ -151,6 +151,30 @@ def synth_warn_last() -> np.ndarray:
     return _to_int16(_notes([1175, 1175], 0.09, 0.02, tail=0.03), gain=0.6)
 
 
+# --- the coin toss at the start of a two-player game: thrown, turning over (ticks), landing ------
+def synth_coin_up() -> np.ndarray:
+    """The coin is thrown: a quick rising sweep with a little air in it."""
+    t = _t(0.24)
+    phase = 2 * np.pi * np.cumsum(420 + 1500 * (t / 0.24) ** 1.6) / SAMPLE_RATE
+    x = (0.7 * np.sin(phase) + 0.25 * np.sin(2 * phase)) * np.minimum(1.0, t / 0.01)
+    x = x * _decay(t, 0.16) + 0.12 * _noise(t.size) * _decay(t, 0.05)
+    return _to_int16(x, gain=0.55)
+
+
+def synth_coin_land() -> np.ndarray:
+    """The coin lands: a metallic clink (a bell with sharp, unmatched overtones), then a small
+    one."""
+    t = _t(0.75)
+
+    def clink(at: float, amp: float) -> np.ndarray:
+        age = np.maximum(t - at, 0.0)
+        partials = ((2093, 1.0, 0.16), (3322, 0.35, 0.1), (5774, 0.5, 0.06))
+        x = sum(a * np.sin(2 * np.pi * f * age) * _decay(age, tau) for f, a, tau in partials)
+        return amp * (t >= at) * np.minimum(1.0, age / 0.001) * x
+
+    return _to_int16(clink(0.0, 1.0) + clink(0.13, 0.45), gain=0.7)
+
+
 # --- the result card's numbers counting up: ticks that climb a scale, then a bell ----------------
 TICK_NOTES = (784, 880, 988, 1175, 1319, 1568, 1760, 1976)  # a pentatonic climb, G5 up to B6
 
@@ -234,6 +258,8 @@ class Audio:
                 ("notice", synth_notice),
                 ("warn", synth_warn),
                 ("warn_last", synth_warn_last),
+                ("coin_up", synth_coin_up),
+                ("coin_land", synth_coin_land),
                 ("ting_win", lambda: synth_ting(1319, 1976)),  # bright: E6 and B6
                 ("ting_lose", lambda: synth_ting(440, 659)),  # lower: A4 and E5
                 *((f"tick{i}", lambda f=f: synth_tick(f)) for i, f in enumerate(TICK_NOTES)),
@@ -325,6 +351,14 @@ class Audio:
     def play_clock_warn(self, seconds_left: int) -> None:
         """A second of the last ten of your clock; the last three are quicker and higher."""
         self._play("warn_last" if seconds_left <= 3 else "warn", 0.5)
+
+    def play_coin_up(self) -> None:
+        """The coin of the toss is thrown."""
+        self._play("coin_up", 0.5)
+
+    def play_coin_land(self) -> None:
+        """The coin of the toss has landed."""
+        self._play("coin_land", 0.55)
 
     def play_spin(self, level: float) -> None:
         """The spin dial moved a step; `level` -1 (low) .. +1 (high) picks the note."""

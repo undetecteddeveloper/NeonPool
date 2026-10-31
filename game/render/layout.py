@@ -22,6 +22,10 @@ PANEL_W = LW - PANEL_X - OUTER_X  # same margin on both sides
 PANEL_Y = OUTER_Y
 PANEL_H = OUTER_H
 
+# the table and the glow round it (x, y, w, h): what goes dark while a two-player game's coin is
+# tossed. It stops below the name plates and left of the side panel.
+TABLE_GLOW = (OUTER_X - 10, OUTER_Y - 6, OUTER_W + 20, OUTER_H + 12)
+
 
 def to_px(x: float, y: float) -> tuple[float, float]:
     return FIELD_X + x * PX_PER_M, FIELD_Y + y * PX_PER_M

@@ -185,6 +185,11 @@ def _net_my_turn(h: Harness) -> None:
     h.skip_toss()
 
 
+@state(NET, "Xem lại đoạn mở ván (tung xu) từ đầu")
+def _net_replay_toss(h: Harness) -> None:
+    h.replay_toss()
+
+
 @state(NET, "Độ trễ giả: đổi vòng 0 / 60 / 200 ms")
 def _net_latency(h: Harness) -> None:
     h.set_latency(LATENCIES[(LATENCIES.index(h.latency) + 1) % len(LATENCIES)])

@@ -23,13 +23,14 @@ log = logging.getLogger("neonpool.dev")
 X, Y, W, H = 16, 16, 460, 688  # the panel (logical px)
 ROW_H = 22
 HEAD_H = 50  # title and status
-FOOT_H = 78  # the keys and the last result
+FOOT_H = 92  # the keys and the last result
 HOTKEYS = (
     (pg.K_F2, "F2", "chạy lại trạng thái vừa chọn"),
     (pg.K_F3, "F3", "bot tự chơi bật / tắt"),
     (pg.K_F4, "F4", "cắt mạng / nối lại"),
     (pg.K_F5, "F5", "bot đánh một cú"),
     (pg.K_F6, "F6", "đồng hồ của tôi còn 10 giây"),
+    (pg.K_F7, "F7", "xem lại đoạn mở ván (tung xu) từ đầu"),
 )
 
 
@@ -81,6 +82,8 @@ class DevPanel:
         elif key == pg.K_F6:
             h.ensure_net()
             h.set_clock(10.0)
+        elif key == pg.K_F7:
+            h.replay_toss()
         else:
             return False
         return True
@@ -180,10 +183,12 @@ class DevPanel:
             (X + 18, fy),
         )
         keys = "  ".join(f"{k} {what}" for _, k, what in HOTKEYS[:3])
-        keys2 = "  ".join(f"{k} {what}" for _, k, what in HOTKEYS[3:])
+        keys2 = "  ".join(f"{k} {what}" for _, k, what in HOTKEYS[3:5])
+        keys3 = "  ".join(f"{k} {what}" for _, k, what in HOTKEYS[5:])
         hud.text(screen, v, keys, 10, C.TEXT_DIM, (X + 18, fy + 16))
         hud.text(screen, v, keys2, 10, C.TEXT_DIM, (X + 18, fy + 30))
+        hud.text(screen, v, keys3, 10, C.TEXT_DIM, (X + 18, fy + 44))
         if self.message:
             hud.text(
-                screen, v, self.message[:70], 11, C.OK if self.ok else C.ERROR, (X + 18, fy + 50)
+                screen, v, self.message[:70], 11, C.OK if self.ok else C.ERROR, (X + 18, fy + 60)
             )

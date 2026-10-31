@@ -6,9 +6,10 @@
     .venv\\Scripts\\python.exe tools\\dev.py --check          # chạy MỌI trạng thái không cửa sổ
 
 F1 mở/đóng bảng: ↑↓ chọn, Enter chạy. F2 chạy lại, F3 bot tự chơi, F4 cắt/nối mạng, F5 bot đánh
-một cú, F6 đồng hồ còn 10 giây. Trạng thái ván hai người dùng một ĐỐI THỦ GIẢ nối bằng một đường
-truyền giả lập (cắt, nối, câm, trễ được): không mở cổng, không chạm mạng thật. Cài đặt dùng file
-riêng `tools/_out/dev-settings.json`, không bao giờ là file của người chơi.
+một cú, F6 đồng hồ còn 10 giây, F7 xem lại đoạn mở ván (tung xu). Trạng thái ván hai người dùng một
+ĐỐI THỦ GIẢ nối bằng một đường truyền giả lập (cắt, nối, câm, trễ được): không mở cổng, không chạm
+mạng thật. Cài đặt dùng file riêng `tools/_out/dev-settings.json`, không bao giờ là file của người
+chơi.
 Thêm trạng thái: viết hàm trong tools/devkit/states.py (mô tả ở đầu file đó).
 Exit (--check): 0 = mọi trạng thái chạy; 1 = có trạng thái lỗi.
 """

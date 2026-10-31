@@ -138,7 +138,7 @@
   "net.left": "CÒN",
   "net.turn_them": "Lượt của {name}",
   "net.placing_them": "{name} đang đặt bi trắng",
-  "net.coin": "Tung xu…",
+  "net.coin": "Tung xu chọn người phá bi",
   "net.breaks": "{name} phá bi",
   "net.notice.foul_them": "{name} — {reason}",
   "net.notice.group_them_solid": "{name} chơi nhóm NGUYÊN, bạn chơi nhóm SỌC",

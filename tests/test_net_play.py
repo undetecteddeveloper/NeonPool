@@ -11,12 +11,13 @@ import pytest
 from game import config, i18n
 from game.app import App
 from game.net import session as net_session
+from game.net import toss
 from game.physics import Shot
 from game.render import hud
-from game.render.layout import to_px
+from game.render.layout import OUTER_X, to_px
 from game.rules.eight_ball import LOST, PLAYING, WON
 from game.scenes import play_panel as pp
-from game.scenes.net_play import COIN_S, NetPlayScene
+from game.scenes.net_play import TABLE_RECT, NetPlayScene
 
 
 def key(k):
@@ -188,7 +189,7 @@ def test_the_coin_toss_comes_first_and_nobody_can_shoot_until_it_is_done(apps):
     first, other = players(apps)
     assert first._can_aim() and not other._can_aim()
     assert first.session.breaker == first.session.match.turn
-    assert COIN_S > 1.5
+    assert first._toss.total_s == toss.total_s(False) > 4.0  # long enough to see the names first
 
 
 def test_a_shot_is_seen_on_the_other_table_and_the_turn_goes_by_the_rules(apps):
@@ -505,3 +506,82 @@ def test_nothing_opens_over_the_lost_link_card_and_the_chosen_button_stays_in_ra
         host.update(1 / 60)
         host.draw()
     assert host.net._card_sel == 0
+
+
+# --- the start of a game: a look, the coin in the dark, the point of the last game coming in ---
+def frame_at(app, age):
+    """The screen with the start of the game `age` seconds in (as the player would see it)."""
+    scene = app.net
+    scene._started_at = scene._clock - age
+    app.skip_transition()  # (the scene change folds the picture for a third of a second)
+    app.draw()
+    return pg.display.get_surface().copy()
+
+
+def mean_light(surface, rect):
+    sub = surface.subsurface(rect)
+    r, g, b, _ = pg.transform.average_color(sub)
+    return r + g + b
+
+
+def test_the_table_goes_dark_for_the_coin_but_the_plates_and_the_side_panel_stay_lit(apps):
+    host, _ = apps
+    assert meet(apps)
+    scene = host.net
+    tt = scene._toss
+    lit = frame_at(host, 0.5)  # the look at the table first
+    dark = frame_at(host, tt.lead_s + 0.5)  # the coin waits
+    table = TABLE_RECT
+    assert mean_light(dark, table) < 0.6 * mean_light(lit, table)
+    plate = pg.Rect(OUTER_X, hud.PLATE_Y, hud.PLATE_W, hud.PLATE_H)
+    assert pg.image.tobytes(lit.subsurface(plate), "RGB") == pg.image.tobytes(
+        dark.subsurface(plate), "RGB"
+    )  # the names and the score are read all through the coin toss
+    after = frame_at(host, tt.total_s + 0.1)
+    assert abs(mean_light(after, table) - mean_light(lit, table)) < 0.05 * mean_light(lit, table)
+
+
+def test_the_coin_toss_has_its_sounds_in_order_and_none_before_the_throw(apps):
+    host, guest = apps
+    heard = []
+    audio = host.audio
+    audio.play_coin_up = lambda: heard.append("up")
+    audio.play_coin_land = lambda: heard.append("land")
+    audio.play_tally_tick = lambda pitch: heard.append("tick")
+    audio.play_tally_ting = lambda won, big: heard.append("ting")
+    assert meet(apps)
+    scene = host.net
+    assert run(apps, lambda: scene._toss_done())
+    breaker = scene.session.breaker
+    assert heard == ["up", *["tick"] * (6 + breaker), "land"]  # (a first game adds no point)
+
+
+def test_a_rematch_shows_the_old_score_then_rolls_the_point_in_before_the_coin(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    old = host.net
+    give_up_from_the_host(host)  # the host loses: the guest will get the point
+    assert run(apps, lambda: host.net._result_shown and guest.net._result_shown)
+    assert host.net._wins() == (0, 1) and host.net._card_wins() == (0, 0)  # the card: BEFORE
+    assert guest.net._wins() == (1, 0) and guest.net._card_wins() == (0, 0)
+    host.handle_event(key(pg.K_RETURN))
+    guest.handle_event(key(pg.K_RETURN))
+    assert run(apps, lambda: host.net is not old and guest.net.session.game_no == 2)
+    for app in (host, guest):
+        scene = app.net
+        assert scene.session.prev_winner == 1 and scene._toss.again
+        assert scene._wins_before == scene._shown_wins() != scene._wins()
+        app.draw()  # the board takes the old numbers in
+    heard = {"host": [], "guest": []}
+    host.audio.play_tally_ting = lambda won, big: heard["host"].append((won, big))
+    guest.audio.play_tally_ting = lambda won, big: heard["guest"].append((won, big))
+    for _ in range(round(1.2 / (1 / 60))):
+        for app in (host, guest):
+            app.update(1 / 60)
+            app.draw()
+    assert host.net._shown_wins() == (0, 1) and guest.net._shown_wins() == (1, 0)
+    assert heard == {"host": [(False, True)], "guest": [(True, True)]}  # lower for the one behind
+    assert guest.net._vs_board.previous["vs0"] == 0 and guest.net._vs_board.values["vs0"] == 1
+    assert host.net._vs_board.previous["vs1"] == 0
+    assert after_the_toss(apps)
+    assert host.net._card_wins() == (0, 1)  # a game still being played: nothing to take off

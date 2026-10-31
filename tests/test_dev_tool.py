@@ -217,4 +217,10 @@ def test_the_hotkeys_reach_the_fake_opponent(dev):
     assert until(dev, lambda: h.mine.linked, 10)
     assert panel.hotkey(pg.K_F6)
     assert h.mine.turn_left_s <= 10.5
+    assert panel.hotkey(pg.K_F7)  # the start of the game once more, from the look at the table
+    assert (
+        not app.net._toss_done()
+        and app.net._toss.phase(app.net._clock - app.net._started_at) == "lead"
+    )
+    assert h.mine._toss_left == h.fake._toss_left > 4.0
     assert not panel.hotkey(pg.K_F9)

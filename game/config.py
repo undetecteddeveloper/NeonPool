@@ -151,7 +151,15 @@ NET_NAME_MAX = 16  # longest player name (characters)
 NET_CONNECT_TIMEOUT_S = 5.0  # joining a room: give up after this long
 NET_HANDSHAKE_TIMEOUT_S = 5.0  # a connection that says nothing for this long is dropped
 NET_REMOTE_CUE_TAU_S = 1 / 60  # the other player's cue closes on its newest position in ~1 frame
-NET_COIN_S = 2.2  # the coin toss at the start of a game: nobody may shoot, the clock waits
+# The start of a game, in the order the players live through it (see game/net/toss.py). Nobody may
+# shoot and the clock waits for all of it. The scene change hides the first 0.34 s of the lead.
+NET_TOSS_LEAD_S = 1.3  # the table as it is, so the names and the score can be read first
+NET_TOSS_LEAD_AGAIN_S = 2.1  # after a rematch: longer, the point of the last game is added in it
+NET_TOSS_SCORE_AT_S = 0.9  # ... this long after the scene is made
+NET_TOSS_DIM_S = 0.35  # the table goes dark (and light again at the end) in this long
+NET_TOSS_HOLD_S = 1.7  # the coin waits, with its line
+NET_TOSS_FLIP_S = 1.5  # it spins and slows down
+NET_TOSS_LAND_S = 1.0  # it lies there and says who breaks
 NET_TURN_S = 60.0  # each shot (cue ball in hand included) gets this long, counted while balls rest
 NET_TURN_WARN_S = 10.0  # the clock blinks from here
 NET_TURN_GRACE_S = 1.0  # the host waits this much longer for the guest (its shot is in the post)

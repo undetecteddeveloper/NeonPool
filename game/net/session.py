@@ -22,6 +22,7 @@ from collections import deque
 
 from game import config
 from game.net import protocol as p
+from game.net import toss
 from game.net.remote_cue import RemoteCue
 from game.net.transport import Relinker, Transport
 from game.physics import Event, Shot, World
@@ -99,6 +100,7 @@ class Session:
         self.remote_cue = RemoteCue()
         self.game_no = 0  # which game of the room this is (1, 2, ...): a rematch makes a new one
         self.wins = [0, 0]  # games won in this room, by player (both machines count alike)
+        self.prev_winner: int | None = None  # who won the game before this one (a rematch only)
         self.rematch = [False, False]  # who has asked for another game (once this one is over)
         # what is worth knowing about how the game is going (the screens and the tests read these)
         self.desyncs = 0  # checkpoints whose table differed from the local one by > NET_DESYNC_M
@@ -195,6 +197,11 @@ class Session:
     def turn_left_s(self) -> float:
         """Seconds the player on turn has left for this shot."""
         return max(0.0, config.NET_TURN_S - self._turn_used)
+
+    @property
+    def counted(self) -> bool:
+        """The result of this game is already in `wins`."""
+        return self._counted
 
     def take_judged(self) -> list[MatchShot]:
         """The shots (and lost turns) judged since the last call, in order."""
@@ -563,8 +570,10 @@ class Session:
 
     def _begin(self, seed: int, breaker: int, feel: str, spin: str) -> None:
         """A game begins (the first one, or a rematch): a new table, a new coin."""
+        self.prev_winner = None
         if self.match is not None:
             self._count_result()  # (the one that just ended counts, even if this came at once)
+            self.prev_winner = self.match.winner if self.match.over else None
         self.world = World(seed, config.FEEL_SETS[feel], True, config.SPIN_SETS[spin])
         self.match = Match(breaker)
         self.breaker = breaker
@@ -581,7 +590,7 @@ class Session:
         self._aim_want = self._aim_sent = (p.AIM_HIDDEN, 0, 0)
         self._place_want = None
         self.remote_cue.state = p.AIM_HIDDEN
-        self._toss_left = config.NET_COIN_S
+        self._toss_left = toss.total_s(self.game_no > 1)
         self._restart_clock()
 
     def _maybe_restart(self) -> None:

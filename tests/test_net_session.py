@@ -8,6 +8,7 @@ import pytest
 from game import config
 from game.net import protocol as p
 from game.net import session as s
+from game.net import toss
 from game.net.session import GUEST, HOST, Session, capture_balls
 from game.net.transport import NetSim, SimRoom
 from game.physics import Shot
@@ -198,7 +199,7 @@ def test_a_guest_can_claim_its_clock_ran_out_and_the_host_decides():
 # --- AC11: the clock of the shot ---
 def test_ac11_the_clock_waits_for_the_coin_and_for_rolling_balls():
     sim, host, guest = started()
-    run(sim, (host, guest), config.NET_COIN_S - 0.3)  # the coin is still in the air
+    run(sim, (host, guest), toss.total_s(False) - 0.3)  # the coin is still in the air
     assert host.turn_left_s == guest.turn_left_s == config.NET_TURN_S
     assert not host.clock_running
     run(sim, (host, guest), 1.3)
@@ -216,7 +217,7 @@ def test_ac11_the_clock_waits_for_the_coin_and_for_rolling_balls():
 def pass_turn_to(sim, host, guest, player):
     """If the turn is not `player`'s, let it run out once so that it is (no foul, no ball in hand).
     The coin is let land first, so that the clock is running when this returns."""
-    run(sim, (host, guest), config.NET_COIN_S + 0.1)
+    run(sim, (host, guest), toss.total_s(False) + 0.1)
     if host.match.turn != player:
         assert host.timeout_turn()
         assert run(sim, (host, guest), 1.0, lambda: guest.match.turn == player)
@@ -258,7 +259,7 @@ def test_ac11_the_host_calls_time_itself_when_the_guest_says_nothing():
 def test_ac11_a_shot_at_the_last_moment_is_not_refused_for_being_late():
     sim, host, guest = started(latency=0.1)
     give_guest_the_turn(sim, host, guest)
-    run(sim, (host, guest), config.NET_TURN_S + 5.0, lambda: guest.turn_left_s < 0.05)
+    run(sim, (host, guest), config.NET_TURN_S + 10.0, lambda: guest.turn_left_s < 0.05)
     assert guest.turn_left_s < 0.05 and not guest._timeout_sent
     assert guest.shoot(Shot(0.0, 0.6, 0.0)) is not None
     run(sim, (host, guest), 8.0, lambda: host.checkpoints == guest.checkpoints and guest.settled)
@@ -433,7 +434,7 @@ def room_pair(latency=0.0, jitter=0.0, loss=0.0, seed=0):
 
 def settle_clocks(room, host, guest):
     """Let the coin land, so that the clock is running."""
-    run(room, (host, guest), config.NET_COIN_S + 0.1)
+    run(room, (host, guest), toss.total_s(False) + 0.1)
 
 
 def back_together(host, guest):
