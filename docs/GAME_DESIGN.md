@@ -86,6 +86,10 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 Riêng tư: nối thẳng làm bạn kia thấy địa chỉ mạng của mình; chấp nhận giữa bạn bè nhưng từ chặng 2 giao diện KHÔNG hiện địa chỉ mạng (chỉ mã phòng). Người cùng wifi mà không có mã thì không vào được cửa nối thẳng.
 Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng: cho phép (mạng riêng) thì cùng wifi nối thẳng được; không cho phép thì vẫn chơi được qua máy trung chuyển.
 
+## Phản hồi lần 23 (2026-10-31, người dùng chốt làm Chặng 4 — chặng cuối — của chơi đôi; brief `docs/plans/20261031-multiplayer-chang4.md`)
+- Chặng 4 là công cụ cho người trông máy chủ, KHÔNG đổi gì người chơi thấy hay luật chơi: xem tình trạng (số phòng, người, ping), nhật ký có lý do ngắt, cập nhật máy chủ bằng một lệnh, báo khi sập. Người dùng chọn xem bằng LỆNH trên máy mình (không làm trang web) và GIỮ NGUYÊN độ trễ qua internet (p95 ~90 ms, không làm thêm để giảm). Sửa dòng 102 ("Chặng 4 làm sau khi chơi thử") thành đã làm.
+- Báo sập: người dùng chọn email tới hộp thư của mình. Cloudflare gói miễn phí không gửi được thư từ Worker, nên thư do dịch vụ theo dõi bên ngoài gửi (UptimeRobot, miễn phí, 5 phút một lần) trỏ vào địa chỉ `/v1/health` của máy chủ; mức miễn phí gần cạn (≥ 90%) cũng làm địa chỉ này báo lỗi nên thư tới TRƯỚC khi hết lượt. Người dùng phải tự đăng ký tài khoản đó.
+
 ## Phản hồi lần 22 (2026-10-31, người dùng báo lỗi nhỏ lúc tung xu)
 - Khung tên của người sẽ phá bi đã viền hồng và có mũi tên ngay từ đầu đoạn mở ván, nên xu tung chẳng còn bất ngờ. Luật chọn người phá ngay lúc vào ván (hai máy cùng biết); màn hình giữ kín: hai khung tên cùng kiểu tối suốt lúc nhìn bàn, xu chờ và xu quay; viền hồng + mũi tên hiện ĐÚNG LÚC XU RƠI (cùng lúc tiếng "keng" và dòng "{tên} phá bi", giây thứ 4,5 ván đầu / 5,3 ván Đấu lại; người dùng chọn mốc này, không chờ hết cả đoạn). Thanh đồng hồ vẫn chỉ hiện khi hết đoạn mở ván. Đổi so với lần 18, nơi không nói rõ khung tên sáng lúc nào.
 
@@ -99,7 +103,7 @@ Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng
 - Gặp nhau bằng MÃ PHÒNG 4 chữ cái (bỏ I, L, O vì dễ nhầm với 1, 0), qua internet: hai người ở hai nhà chơi được. Thay cho việc gõ địa chỉ cục bộ của chặng 1 (bỏ hẳn, kể cả khi cùng wifi; mất internet thì không tìm được phòng — người dùng chọn, để màn hình gọn).
 - Máy trung chuyển miễn phí trên Cloudflare (người dùng chọn giữa Cloudflare / Oracle miễn phí cần thẻ / Fly.io ~2 USD mỗi tháng). Mức miễn phí đủ khoảng 9 giờ ngắm cơ liên tục mỗi ngày (ước tính từ giới hạn 100.000 yêu cầu/ngày, chưa đo); quá mức thì phòng mới bị từ chối đến 7 giờ sáng hôm sau (giờ Việt Nam).
 - Cùng wifi: game tự nối thẳng, người chơi không thấy gì khác. Mọi thứ của Chặng 3 (rớt mạng / vào lại 60 s, Đấu lại, đầu hàng, đồng hồ, biểu cảm) giữ nguyên qua máy trung chuyển.
-- Chặng 4 (trang tình trạng máy chủ) làm sau khi người dùng chơi thử Chặng 2.
+- Chặng 4 (trang tình trạng máy chủ) làm sau khi người dùng chơi thử Chặng 2. (đã đổi ở lần 23: làm xong dưới dạng lệnh `tools\relay_ops.py`, không có trang web)
 - Giao diện (người dùng chọn qua ảnh `tools/_out/20261031-ma-phong/`, hướng B): mã phòng là BỐN Ô sáng, mỗi ô một chữ, ở cả màn chủ phòng ("Mã phòng của bạn", lúc đang xin mã thì bốn ô tối và dòng "Đang tạo phòng…", có mã rồi mới "Đang chờ bạn chơi…") lẫn màn người vào ("Gõ mã phòng": ô đã gõ sáng xanh, ô kế tiếp viền hồng có con trỏ, mã sai thì cả bốn viền đỏ và báo lỗi ngay dưới). Hướng A (một ô chữ như ô gõ tên) bị bỏ.
 - Gõ đủ chữ thứ 4 là TỰ VÀO phòng, không cần bấm Vào (nút Vào vẫn còn để thử lại); mã đã đủ 4 chữ thì gõ thêm không thử lại, xoá một chữ rồi gõ lại mới thử.
 - Dòng gợi ý dưới Tạo phòng / Vào phòng (chặng 1: "Hai máy cùng một mạng wifi") BỎ HẲN; chỗ đó chỉ hiện lỗi khi có (ví dụ "Không kết nối được máy chủ — kiểm tra internet").
