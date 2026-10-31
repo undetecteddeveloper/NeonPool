@@ -120,6 +120,10 @@ class Strands:
         sign = np.where(np.arange(STRANDS) % 2 == 0, 1.0, -0.7)[:, None]
         self.vy += strength * 900.0 * sign * _gauss(self.x, x, 38.0)[None, :]
 
+    def press(self, x: float, sigma: float, force: float, dt: float) -> None:
+        """Something heavy floats on the ribbons at x: they sink under it (`force` px/s^2 down)."""
+        self.vy += force * dt * _gauss(self.x, x, sigma)[None, :]
+
     def surface(self, x: float) -> float:
         """The logical y of the ribbon (the middle of its strands) at x."""
         return self.base_y + float(np.interp(x, self.x, self.y.mean(axis=0)))
@@ -210,9 +214,10 @@ class Floaters:
                        (BALL_PX * sv.s + ring / 2) * k)  # fmt: skip
         return pg.transform.smoothscale(big, (size, size))
 
-    def update(self, dt: float) -> None:
+    def update(self, dt: float, spawn: bool = True) -> None:
+        """`spawn` False: no new ball comes up (the ones afloat drift away)."""
         self._t += dt
-        if self._t >= self._next:
+        if spawn and self._t >= self._next:
             self._next = self._t + FLOAT_EVERY_S
             if len(self.balls) < FLOAT_MAX:
                 self.balls.append(self._spawn())
@@ -410,10 +415,11 @@ class Synthwave:
     def splash(self, x: float, strength: float = 1.0) -> None:
         self.strands.splash(x, strength)
 
-    def update(self, dt: float) -> None:
+    def update(self, dt: float, balls: bool = True) -> None:
+        """`balls` False: the menu's balls stop coming up (the credits are on the water)."""
         self.strands.update(dt)
         if self.floaters is not None:
-            self.floaters.update(dt)
+            self.floaters.update(dt, balls)
 
     # --- drawing -----------------------------------------------------------------------------
     def draw(self, canvas: pg.Surface, clock: float) -> None:

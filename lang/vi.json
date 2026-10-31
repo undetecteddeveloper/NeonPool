@@ -195,5 +195,20 @@
   "guide.duo_them": "Đối thủ",
   "guide.duo_clock": "Thanh cạn dần: thời gian của cú",
   "guide.duo_emote": "Biểu cảm (phím 1 2 3)",
-  "guide.duo_esc": "Esc: Tiếp tục hoặc Đầu hàng"
+  "guide.duo_esc": "Esc: Tiếp tục hoặc Đầu hàng",
+  "credits.link": "Credit",
+  "credits.made_by": "Thiết kế & lập trình",
+  "credits.person": "Smith Nguyễn",
+  "credits.tools": "Được làm bằng",
+  "credits.assistant": "Trợ lý lập trình",
+  "credits.fonts": "Phông chữ",
+  "credits.thanks": "Cảm ơn bạn đã chơi",
+  "tool.python": "Python",
+  "tool.pygame": "pygame-ce",
+  "tool.numpy": "NumPy",
+  "tool.claude": "Claude Code",
+  "tool.tilt": "Tilt Neon",
+  "tool.chakra": "Chakra Petch",
+  "splash.ready": "sẵn sàng",
+  "splash.ok": "OK"
 }

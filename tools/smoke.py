@@ -254,6 +254,19 @@ def main() -> int:
     app.help.go(3)
     turning = measure(app, 18)
     guide = measure(app, 60)
+    # the opening screen halfway through its typing, and the credits: pieces falling and floating
+    # on the ribbons (their splash and weight move the water the menu draws every frame)
+    app.help.is_open = False
+    app.go_menu()
+    app.skip_transition()
+    app.start_splash()
+    app.splash.t = 3.0
+    splash = measure(app, 60)
+    app.go_menu()
+    app.skip_transition()
+    app.handle_event(pg.event.Event(pg.KEYDOWN, key=pg.K_c))
+    measure(app, 90)  # the words dim away, the first pieces fall
+    credits = measure(app, 120)
     net_ok = net_smoke(tuple(int(v) for v in args.size.lower().split("x")))
     pg.quit()
 
@@ -266,6 +279,8 @@ def main() -> int:
         & report("hướng dẫn (đang mở ra)", opening)
         & report("hướng dẫn (đang lật trang)", turning)
         & report("hướng dẫn", guide)
+        & report("màn mở đầu (đang gõ công cụ)", splash)
+        & report("credit (chữ rơi và nổi trên sóng)", credits)
         & net_ok
     )
     return 0 if ok else 1

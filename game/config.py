@@ -122,6 +122,22 @@ SAMPLE_RATE = 44100
 SFX_MAX_PER_FRAME = 6  # cap sounds started per frame so a break is not a wall of noise
 SFX_REF_SPEED = 6.0  # m/s that maps to full volume
 SFX_MIN_SPEED = 0.05  # m/s; softer impacts make no sound (no ticking at the end of a roll)
+# --- The credits: pieces of text fall into the menu's ribbons and drift off (scenes/credits.py) ---
+CREDIT_FADE_OUT_S = 0.4  # the menu's words dim away this long before the first piece falls
+CREDIT_FADE_IN_S = 0.7  # ... and come back this long once the last piece has left
+CREDIT_FIRST_S = 0.3  # the first piece starts to fall this long after the menu has gone
+CREDIT_EVERY_S = 1.0  # a new piece falls this often
+CREDIT_FLOW = 250.0  # logical px/s: the current carries a piece sideways from the first moment,
+#                      so two pieces that fell one second apart land this far from each other
+CREDIT_LANE_X = 380.0  # where every piece lands (the middle of it), logical px
+CREDIT_MAX_W = 220.0  # no piece is wider: it must clear the one before it (FLOW * EVERY_S)
+CREDIT_GRAVITY = 900.0  # logical px/s^2, in the air
+CREDIT_SPRING = 300.0  # 1/s^2: the water pushes a piece back up to the surface ...
+CREDIT_DAMP = 18.0  # 1/s: ... and slows it, so it dips once or twice and settles
+CREDIT_SINK = 4.0  # a floating piece sits this far below the surface (logical px)
+CREDIT_PRESS = 260.0  # px/s^2 a floating piece pushes the ribbons down under its weight
+CREDIT_SPLASH = 0.55  # a piece landing kicks the ribbons this hard (times its speed / 600 px/s)
+CREDIT_SPLASH_MAX = 1.3  # ... at most this many times that
 # --- The numbers on the result card count up one after the other (game/tally.py) ---
 TALLY_SPANS = (("score", 1.1), ("shots", 0.6), ("fouls", 0.5))  # in order: name, seconds it runs
 TALLY_START_S = 0.7  # after the game ends: the card has grown in and the jingle is on its way

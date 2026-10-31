@@ -28,6 +28,7 @@ from game.scenes.help import HelpPanel
 from game.scenes.menu import MenuScene
 from game.scenes.net_play import NetPlayScene
 from game.scenes.play import PlayScene
+from game.scenes.splash import SplashScene
 
 log = logging.getLogger("neonpool")
 _MOUSE_EVENTS = (pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP, pg.MOUSEMOTION)
@@ -52,6 +53,7 @@ class App:
         self.audio.music_volume = self.settings.music
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.menu = MenuScene(self)
+        self.splash = SplashScene(self)  # the real game opens on it (start_splash); tools do not
         self.net: NetPlayScene | None = None  # a two-player game, while there is one
         self.help = HelpPanel(self)  # a card over the menu or the table, not a scene
         self.scene = self.menu
@@ -85,8 +87,14 @@ class App:
             pass
         self.menu.settings.prewarm(self.view)
         self.menu.play_panel.prewarm(self.view)
+        self.menu.credits.prewarm()
         hud.prewarm_result(self.view)
         hud.prewarm_net(self.view)
+
+    def start_splash(self) -> None:
+        """Open on the title screen; it hands over to the menu by itself (or on any key)."""
+        self.splash.restart()
+        self.scene = self.splash
 
     def start_net(self, session) -> None:
         """A room is full and the handshake is done: the two-player game begins."""
@@ -158,11 +166,12 @@ class App:
         ):
             self.menu.settings.prewarm(self.view)
             self.menu.play_panel.prewarm(self.view)
+            self.menu.credits.prewarm()
             hud.prewarm_result(self.view)
             hud.prewarm_net(self.view)
         self.audio.update_music(
             dt,
-            "menu" if self.scene is self.menu else "play",
+            "menu" if self.scene is self.menu else None if self.scene is self.splash else "play",
             duck=isinstance(self.scene, PlayScene) and self.scene.rules.phase != PLAYING,
         )
         if not (self.help.is_open and self.scene is self.play):  # the game waits behind the card
@@ -185,6 +194,7 @@ class App:
             if self.net is not None:
                 self.net.set_view(target)
             self.menu.set_view(target)
+            self.splash.set_view(target)
             self.help.set_view(target)
 
     def draw(self) -> None:
@@ -216,7 +226,7 @@ class App:
                 screen.blit(frame, (round(shake_x * target.s), round(shake_y * target.s)))
         if self.settings.show_fps:
             self._draw_fps(screen, target)
-        crt.scanlines(screen, target.s)
+        crt.scanlines(screen, target.s, getattr(self.scene, "SCAN_DARK", crt.SCANLINE_DARK))
 
     def _draw_tube(self, screen: pg.Surface, frame: pg.Surface) -> None:
         """An old tube switching: the old picture folds to a bright line, the new opens out."""
@@ -264,6 +274,7 @@ class App:
         app = App(screen)
         app.help.prefetch = True  # (later, after a language or size change, the menu re-makes them)
         app.prepare()
+        app.start_splash()
         clock = pg.time.Clock()  # made after the long wait: the first frame is not a "long frame"
         while app.running:
             dt = clock.tick(60) / 1000

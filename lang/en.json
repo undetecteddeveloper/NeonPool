@@ -195,5 +195,20 @@
   "guide.duo_them": "Opponent",
   "guide.duo_clock": "The bar runs out: time of the shot",
   "guide.duo_emote": "Reactions (keys 1 2 3)",
-  "guide.duo_esc": "Esc: Resume or Give up"
+  "guide.duo_esc": "Esc: Resume or Give up",
+  "credits.link": "Credits",
+  "credits.made_by": "Design & code",
+  "credits.person": "Smith Nguyễn",
+  "credits.tools": "Made with",
+  "credits.assistant": "Coding assistant",
+  "credits.fonts": "Fonts",
+  "credits.thanks": "Thanks for playing",
+  "tool.python": "Python",
+  "tool.pygame": "pygame-ce",
+  "tool.numpy": "NumPy",
+  "tool.claude": "Claude Code",
+  "tool.tilt": "Tilt Neon",
+  "tool.chakra": "Chakra Petch",
+  "splash.ready": "ready",
+  "splash.ok": "OK"
 }

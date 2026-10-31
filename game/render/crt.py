@@ -21,10 +21,10 @@ def period(scale: float) -> int:
     return max(2, round(SCANLINE_PX * scale))
 
 
-def scanlines(screen: pg.Surface, scale: float = 1.0) -> None:
-    """Dim every `period`-th row of the finished frame a little."""
+def scanlines(screen: pg.Surface, scale: float = 1.0, dark: float = SCANLINE_DARK) -> None:
+    """Dim every `period`-th row of the finished frame a little (`dark`: the light it keeps)."""
     w, h = screen.get_size()
-    k = round(255 * SCANLINE_DARK)
+    k = round(255 * dark)
     step = period(scale)
     for y in range(step - 1, h, step):
         screen.fill((k, k, k), (0, y, w, 1), special_flags=pg.BLEND_RGB_MULT)
