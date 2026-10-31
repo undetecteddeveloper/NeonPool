@@ -4,6 +4,7 @@ Nguồn sự thật cho cách code. Cần thứ chưa có ở đây → thêm TR
 
 ## Chạy / công cụ
 - Python: `.venv\Scripts\python.exe` (3.13), pygame-ce 2.5.8 (`import pygame as pg`), numpy có sẵn, pytest, ruff.
+- Dev (2026-10-31): `.venv\Scripts\python.exe tools\dev.py` mở game thật có bảng chọn trạng thái (F1; F2 chạy lại, F3 bot tự chơi, F4 cắt/nối mạng, F5 bot đánh, F6 đồng hồ 10 s) với ĐỐI THỦ GIẢ qua đường truyền giả lập (`SimRoom`: cắt, nối, câm, trễ), không mở cổng, cài đặt riêng `tools/_out/dev-settings.json`; `--list` in danh sách, `--check` chạy MỌI trạng thái không cửa sổ (cũng là `tests/test_dev_tool.py`). Danh sách trạng thái ở `tools/devkit/states.py` (thêm game/màn mới thì thêm trạng thái ở đó), tay chân của bot và kịch bản ở `tools/devkit/harness.py`.
 - Chạy game: `.venv\Scripts\python.exe main.py` · không cửa sổ: đặt `SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy` (tools và tests tự đặt).
 - Chú thích code bằng tiếng Anh, ngắn. Type hint cho hàm công khai. Không `print` trong vòng lặp nóng; dùng `logging` (logger `neonpool`).
 

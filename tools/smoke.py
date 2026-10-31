@@ -137,6 +137,31 @@ def net_smoke(size: tuple[int, int]) -> bool:
         if not ok:
             print(f"smoke hai máy: kết quả sai {phases}")
     print("smoke hai máy:", "ván chạy tới thắng/thua" if ok else "KHÔNG tới được thắng/thua")
+    if ok:  # Rematch: both press it on the result card; the second game ends by a surrender
+        old = (host.net, guest.net)
+        for a in apps:
+            a.handle_event(pg.event.Event(pg.KEYDOWN, key=pg.K_RETURN))
+        both_new = lambda: (  # noqa: E731
+            host.net is not old[0]
+            and guest.net is not old[1]
+            and host.net.session.game_no == guest.net.session.game_no == 2
+        )
+        ok = step(both_new, 15, "đấu lại")
+        ok = ok and step(lambda: all(a.net._toss_done() for a in apps) and settled(), 15, "ván hai")
+        if ok:
+            guest.net.session.surrender()
+            ok = step(
+                lambda: host.net._result_shown and guest.net._result_shown, 15, "kết quả ván hai"
+            )
+        if ok:
+            step(lambda: False, 1.0, "thẻ kết quả ván hai")
+            wins = (host.net.session.wins, guest.net.session.wins)
+            ok = (host.net.rules.phase, guest.net.rules.phase) == (WON, LOST) and (
+                wins[0] == wins[1] and sum(wins[0]) == 2
+            )
+        print(
+            "smoke hai máy:", "Đấu lại → ván hai → thắng/thua, tỉ số khớp" if ok else "ĐẤU LẠI HỎNG"
+        )
     good = ok
     for stage, values in times.items():
         mean = sum(values) / len(values)
@@ -167,6 +192,7 @@ def main() -> int:
     from game.app import App
     from game.render.layout import to_px
     from game.rules.eight_ball import LOST
+    from game.scenes.help import TOPICS
 
     pg.init()
     screen = pg.display.set_mode(config.LOGICAL_SIZE)
@@ -204,7 +230,7 @@ def main() -> int:
     app.go_menu()
     app.skip_transition()
     app.open_help()
-    for page in range(6):
+    for page in range(len(TOPICS)):
         app.help.page = page
         t0 = time.perf_counter()
         app.update(1 / 60)

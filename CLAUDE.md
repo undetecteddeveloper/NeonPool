@@ -76,6 +76,6 @@ Theo luật chung (thử lại 1 lần → báo ngay → CHƯA LÀM). Riêng d�
 Người dùng sửa cùng một lỗi lần thứ hai → Claude sửa luật có sẵn ở đúng file (file này hoặc một file đường): thay luật cũ cùng chủ đề, không thêm file. Báo một dòng "Đã ghi luật: …". KHÔNG ghi luật hay nhật ký sự kiện vào auto-memory. Sự cố môi trường mới → thêm một dòng có ngày vào `ops-env.md`.
 
 ## 8. Bản đồ
-- Chạy game: `.venv\Scripts\python.exe main.py` · Test: `.venv\Scripts\python.exe -m pytest` · Chụp khung hình: `.venv\Scripts\python.exe tools\shot.py --frames 60 --out tools\_out\<yyyymmdd>-<slug>\a.png` (luôn vào thư mục con của việc, không để ảnh ở gốc `_out`) rồi Read ảnh.
+- Chạy game: `.venv\Scripts\python.exe main.py` · Dev (xem mọi trạng thái, đối thủ giả, không cần mạng): `.venv\Scripts\python.exe tools\dev.py` (F1; `--check` chạy mọi trạng thái) · Test: `.venv\Scripts\python.exe -m pytest` · Chụp khung hình: `.venv\Scripts\python.exe tools\shot.py --frames 60 --out tools\_out\<yyyymmdd>-<slug>\a.png` (luôn vào thư mục con của việc, không để ảnh ở gốc `_out`) rồi Read ảnh.
 - Tiến độ: `PROGRESS.md` (chỉ việc đang mở và vừa xong, ≤60 dòng, tự cắt mục cũ — lịch sử đã có trong git log).
 - Mã nguồn game: `game/` · chuỗi giao diện: `lang/vi.json`, `lang/en.json` · công cụ: `tools/`.
