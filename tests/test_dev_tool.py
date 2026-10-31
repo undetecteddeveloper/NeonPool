@@ -5,6 +5,7 @@ import pytest
 
 from game import config, i18n
 from game.app import App
+from game.net import toss
 from game.rules.eight_ball import LOST, WON
 from game.scenes import play_panel as pp
 from tools.devkit.check import DT, frames, run_check
@@ -266,3 +267,38 @@ def test_ac25_the_ping_line_shows_dashes_then_the_round_trip_in_a_colour_of_its_
     h.set_latency(0.2)  # a bad line (a 0.2 s trip each way)
     frames(app, h, round(8.0 / DT))
     assert s.rtt_s > 0.25 and hud.ping_colour(round(s.rtt_s * 1000)) == hud.ping_colour(900)
+
+
+@pytest.mark.parametrize("state", ["Tôi là chủ phòng, tôi phá", "Tôi là chủ phòng, bot phá"])
+def test_ac27_no_plate_is_lit_until_the_coin_has_landed(dev, monkeypatch, state):
+    """Found by the user (2026-10-31): the plate of whoever breaks was lit from the first frame of
+    the toss, so the coin told nothing. Every frame is looked at, both for the first game and for a
+    rematch (whose lead is longer)."""
+    from game.render import hud
+
+    app, h = dev
+    lit: list[bool] = []
+    real = hud.name_plate
+
+    def spy(canvas, v, rect, name, group_s, left, *, turn):
+        lit.append(turn)
+        return real(canvas, v, rect, name, group_s, left, turn=turn)
+
+    monkeypatch.setattr(hud, "name_plate", spy)
+    go(dev, state)
+    for again in (False, True):
+        scene = app.net
+        scene._toss = toss.Toss(again, scene._toss.breaker)  # (the rematch's longer lead)
+        h.replay_toss()
+        frames(app, h, 1)
+        landed = scene._toss.land_at
+        before_landing, after_landing = [], []
+        while scene._clock - scene._started_at < landed + 0.6:
+            age = scene._clock - scene._started_at
+            lit.clear()
+            frames(app, h, 1)
+            (after_landing if age + DT >= landed else before_landing).append(any(lit))
+        assert before_landing and not any(before_landing)
+        assert after_landing and all(
+            after_landing[-5:]
+        )  # and from the landing the player on turn is lit

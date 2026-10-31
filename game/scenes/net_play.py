@@ -177,6 +177,9 @@ class NetPlayScene(PlayScene):
     def _toss_done(self) -> bool:
         return self._clock - self._started_at >= self._toss.total_s
 
+    def _breaker_known(self) -> bool:
+        return self._toss.breaker_known(self._clock - self._started_at)
+
     def leave(self) -> None:
         self.session.leave()
 
@@ -585,7 +588,7 @@ class NetPlayScene(PlayScene):
                 t("net.you", name=name) if player == self._me else name,
                 t(f"group.{group}") if group else t("group.open"),
                 m.group_left(player),
-                turn=m.turn == player and not m.over and s.playing,
+                turn=m.turn == player and not m.over and s.playing and self._breaker_known(),
             )  # fmt: skip
         hud.versus(canvas, v, OUTER_X + OUTER_W / 2, self._shown_wins(), first=s.game_no == 1,
                    board=self._vs_board, clock=self._clock)  # fmt: skip

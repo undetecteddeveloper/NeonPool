@@ -63,3 +63,11 @@ def test_the_coin_is_thrown_up_and_comes_down_and_turns_over_as_many_times_as_it
     assert tt.faces_seen(tt.flip_at) == 0 and tt.faces_seen(tt.total_s) == 7  # 6 + the breaker
     counts = [tt.faces_seen(i / 100) for i in range(int(tt.total_s * 100))]
     assert counts == sorted(counts) and set(counts) == set(range(8))
+
+
+@pytest.mark.parametrize("again", [False, True])
+def test_the_breaker_is_known_only_once_the_coin_has_landed(again):
+    tt = Toss(again, 1)
+    assert not tt.breaker_known(0.0) and not tt.breaker_known(tt.flip_at)
+    assert not tt.breaker_known(tt.land_at - 0.01)  # still in the air
+    assert tt.breaker_known(tt.land_at) and tt.breaker_known(tt.total_s)

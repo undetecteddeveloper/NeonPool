@@ -39,6 +39,11 @@ class Toss:
     def total_s(self) -> float:
         return total_s(self.again)
 
+    def breaker_known(self, age: float) -> bool:
+        """The coin has landed: from here on the screen may show who breaks (the plate lights, the
+        words and the sound). The rules chose the breaker at the start; the screen keeps it back."""
+        return age >= self.land_at
+
     def phase(self, age: float) -> str:
         if age < self.lead_s:
             return LEAD
