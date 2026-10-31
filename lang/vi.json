@@ -209,13 +209,6 @@
   "tool.claude": "Claude Code",
   "tool.tilt": "Tilt Neon",
   "tool.chakra": "Chakra Petch",
-  "loading.start": "khởi động",
-  "loading.help": "hình hướng dẫn",
-  "loading.panels": "bảng cài đặt và bảng chơi",
-  "loading.cards": "thẻ kết quả",
-  "loading.credits": "màn credit",
-  "loading.looks": "hiệu ứng menu và màn mở đầu",
-  "loading.music": "nhạc nền",
   "splash.ready": "sẵn sàng",
   "splash.ok": "OK"
 }

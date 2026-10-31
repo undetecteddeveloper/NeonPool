@@ -48,7 +48,7 @@ def test_every_piece_has_its_words_and_is_narrow_enough_to_clear_the_one_before(
     for piece in credits.PIECES:
         for k, _ in piece:
             assert k in i18n.table("vi") and k in i18n.table("en"), k
-        assert credits.piece_width(v, piece) <= config.CREDIT_MAX_W, (lang, piece)
+        assert credits.build_piece(v, piece)[1] <= config.CREDIT_MAX_W, (lang, piece)
     i18n.set_lang("vi")
 
 

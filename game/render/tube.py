@@ -180,9 +180,9 @@ class Monitor:
         self.pic.blit(self._bg, (0, 0))
         return self.pic
 
-    def present(self, screen: pg.Surface, t: float, tear: bool = True) -> None:
+    def present(self, screen: pg.Surface, t: float) -> None:
         pic, v = self.pic, self.view
-        if tear and t >= 2.0 and (t / TEAR_EVERY_S) % 1.0 < TEAR_S / TEAR_EVERY_S:
+        if t >= 2.0 and (t / TEAR_EVERY_S) % 1.0 < TEAR_S / TEAR_EVERY_S:
             w, h = pic.get_size()  # for a few frames a band of the picture slips sideways
             y, bh = int((t * 7.3 % 1.0) * h * 0.8), v.i(26)
             band = pic.subsurface((0, y, w, min(bh, h - y))).copy()

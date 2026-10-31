@@ -85,11 +85,10 @@ class App:
         """What the made-ahead pictures are for: the window shape and the language."""
         return self.view.s, self.view.canvas, i18n.get_lang()
 
-    def prepare_steps(self) -> list[tuple[str, Callable[[], bool]]]:
+    def prepare_steps(self) -> list[Callable[[], bool]]:
         """Everything the game makes before it is first seen, so that the menu then runs smoothly
-        and every card opens at once, as (key of the line on the loading screen, work). The work
-        is called again while it returns True (it made one piece and more is left); the step is
-        done when it returns False."""
+        and every card opens at once, in pieces small enough to keep the loading screen moving.
+        A step is called again while it returns True (it made one piece and more is left)."""
         screen = pg.display.get_surface() or self.screen
 
         def once(work: Callable[[], object]) -> Callable[[], bool]:
@@ -100,12 +99,12 @@ class App:
             return run
 
         return [
-            ("loading.help", self.help.prefetch_one),
-            ("loading.panels", once(lambda: self._warm_panels())),
-            ("loading.cards", once(lambda: self._warm_cards())),
-            ("loading.credits", once(self.menu.credits.prewarm)),
-            ("loading.looks", once(lambda: self._warm_looks(screen))),
-            ("loading.music", self.audio.prepare_music),
+            self.help.prefetch_one,
+            once(self._warm_panels),
+            once(self._warm_cards),
+            once(self.menu.credits.prewarm),
+            once(lambda: self._warm_looks(screen)),
+            self.audio.prepare_music,
         ]
 
     def _warm_panels(self) -> None:
@@ -125,7 +124,7 @@ class App:
     def prepare(self) -> None:
         """Do every step now, in one go (tools and tests; the real game does the same behind its
         loading screen, a piece at a time: `boot`)."""
-        for _, work in self.prepare_steps():
+        for work in self.prepare_steps():
             while work():
                 pass
         self._warmed = self._warm_key()
@@ -301,28 +300,21 @@ class App:
     # --- real window ---------------------------------------------------------------------------
     @staticmethod
     def boot(screen: pg.Surface) -> App | None:
-        """Make the app behind the loading screen (a boot log on the arcade monitor, redrawn
-        between the pieces of work), then open on the opening screen. None if the window was
-        closed meanwhile."""
+        """Make the app behind the loading screen (redrawn between the pieces of work), then open
+        on the opening screen. None if the window was closed meanwhile."""
         i18n.set_lang(settings.load().lang)  # the player's language, before the App exists
         loading = LoadingScene(screen)
-        loading.begin("loading.start")
         if not loading.show(screen):
             return None
         app = App(screen)
-        loading.done("loading.start")
         app.help.prefetch = True  # (later, after a language or size change, the menu re-makes them)
-        for key, work in app.prepare_steps():
-            loading.begin(key)
+        for work in app.prepare_steps():
             while True:
                 if not loading.show(screen):
                     return None
                 if not work():
                     break
-            loading.done(key)
         app._warmed = app._warm_key()
-        loading.begin("splash.ready")
-        loading.show(screen)
         app.start_splash()
         return app
 

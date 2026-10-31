@@ -209,13 +209,6 @@
   "tool.claude": "Claude Code",
   "tool.tilt": "Tilt Neon",
   "tool.chakra": "Chakra Petch",
-  "loading.start": "starting up",
-  "loading.help": "how-to-play pictures",
-  "loading.panels": "settings and play panels",
-  "loading.cards": "result cards",
-  "loading.credits": "credits screen",
-  "loading.looks": "menu and opening effects",
-  "loading.music": "background music",
   "splash.ready": "ready",
   "splash.ok": "OK"
 }

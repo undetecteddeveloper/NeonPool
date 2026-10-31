@@ -89,11 +89,6 @@ def lines_of(key: str, kind: str, v: View) -> list[str]:
     return out
 
 
-def piece_width(v: View, piece) -> float:
-    """How wide a piece is (logical px), in the language now set."""
-    return max(_width(v, line, kind) for key, kind in piece for line in lines_of(key, kind, v))
-
-
 def build_piece(v: View, piece) -> tuple[pg.Surface, float, float]:
     """(picture on black, width of the words, height of the words), logical px. The picture has
     PAD of room on every side and is added to the night, never blitted over it."""

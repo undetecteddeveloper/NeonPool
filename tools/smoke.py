@@ -264,15 +264,7 @@ def main() -> int:
     splash = measure(app, 60)
     from game.scenes.loading import LoadingScene
 
-    loading_scene = LoadingScene(screen)  # the boot log, with most of its lines there
-    for key in (
-        "loading.start",
-        "loading.help",
-        "loading.panels",
-        "loading.cards",
-        "loading.music",
-    ):
-        loading_scene.begin(key)
+    loading_scene = LoadingScene(screen)
     loading_times = []
     for _ in range(60):
         t0 = time.perf_counter()
@@ -300,7 +292,7 @@ def main() -> int:
         & report("hướng dẫn (đang lật trang)", turning)
         & report("hướng dẫn", guide)
         & report("màn mở đầu (đang gõ công cụ, kính lồi)", splash)
-        & report("màn loading (nhật ký khởi động)", loading_times)
+        & report("màn loading (kính lồi)", loading_times)
         & report("menu được tia quét vẽ ra", intro)
         & report("credit (chữ rơi và nổi trên sóng)", credits)
         & net_ok
