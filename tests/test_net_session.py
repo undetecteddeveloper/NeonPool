@@ -848,3 +848,29 @@ def test_ac13_a_game_that_ends_is_counted_even_if_the_next_one_starts_in_the_sam
     guest.rematch[GUEST] = True  # (the guest's word reaches the host before the next frame)
     host._handle(p.Rematch())
     assert host.game_no == 2 and host.wins == [0, 1]  # the new game began; the old one is not lost
+
+
+def test_ac24_the_other_player_is_seen_setting_the_spin_and_it_ends_with_their_turn():
+    sim, host, guest = started()
+    shooter, viewer = on_turn(host, guest), off_turn(host, guest)
+    shooter.set_aim(p.AIM_RESTING, 1.0, dialing=True)
+    assert run(sim, (host, guest), 1.0, lambda: viewer.remote_cue.tuning_spin)
+    for _ in range(3):  # held for a while: told again, so it is still believed after the stale time
+        shooter.set_aim(p.AIM_RESTING, 1.0, dialing=True)
+        run(sim, (host, guest), config.NET_DIAL_STALE_S)
+        assert viewer.remote_cue.tuning_spin
+    shooter.set_aim(p.AIM_RESTING, 1.0, dialing=False)
+    assert run(sim, (host, guest), 3.0, lambda: not viewer.remote_cue.tuning_spin)
+    shooter.set_aim(p.AIM_RESTING, 1.0, dialing=True)
+    run(sim, (host, guest), 0.2)
+    assert viewer.remote_cue.tuning_spin
+    play_shot(sim, host, guest, Shot(math.pi, 0.1, 0.0))  # the turn ends: nothing is left over
+    assert not viewer.remote_cue.tuning_spin and not shooter.remote_cue.tuning_spin
+
+
+def test_ac24_nobody_sets_the_spin_when_they_may_not_shoot():
+    sim, host, guest = started()
+    waiter = off_turn(host, guest)
+    waiter.set_aim(p.AIM_RESTING, 1.0, dialing=True)  # not their turn: the word is not sent
+    run(sim, (host, guest), 0.5)
+    assert not on_turn(host, guest).remote_cue.tuning_spin

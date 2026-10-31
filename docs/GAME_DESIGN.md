@@ -86,6 +86,12 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 Riêng tư: nối thẳng làm bạn kia thấy địa chỉ mạng của mình; chấp nhận giữa bạn bè nhưng từ chặng 2 giao diện KHÔNG hiện địa chỉ mạng (chỉ mã phòng). Người cùng wifi mà không có mã thì không vào được cửa nối thẳng.
 Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng: cho phép (mạng riêng) thì cùng wifi nối thẳng được; không cho phép thì vẫn chơi được qua máy trung chuyển.
 
+## Phản hồi lần 21 (2026-10-31, người dùng bổ sung cuối Chặng 2: dòng ping và dòng báo chỉnh xoáy; brief `docs/plans/20261031-ping-xoay.md`)
+- Ván hai người có một dòng chữ nhỏ ở góc DƯỚI PHẢI, thẳng mép phải bảng bên, ví dụ "Ping 48 ms": số là thời gian đi-về tới đối thủ (đo mỗi giây). Màu: dưới 60 ms xanh, 60–120 ms hổ phách, trên 120 ms đỏ; chưa đo được hoặc đang rớt mạng thì "Ping -- ms" màu xám. Người dùng chọn kiểu có đổi màu (đổi ý so với kiểu không đổi màu / chỉ hiện khi bật Hiện FPS).
+- Khi đối thủ đang chỉnh chấm xoáy (giữ chấm hoặc lăn chuột trên bảng xoáy) và tới lượt họ, bạn thấy dòng "{tên} đang chỉnh xoáy…" (chấm nhấp nháy, màu hồng) NGAY TRÊN khung tên của họ; họ thôi chỉnh thì dòng còn thêm khoảng 1 giây rồi mờ đi. KHÁC với điều đã hỏi người dùng: "ngay dưới khung tên" (người dùng chọn) không có chỗ, vì thanh đồng hồ nằm đúng đó và mép bàn cách 4 px; nên đặt ở dải trống 24 px phía trên khung. Nếu muốn chỗ khác thì hỏi lại.
+- Bạn không thấy mức xoáy đối thủ chọn, chỉ thấy họ đang chỉnh. Giao thức đổi sang phiên bản 3: bản game cũ (v2) và mới không vào được nhau (báo "cần cập nhật").
+- Người dùng chốt làm tiếp trên nhánh `feat/ma-phong` (không gộp trước, dù luật nhánh hỏi).
+
 ## Phản hồi lần 20 (2026-10-31, người dùng chốt làm Chặng 2 của chơi đôi; brief `docs/plans/20261031-multiplayer-chang2.md`)
 - Gặp nhau bằng MÃ PHÒNG 4 chữ cái (bỏ I, L, O vì dễ nhầm với 1, 0), qua internet: hai người ở hai nhà chơi được. Thay cho việc gõ địa chỉ cục bộ của chặng 1 (bỏ hẳn, kể cả khi cùng wifi; mất internet thì không tìm được phòng — người dùng chọn, để màn hình gọn).
 - Máy trung chuyển miễn phí trên Cloudflare (người dùng chọn giữa Cloudflare / Oracle miễn phí cần thẻ / Fly.io ~2 USD mỗi tháng). Mức miễn phí đủ khoảng 9 giờ ngắm cơ liên tục mỗi ngày (ước tính từ giới hạn 100.000 yêu cầu/ngày, chưa đo); quá mức thì phòng mới bị từ chối đến 7 giờ sáng hôm sau (giờ Việt Nam).

@@ -11,7 +11,6 @@ See docs/GAME_DESIGN.md (network play).
 from __future__ import annotations
 
 import logging
-import math
 import os
 
 import pygame as pg
@@ -23,7 +22,6 @@ from game.net import relay, tcp
 from game.net import session as net_session
 from game.render import hud
 from game.render import palette as C
-from game.render.draw import blit_dot
 from game.render.floating import FloatPanel
 from game.render.view import View
 
@@ -391,11 +389,7 @@ class PlayPanel(FloatPanel):
             hud.text(canvas, pv, t("net.code_howto"), 13, C.TEXT_DIM, (cx, top + 232), center=True)
             # one pulsing line, centred: the room is being made, then the wait for the friend
             status = t("net.waiting" if code else "net.making_room")
-            left = cx - (hud.text_width(pv, status, 17, True) + 16) / 2
-            pulse = 0.5 + 0.5 * math.sin(self._clock * 3.0)
-            blit_dot(canvas, pv, (left, top + 288), 4, C.lerp(C.AMBER, C.WHITE, 0.3 * pulse),
-                     0.6 + pulse)  # fmt: skip
-            hud.text(canvas, pv, status, 17, C.AMBER, (left + 16, top + 282), bold=True)
+            hud.pulse_status(canvas, pv, status, (cx, top + 282), self._clock)
             if self.error:
                 hud.text(canvas, pv, t(self.error), 13, C.ERROR, (cx, top + 314), center=True)
             button("cancel", t("net.cancel"))

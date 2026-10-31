@@ -137,7 +137,7 @@ class Session:
         self._inbox: deque = deque()
         self._judged: list[MatchShot] = []
         self._resync_due = False
-        self._aim_want = self._aim_sent = (p.AIM_HIDDEN, 0, 0)
+        self._aim_want = self._aim_sent = (p.AIM_HIDDEN, 0, 0, False)
         self._aim_n = 0
         self._aim_at = -1.0
         self._place_want: tuple[int, int] | None = None
@@ -224,13 +224,17 @@ class Session:
         self._start_shot(msg)
         return msg.to_shot()
 
-    def set_aim(self, state: int, angle: float = 0.0, pull_px: float = 0.0) -> None:
-        """Where my cue is now (called every frame; sent at most NET_AIM_HZ times a second)."""
+    def set_aim(
+        self, state: int, angle: float = 0.0, pull_px: float = 0.0, dialing: bool = False
+    ) -> None:
+        """Where my cue is now and whether I am working on the spin dial (called every frame;
+        sent at most NET_AIM_HZ times a second)."""
+        dial = dialing and self.can_shoot
         if state == p.AIM_HIDDEN or not self.can_shoot:
-            self._aim_want = (p.AIM_HIDDEN, 0, 0)
+            self._aim_want = (p.AIM_HIDDEN, 0, 0, dial)
         else:
             pull = p.quantize_pull(pull_px) if state == p.AIM_PULLING else 0
-            self._aim_want = (state, p.quantize_angle(angle), pull)
+            self._aim_want = (state, p.quantize_angle(angle), pull, dial)
 
     def place_cue(self, x: float, y: float) -> bool:
         """Move the cue ball in hand to (x, y) metres (millimetres on the wire). False: not
@@ -368,8 +372,8 @@ class Session:
         self.link_down_s = 0.0
         self.link_losses += 1
         self._resuming = False
-        self._aim_want = (p.AIM_HIDDEN, 0, 0)
-        self.remote_cue.state = p.AIM_HIDDEN
+        self._aim_want = (p.AIM_HIDDEN, 0, 0, False)
+        self.remote_cue.hide()
         self.transport.close()
         log.info("net: the link is down; waiting for it")
 
@@ -445,7 +449,7 @@ class Session:
         self._inbox.clear()
         self._ping_sent.clear()
         self._ping_at = self.time - PING_EVERY_S
-        self._aim_sent = (-1, 0, 0)
+        self._aim_sent = (-1, 0, 0, False)
         if self.rematch[self.me]:
             self._send(p.Rematch())
         if self.me == HOST:
@@ -594,9 +598,9 @@ class Session:
         self._inbox.clear()
         self._judged.clear()
         self._resync_due = False
-        self._aim_want = self._aim_sent = (p.AIM_HIDDEN, 0, 0)
+        self._aim_want = self._aim_sent = (p.AIM_HIDDEN, 0, 0, False)
         self._place_want = None
-        self.remote_cue.state = p.AIM_HIDDEN
+        self.remote_cue.hide()
         self._toss_left = toss.total_s(self.game_no > 1)
         self._restart_clock()
 
@@ -643,8 +647,8 @@ class Session:
         self.match.on_shot()
         self._live = True
         self._acc = 0.0
-        self._aim_want = (p.AIM_HIDDEN, 0, 0)
-        self.remote_cue.state = p.AIM_HIDDEN
+        self._aim_want = (p.AIM_HIDDEN, 0, 0, False)
+        self.remote_cue.hide()
 
     def _advance_world(self, dt: float) -> list[Event]:
         events: list[Event] = []
@@ -748,10 +752,12 @@ class Session:
         if not self.linked:
             return
         interval = 1.0 / config.NET_AIM_HZ
-        if self._aim_want != self._aim_sent and self.time - self._aim_at >= interval:
-            state, angle, pull = self._aim_want
+        changed = self._aim_want != self._aim_sent
+        again = self._aim_want[3] and self.time - self._aim_at >= config.NET_DIAL_KEEPALIVE_S
+        if (changed or again) and self.time - self._aim_at >= interval:
+            state, angle, pull, dial = self._aim_want
             self._aim_n = (self._aim_n + 1) & 0xFF
-            self._send(p.Aim(self._aim_n, state, angle, pull), reliable=False)
+            self._send(p.Aim(self._aim_n, state, angle, pull, dial), reliable=False)
             self._aim_sent, self._aim_at = self._aim_want, self.time
         if self._place_want is not None and self.time - self._place_at >= interval:
             self._send(p.Place(*self._place_want, False), reliable=False)

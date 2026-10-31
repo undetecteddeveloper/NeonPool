@@ -26,6 +26,7 @@ class RemoteCue:
         self.pull = 0.0  # how far it is pulled back (logical px, 0..MAX_DRAG_PX)
         self._to_angle = 0.0
         self._to_pull = 0.0
+        self.dial_left = 0.0  # seconds the other player still counts as setting the spin
         self._last_n: int | None = None
         self.received = 0  # packets that counted
         self.dropped = 0  # packets that were late or repeated
@@ -37,6 +38,10 @@ class RemoteCue:
             return False
         self._last_n = aim.n
         self.received += 1
+        if aim.dial:  # (told again while it goes on; one that is never told again expires)
+            self.dial_left = config.NET_DIAL_STALE_S
+        else:
+            self.dial_left = min(self.dial_left, config.NET_DIAL_LINGER_S)
         was_hidden = self.state == AIM_HIDDEN
         self.state = aim.state
         self._to_angle = dequantize_angle(aim.angle)
@@ -44,6 +49,16 @@ class RemoteCue:
         if was_hidden and aim.state != AIM_HIDDEN:
             self.angle, self.pull = self._to_angle, self._to_pull
         return True
+
+    @property
+    def tuning_spin(self) -> bool:
+        """The other player is setting the spin (or just was, a moment ago)."""
+        return self.dial_left > 0.0
+
+    def hide(self) -> None:
+        """No cue and nothing being set (the game moved on: a shot, a new turn, a lost link)."""
+        self.state = AIM_HIDDEN
+        self.dial_left = 0.0
 
     @property
     def visible(self) -> bool:
@@ -55,6 +70,7 @@ class RemoteCue:
         return min(1.0, self.pull / config.MAX_DRAG_PX) ** config.POWER_CURVE
 
     def update(self, dt: float) -> None:
+        self.dial_left = max(0.0, self.dial_left - max(dt, 0.0))
         if not self.visible or dt <= 0:
             return
         k = 1.0 - math.exp(-dt / config.NET_REMOTE_CUE_TAU_S)

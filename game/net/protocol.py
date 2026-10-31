@@ -18,7 +18,7 @@ from game.physics.shot import Shot
 from game.physics.world import N_BALLS
 from game.rules.two_player import FOULS, GROUPS, OUTCOMES, REASONS, MatchShot, MatchState
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 MAX_FRAME = 1024  # bytes of type + payload; a checkpoint is ~330
 _LEN = struct.Struct("<H")
 
@@ -225,20 +225,22 @@ class Start:
 
 @dataclass(frozen=True)
 class Aim:
-    """Where the sender's cue is: hidden, resting at an angle, or pulled back (not reliable)."""
+    """Where the sender's cue is: hidden, resting at an angle, or pulled back (not reliable);
+    and whether they are working on the spin dial (v3: it tells the other side to say so)."""
 
     TYPE: ClassVar[int] = 16
     n: int  # counts up (wrapping at 256): a late packet is told from a new one
     state: int
     angle: int  # ANGLE_STEPS per turn
     pull: int  # 0..255 of MAX_DRAG_PX
+    dial: bool = False
 
     def pack(self) -> bytes:
-        return struct.pack("<BBHB", self.n, self.state, self.angle, self.pull)
+        return struct.pack("<BBHBB", self.n, self.state, self.angle, self.pull, self.dial)
 
     @classmethod
     def unpack(cls, r: _Reader) -> Aim:
-        return cls(r.u8(), r.choice(3), r.u16(), r.u8())
+        return cls(r.u8(), r.choice(3), r.u16(), r.u8(), r.flag())
 
 
 @dataclass(frozen=True)

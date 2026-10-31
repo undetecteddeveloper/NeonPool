@@ -18,6 +18,7 @@ import pygame as pg
 
 from game.config import (
     GRAB_RADIUS_M,
+    NET_DIAL_HOLD_S,
     NET_EMOTES,
     NET_LINK_CARD_DELAY_S,
     NET_REJOIN_S,
@@ -34,7 +35,17 @@ from game.net import toss
 from game.physics import Shot
 from game.render import draw, hud
 from game.render import palette as C
-from game.render.layout import OUTER_W, OUTER_X, TABLE_GLOW, to_m, to_px
+from game.render.layout import (
+    OUTER_W,
+    OUTER_X,
+    PANEL_H,
+    PANEL_W,
+    PANEL_X,
+    PANEL_Y,
+    TABLE_GLOW,
+    to_m,
+    to_px,
+)
 from game.render.view import View
 from game.rules.eight_ball import LOST, LOST_EARLY, LOST_FOUL, PLAYING, RERACK, WON
 from game.rules.two_player import LOST_DROPPED, LOST_SURRENDER, MatchShot
@@ -462,14 +473,18 @@ class NetPlayScene(PlayScene):
         rects = dict(enumerate(hud.emote_rects()))
         self._emote_fx.update(dt, self._emote_hover, rects, self._clock)
 
+    def _dialing(self) -> bool:
+        """The spin dial is being worked on: the dot is held, or it was moved a moment ago."""
+        return self._dial_drag or self._clock - self._spin_at < NET_DIAL_HOLD_S
+
     def _send_aim(self) -> None:
-        s = self.session
+        s, dialing = self.session, self._dialing()
         if self._can_aim() and self.drag.has_direction:
-            s.set_aim(p.AIM_PULLING, self.drag.angle, self.drag.bar_length)
+            s.set_aim(p.AIM_PULLING, self.drag.angle, self.drag.bar_length, dialing)
         elif self._can_aim() and self._cue_alpha > 0.05:
-            s.set_aim(p.AIM_RESTING, self.knob.angle)
+            s.set_aim(p.AIM_RESTING, self.knob.angle, dialing=dialing)
         else:
-            s.set_aim(p.AIM_HIDDEN)
+            s.set_aim(p.AIM_HIDDEN, dialing=dialing)
 
     def _notify_net(self, kind: str, words: str, key: str) -> None:
         self._net_notice, self._notice_left = (kind, words), NOTICE_S
@@ -581,7 +596,31 @@ class NetPlayScene(PlayScene):
             hud.turn_bar(
                 canvas, v, turn_rect, s.turn_left_s / NET_TURN_S, warn=warn, blink_on=blink
             )
+        self._draw_ping(canvas, v)
+        self._draw_spin_line(canvas, v, theirs)
         self._draw_emotes(canvas, v)
+
+    def _draw_ping(self, canvas: pg.Surface, v: View) -> None:
+        """The round trip to the other player, small, under the side panel: green, amber, red;
+        dashes until the first answer (and while the link is down)."""
+        s = self.session
+        ms = round(s.rtt_s * 1000) if s.rtt_s is not None and s.linked else None
+        hud.ping_tag(canvas, v, t("net.ping", ms="--" if ms is None else ms), ms,
+                     PANEL_X + PANEL_W, PANEL_Y + PANEL_H + 14)  # fmt: skip
+
+    def _draw_spin_line(self, canvas: pg.Surface, v: View, plate: pg.Rect) -> None:
+        """Above the other player's plate: they are setting the spin (while they do, and for a
+        moment after; it fades over its last third of a second)."""
+        s, m = self.session, self.session.match
+        rc = s.remote_cue
+        if not (s.playing and not m.over and m.turn == self._them and s.settled):
+            return
+        if not rc.tuning_spin or not self._toss_done():
+            return
+        k = round(min(1.0, rc.dial_left / 0.35) * 4) / 4
+        hud.pulse_status(canvas, v, t("net.spin_them", name=self._name(self._them)),
+                         (plate.right, plate.y - 16), self._clock, size=13,
+                         color=C.lerp(C.BG, C.MAGENTA, k), align="right")  # fmt: skip
 
     def _draw_emotes(self, canvas: pg.Surface, v: View) -> None:
         """The reaction buttons (above the side panel) and what each player last said."""

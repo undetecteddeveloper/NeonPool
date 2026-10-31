@@ -14,7 +14,13 @@ from functools import cache
 import numpy as np
 import pygame as pg
 
-from game.config import NET_EMOTE_SHOW_S, NET_ROOM_LEN, SPIN_DIAL_TRAVEL
+from game.config import (
+    NET_EMOTE_SHOW_S,
+    NET_PING_BAD_MS,
+    NET_PING_GOOD_MS,
+    NET_ROOM_LEN,
+    SPIN_DIAL_TRAVEL,
+)
 from game.i18n import t
 from game.render import fonts, glow
 from game.render import palette as C
@@ -1156,6 +1162,33 @@ def emote_bubble(canvas: pg.Surface, v: View, plate: pg.Rect, mine: bool, word: 
                C.lerp(C.BG, colour, k), 0.9 * k)  # fmt: skip
     text(canvas, v, word, 15, C.lerp(C.BG, C.WHITE, k), (x + w / 2, plate.y + 31), bold=True,
          center=True)  # fmt: skip
+
+
+def pulse_status(canvas: pg.Surface, v: View, word: str, pos: tuple[float, float], clock: float,
+                 *, size: float = 17, color: tuple[int, int, int] = C.AMBER,
+                 align: str = "center") -> None:  # fmt: skip
+    """A line that says something is going on: a pulsing dot, then the words in bold. `pos` is
+    (x, top of the capitals); x is the middle of the whole line, or its right end (`align`)."""
+    k = size / 17  # (at size 17 this is the line of the Play panel's wait, as it was drawn there)
+    w = text_width(v, word, size, True) + 16 * k
+    left = pos[0] - (w if align == "right" else w / 2)
+    pulse = 0.5 + 0.5 * math.sin(clock * 3.0)
+    blit_dot(canvas, v, (left, pos[1] + 6 * k), 4 * k, C.lerp(color, C.WHITE, 0.3 * pulse),
+             0.6 + pulse)  # fmt: skip
+    text(canvas, v, word, size, color, (left + 16 * k, pos[1]), bold=True)
+
+
+def ping_colour(ms: int | None) -> tuple[int, int, int]:
+    """How good a round trip of `ms` is: green, amber, red (dim while it is not known yet)."""
+    if ms is None:
+        return C.TEXT_DIM
+    return C.OK if ms < NET_PING_GOOD_MS else C.AMBER if ms <= NET_PING_BAD_MS else C.ERROR
+
+
+def ping_tag(canvas: pg.Surface, v: View, word: str, ms: int | None, right: float,
+             y: float) -> None:  # fmt: skip
+    """The small ping line in the corner of a two-player game, its right end at `right`."""
+    text(canvas, v, word, 12, ping_colour(ms), (right, y), bold=True, align="right")
 
 
 # --- the result card of a two-player game: both players side by side ----------------------------

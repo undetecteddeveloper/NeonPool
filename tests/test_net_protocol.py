@@ -51,6 +51,8 @@ def samples() -> list:
         p.Reject(p.REJECT_VERSION),
         p.Start(123456789, 1, "VUA", "VUA"),
         p.Aim(255, p.AIM_PULLING, 65535, 200),
+        p.Aim(1, p.AIM_RESTING, 1000, 0, True),
+        p.Aim(2, p.AIM_HIDDEN, 0, 0, True),
         p.Place(2540, 1270, True),
         p.ShotMsg(65535, 12345, 65535, -32),
         p.ShotReject(7, p.SHOT_NOT_YOUR_TURN),

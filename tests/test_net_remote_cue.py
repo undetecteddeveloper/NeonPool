@@ -7,8 +7,8 @@ from game.net import protocol as p
 from game.net.remote_cue import RemoteCue
 
 
-def aim(n, state=p.AIM_PULLING, angle=1.0, pull=100.0):
-    return p.Aim(n, state, p.quantize_angle(angle), p.quantize_pull(pull))
+def aim(n, state=p.AIM_PULLING, angle=1.0, pull=100.0, dial=False):
+    return p.Aim(n, state, p.quantize_angle(angle), p.quantize_pull(pull), dial)
 
 
 def test_a_cue_comes_back_at_its_angle_without_swinging_from_where_it_was():
@@ -67,3 +67,29 @@ def test_hiding_hides_and_the_power_follows_the_local_curve():
     cue.receive(aim(2, p.AIM_HIDDEN, 0.0, 0.0))
     assert not cue.visible
     cue.update(1.0)  # does nothing, does not raise
+
+
+def test_ac24_the_dial_is_believed_until_the_word_stops_then_lingers_a_moment():
+    cue = RemoteCue()
+    assert not cue.tuning_spin
+    cue.receive(aim(1, p.AIM_RESTING, dial=True))
+    assert cue.tuning_spin
+    cue.update(config.NET_DIAL_KEEPALIVE_S)  # told again every keep-alive: it holds
+    cue.receive(aim(2, p.AIM_RESTING, dial=True))
+    cue.update(config.NET_DIAL_KEEPALIVE_S)
+    assert cue.tuning_spin
+    cue.receive(aim(3, p.AIM_RESTING, dial=False))  # they let go
+    assert cue.tuning_spin  # ... and for a moment it still shows
+    cue.update(config.NET_DIAL_LINGER_S + 0.01)
+    assert not cue.tuning_spin
+
+
+def test_ac24_a_dial_that_is_never_told_again_expires_and_a_hidden_cue_can_still_dial():
+    cue = RemoteCue()
+    cue.receive(aim(1, p.AIM_HIDDEN, dial=True))  # the cue is not shown, the dial is worked
+    assert cue.tuning_spin and not cue.visible
+    cue.update(config.NET_DIAL_STALE_S + 0.01)  # (the packet that said "stopped" was lost)
+    assert not cue.tuning_spin
+    cue.receive(aim(2, p.AIM_RESTING, dial=True))
+    cue.hide()
+    assert not cue.tuning_spin  # a shot, a new turn: nothing is being set any more

@@ -225,3 +225,44 @@ def test_the_hotkeys_reach_the_fake_opponent(dev):
     )
     assert h.mine._toss_left == h.fake._toss_left > 4.0
     assert not panel.hotkey(pg.K_F9)
+
+
+def test_ac24_my_dial_is_told_to_the_other_player_and_theirs_is_shown_to_me(dev):
+    app, h = dev
+    go(dev, "Sau tung xu, tới lượt tôi", seconds=0.5)
+    me, them = app.net.session, h.fake.remote_cue
+    assert me.can_shoot and not them.tuning_spin
+    app.net._set_spin(0.5, press=True)  # the dot of the dial is set (a wheel turn does as much)
+    frames(app, h, round(0.5 / DT))
+    assert them.tuning_spin
+    frames(app, h, round(3.0 / DT))  # nothing more: the line goes out by itself
+    assert not them.tuning_spin
+    app.net._dial_drag = True  # the dot is held still for a long time: still told
+    frames(app, h, round(4.0 / DT))
+    assert them.tuning_spin
+    app.net._dial_drag = False
+    frames(app, h, round(3.0 / DT))
+    assert not them.tuning_spin
+    go(dev, "Bot đang chỉnh xoáy (giữ nguyên)", seconds=4.0)
+    assert app.net.session.remote_cue.tuning_spin and not app.net.session.my_turn
+    frames(app, h, round(0.2 / DT))
+    assert i18n.t("net.spin_them", name="Bot") == "Bot đang chỉnh xoáy…"
+    go(dev, "Bot thôi chỉnh xoáy", seconds=3.0)
+    assert not app.net.session.remote_cue.tuning_spin
+
+
+def test_ac25_the_ping_line_shows_dashes_then_the_round_trip_in_a_colour_of_its_quality(dev):
+    from game.render import hud
+
+    app, h = dev
+    go(dev, "Sau tung xu, tới lượt tôi", seconds=0.2)
+    s = app.net.session
+    assert i18n.t("net.ping", ms="--") == "Ping -- ms" and i18n.t("net.ping", ms=48) == "Ping 48 ms"
+    assert hud.ping_colour(None) != hud.ping_colour(10)
+    colours = [hud.ping_colour(ms) for ms in (10, config.NET_PING_GOOD_MS - 1, 61, 120, 121, 900)]
+    assert colours[0] == colours[1] != colours[2] == colours[3] != colours[4] == colours[5]
+    frames(app, h, round(2.5 / DT))
+    assert s.rtt_s is not None  # a ping goes every second: the number is there
+    h.set_latency(0.2)  # a bad line (a 0.2 s trip each way)
+    frames(app, h, round(8.0 / DT))
+    assert s.rtt_s > 0.25 and hud.ping_colour(round(s.rtt_s * 1000)) == hud.ping_colour(900)

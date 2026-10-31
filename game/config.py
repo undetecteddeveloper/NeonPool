@@ -173,6 +173,12 @@ NET_REJOIN_TRY_S = 1.0  # the guest tries to reconnect this often
 NET_REJOIN_TRY_TIMEOUT_S = 2.0  # ... and gives each try this long
 NET_LINK_CARD_DELAY_S = 1.0  # the "connection lost" card waits this long (a wifi blink is no news)
 NET_EMOTE_SHOW_S = 2.5  # a reaction stays on screen this long
+NET_PING_GOOD_MS = 60  # the ping tag is green below this round trip (ms) ...
+NET_PING_BAD_MS = 120  # ... amber up to this, red above it
+NET_DIAL_HOLD_S = 0.25  # the spin dial counts as being worked on this long after a change
+NET_DIAL_KEEPALIVE_S = 0.5  # while it is, the other side is told again this often
+NET_DIAL_STALE_S = 1.5  # the other side believes it this long without hearing again
+NET_DIAL_LINGER_S = 0.75  # the line 'setting the spin' stays this long after it stops
 NET_EMOTES = 3  # ready-made reactions: Nice!, Too bad, GG (codes 0..2)
 NET_EMOTE_GAP_S = 1.5  # a player can send one reaction per this long
 

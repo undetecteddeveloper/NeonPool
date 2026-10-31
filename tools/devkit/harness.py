@@ -40,6 +40,8 @@ class Bot:
 
     def __init__(self) -> None:
         self.auto = False
+        self.dial = False  # holds the spin dial (for as long as it is the bot's shot)
+        self._dialled = False
         self.rng = random.Random(7)
         self._want = False
         self._phase = "idle"
@@ -58,6 +60,12 @@ class Bot:
             if self.auto and self._t >= self.REMATCH_S and not s.rematch[s.me]:
                 s.ask_rematch()
             return
+        if self.dial and s.can_shoot and self._phase == "idle":
+            s.set_aim(p.AIM_RESTING, self._angle, dialing=True)
+            self._dialled = True
+        elif self._dialled and not self.dial:
+            s.set_aim(p.AIM_HIDDEN)  # (a screen does this every frame; the bot says it once)
+            self._dialled = False
         if not (self.auto or self._want):
             self._phase, self._t = "idle", 0.0
             return
@@ -173,6 +181,7 @@ class Harness:
             self.fake.leave()
         self.room = self.mine = self.fake = None
         self.bot._phase, self.bot._t, self.bot._want = "idle", 0.0, False
+        self.bot.dial = False
 
     # ------------------------------------------------------------------ a two-player game
     @property

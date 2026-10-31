@@ -168,6 +168,8 @@
   "net.emote.2": "GG",
   "net.key_emote": "Reactions",
   "net.key_menu": "Game menu",
+  "net.ping": "Ping {ms} ms",
+  "net.spin_them": "{name} is setting the spin…",
   "keycap.emote": "1-3",
   "net.card.esc_title": "Game on",
   "net.card.esc_line": "The game keeps running; your opponent does not wait.",

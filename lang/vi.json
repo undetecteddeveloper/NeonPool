@@ -168,6 +168,8 @@
   "net.emote.2": "GG",
   "net.key_emote": "Biểu cảm",
   "net.key_menu": "Menu ván",
+  "net.ping": "Ping {ms} ms",
+  "net.spin_them": "{name} đang chỉnh xoáy…",
   "keycap.emote": "1-3",
   "net.card.esc_title": "Ván đang chạy",
   "net.card.esc_line": "Ván vẫn chạy, đối thủ không dừng theo.",

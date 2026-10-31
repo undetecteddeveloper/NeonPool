@@ -270,6 +270,19 @@ def _turn_bot(h: Harness) -> None:
     h.run_script(h.give_turn_to("bot"))
 
 
+@state(BOT, "Bot đang chỉnh xoáy (giữ nguyên)")
+def _bot_dial(h: Harness) -> None:
+    h.ensure_net()
+    h.skip_toss()
+    h.bot.dial = True
+    h.run_script(h.give_turn_to("bot"))
+
+
+@state(BOT, "Bot thôi chỉnh xoáy")
+def _bot_undial(h: Harness) -> None:
+    h.bot.dial = False
+
+
 @state(BOT, "Tỉ số phòng 2 : 1 (từ ván thứ ba)")
 def _score(h: Harness) -> None:
     h.ensure_net()

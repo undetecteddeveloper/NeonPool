@@ -78,6 +78,7 @@ class PlayScene:
         self.world = World(seed=0, spin=spin_set)
         self.spin = 0.0  # where the cue will strike the white ball: -1 (low) .. +1 (high)
         self._dial_drag = False  # the spin dial is being dragged
+        self._spin_at = -1e9  # when the spin was last set (the clock of the scene)
         self._dial_lit = 0.0  # how lit the dial is (the pointer is on it / dragging)
         self.rules = EightBall()
         self.drag = DragAim()
@@ -241,6 +242,7 @@ class PlayScene:
     def _set_spin(self, value: float, press: bool = False) -> None:
         """Set the spin; a soft low 'tok' sounds when it reaches another step (and on a press)."""
         old = self._spin_step()
+        self._spin_at = self._clock
         value = max(-1.0, min(1.0, round(value * 32) / 32))  # steps of 1/32: exact, tidy
         self.spin = 0.0 if abs(value) < 0.08 else value  # the middle is easy to hit
         if press or self._spin_step() != old:
