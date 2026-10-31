@@ -34,9 +34,23 @@ def run(sim, sessions, seconds, until=None, dt=1 / 60):
     return until is None
 
 
-def started(**kw):
+def coin_lands(sim, host, guest, again=False):
+    """Let time pass until the coin has landed on both machines: the first shot may be taken."""
+    assert run(sim, (host, guest), toss.total_s(again) + 1.0,
+               lambda: host._toss_left <= 0 and guest._toss_left <= 0)  # fmt: skip
+
+
+def joined(**kw):
+    """Two machines that have shaken hands: the game is on but the coin is still in the air."""
     sim, host, guest = pair(**kw)
     assert run(sim, (host, guest), 5.0, lambda: host.playing and guest.playing)
+    return sim, host, guest
+
+
+def started(**kw):
+    """... and the coin has landed: the first shot may be taken."""
+    sim, host, guest = joined(**kw)
+    coin_lands(sim, host, guest)
     return sim, host, guest
 
 
@@ -91,6 +105,22 @@ def test_handshake_gives_both_machines_the_same_game_and_the_same_coin():
     assert host.match.turn == guest.match.turn == host.breaker
     assert same_table(host, guest)
     assert (host.me, guest.me) == (HOST, GUEST)
+
+
+def test_nobody_may_shoot_or_place_the_ball_until_the_coin_has_landed():
+    """Not only the screens wait for the coin: the session itself says no, whoever asks."""
+    sim, host, guest = joined()
+    breaker = on_turn(host, guest)
+    assert host._toss_left > 0 and guest._toss_left > 0
+    assert not breaker.can_shoot and breaker.shoot(Shot(0.0, 0.5, 0.0)) is None
+    assert breaker.shots_started == 0
+    assert run(sim, (host, guest), toss.total_s(False) + 1.0, lambda: breaker.can_shoot)
+    assert breaker.shoot(Shot(0.0, 0.5, 0.0)) is not None  # the moment the coin lands
+    # a cue ball in hand waits as well (after a rematch: the same rule)
+    sim, host, guest = joined()
+    host.match.cue_in_hand = guest.match.cue_in_hand = True
+    taker = on_turn(host, guest)
+    assert not taker.can_place and not taker.place_cue(0.6, 0.6)
 
 
 def test_the_coin_is_the_hosts_and_both_outcomes_happen():
@@ -198,7 +228,7 @@ def test_a_guest_can_claim_its_clock_ran_out_and_the_host_decides():
 
 # --- AC11: the clock of the shot ---
 def test_ac11_the_clock_waits_for_the_coin_and_for_rolling_balls():
-    sim, host, guest = started()
+    sim, host, guest = joined()
     run(sim, (host, guest), toss.total_s(False) - 0.3)  # the coin is still in the air
     assert host.turn_left_s == guest.turn_left_s == config.NET_TURN_S
     assert not host.clock_running
@@ -216,8 +246,8 @@ def test_ac11_the_clock_waits_for_the_coin_and_for_rolling_balls():
 
 def pass_turn_to(sim, host, guest, player):
     """If the turn is not `player`'s, let it run out once so that it is (no foul, no ball in hand).
-    The coin is let land first, so that the clock is running when this returns."""
-    run(sim, (host, guest), toss.total_s(False) + 0.1)
+    The coin is let land first (if it has not), so that the clock is running when this returns."""
+    coin_lands(sim, host, guest)
     if host.match.turn != player:
         assert host.timeout_turn()
         assert run(sim, (host, guest), 1.0, lambda: guest.match.turn == player)
@@ -365,6 +395,8 @@ def test_ac13_a_rematch_waits_for_the_other_player_for_as_long_as_it_takes():
     assert host.breaker == guest.breaker and host.match.turn == guest.match.turn == host.breaker
     assert same_table(host, guest) and host.rematch == guest.rematch == [False, False]
     assert host.seq == guest.seq == 0
+    assert on_turn(host, guest).shoot(Shot(0.0, 0.9, 0.0)) is None  # the new coin is in the air
+    coin_lands(sim, host, guest, again=True)
     play_shot(sim, host, guest, Shot(0.0, 0.9, 0.0))  # the new game really is playable
     assert same_table(host, guest) and host.desyncs == guest.desyncs == 0
 
@@ -429,12 +461,13 @@ def room_pair(latency=0.0, jitter=0.0, loss=0.0, seed=0):
     guest = Session(room.b, False, "Nam", relink=room.guest_relink)
     assert run(room, (host, guest), 5.0, lambda: host.playing and guest.playing)
     host.set_relink(room.host_relink), guest.set_relink(room.guest_relink)
+    coin_lands(room, host, guest)
     return room, host, guest
 
 
 def settle_clocks(room, host, guest):
-    """Let the coin land, so that the clock is running."""
-    run(room, (host, guest), toss.total_s(False) + 0.1)
+    """Let the coin land (if it has not), so that the clock is running."""
+    coin_lands(room, host, guest)
 
 
 def back_together(host, guest):

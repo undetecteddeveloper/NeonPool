@@ -62,5 +62,15 @@ Người dùng chơi thử: tung xu nhanh quá, không có hồi hộp, chưa k�
 | Công cụ dev | F7 và trạng thái "Xem lại đoạn mở ván (tung xu) từ đầu" (`Harness.replay_toss`) | xem lại đoạn 6 giây mà không phải chơi lại |
 Số đo (mỗi khung, `tools/_out/20261031-toss/` + script đo trong phiên): tối bàn thêm ~1,1 ms ở 1280×720, ~2,2 ms ở 1920×1080, ~3,8 ms ở 2560×1440 (tổng khung xu bay 3,1 / 5,8 / 10,1 ms).
 
+## Lỗi trạng thái tìm thấy bằng dev tool (2026-10-31, cùng nhánh; quyết định ở `docs/GAME_DESIGN.md` "Phản hồi lần 19")
+Người dùng bật bot tự chơi, bấm trạng thái thắng, rồi Đấu lại: thẻ kết quả, điểm và xu chồng nhau.
+| Lỗi | Nguyên nhân | Sửa |
+|---|---|---|
+| Số giữa hai khung +1 khi thẻ kết quả đang hiện | `_shown_wins()` đọc thẳng `session.wins` (đã gồm ván vừa hết); chỉ hàng thẻ dùng `_card_wins()` | `_shown_wins()` trả `_wins_before` trước `NET_TOSS_SCORE_AT_S`, sau đó `_card_wins()` |
+| Xu và tối bàn nằm dưới thẻ khi ván hết giữa lúc tung xu | `_draw_toss` và `_toss_sounds` không hỏi ván đã hết chưa | cả hai thoát sớm khi `match.over` (tiếng ting cộng điểm vẫn phát) |
+| Bot đánh lúc xu còn trên không | `Session._free` bỏ qua `_toss_left`; chỉ màn hình chặn | `_free` có `_toss_left <= 0` (cũng chặn đặt bi trắng) |
+| Bi lệch tâm vòng ở bảng xoáy (ảnh người dùng) | ảnh bi phóng nhỏ lệch nửa điểm ảnh và dán số nguyên; vòng vẽ ở điểm danh nghĩa | `hud._dial_centre` đo tâm bi thật (theo độ phủ), vòng / thanh / chấm / chữ vẽ quanh đó |
+Kiểm: ba lỗi đầu và bảng xoáy mỗi cái có test (đỏ trên bản chưa sửa, xanh sau sửa); thêm bộ canh `tests/test_net_invariants.py` (5 mốc kết thúc ván × 2 ván liền với bot tự chơi, soi từng khung) để lớp lỗi "hai thành phần nói khác nhau" bị bắt không cần người dùng mở dev tool. Các helper dựng ván của `tests/test_net_session.py` (`started`, `room_pair`, `pass_turn_to`) nay chờ xu rơi (`coin_lands`) trước khi đánh; `joined` giữ lại cho test cần xu còn trên không.
+
 ## Chưa đo được (một máy)
 Nối lại trên hai máy thật qua wifi (đổi mạng, cắm lại cáp) CHƯA thử; ổ cắm thật cùng máy thì thử được bằng cách đóng đường nối từ một phía.

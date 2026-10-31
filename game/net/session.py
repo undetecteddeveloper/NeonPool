@@ -174,7 +174,12 @@ class Session:
 
     @property
     def _free(self) -> bool:
-        return self.my_turn and self.settled and self.linked and not self._timeout_sent
+        """The player on turn may act: every ball is still, the link works, and the coin has
+        landed (the screens wait for it too; this holds for every other way in, a bot included)."""
+        return (
+            self.my_turn and self.settled and self.linked and not self._timeout_sent
+            and self._toss_left <= 0
+        )  # fmt: skip
 
     @property
     def can_shoot(self) -> bool:

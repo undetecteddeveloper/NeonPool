@@ -556,6 +556,61 @@ def test_the_coin_toss_has_its_sounds_in_order_and_none_before_the_throw(apps):
     assert heard == ["up", *["tick"] * (6 + breaker), "land"]  # (a first game adds no point)
 
 
+def test_the_plates_keep_the_old_score_while_the_result_card_is_up(apps):
+    """Found in the dev tool: the point of a game that had just ended showed between the plates
+    at once, with the card still up and nobody having asked for another game."""
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    give_up_from_the_host(host)  # the host loses: the guest has the point
+    assert run(apps, lambda: host.net._result_shown and guest.net._result_shown)
+    assert host.net.session.wins == [0, 1]  # (it is counted: the next game starts from it)
+    for _ in range(round(2.0 / (1 / 60))):  # well past the moment a point would roll in
+        for app in (host, guest):
+            app.update(1 / 60)
+            app.draw()
+    for app in (host, guest):
+        assert app.net._shown_wins() == app.net._card_wins() == (0, 0)
+
+
+def test_a_game_that_ends_under_the_coin_shows_no_coin_no_dark_table_and_no_coin_sound(
+    apps, monkeypatch
+):
+    """The other player gave up in the first seconds: the card stands on a lit table."""
+    host, guest = apps
+    seen = {"coin": 0, "dark": 0}
+    real_coin, real_dim = hud.toss_coin, hud.dim_rect
+
+    def coin(*args, **kw):
+        seen["coin"] += 1
+        return real_coin(*args, **kw)
+
+    def dim(canvas, v, rect, k):
+        seen["dark"] += k > 0
+        return real_dim(canvas, v, rect, k)
+
+    monkeypatch.setattr(hud, "toss_coin", coin)
+    monkeypatch.setattr(hud, "dim_rect", dim)
+    assert meet(apps)
+    scene = host.net
+    tt = scene._toss
+    frame_at(host, tt.lead_s + 0.5)  # the spies do see the coin and the dark while the game is on
+    assert seen["coin"] > 0 and seen["dark"] > 0
+    guest.net.session.surrender()
+    assert run(apps, lambda: host.net._result_shown and guest.net._result_shown)
+    seen.update(coin=0, dark=0)
+    for age in (tt.lead_s + 0.5, tt.flip_at + 0.5, tt.land_at + 0.2):
+        frame_at(host, age)
+    assert seen == {"coin": 0, "dark": 0}
+    heard = []
+    host.audio.play_coin_up = lambda: heard.append("up")
+    host.audio.play_coin_land = lambda: heard.append("land")
+    host.audio.play_tally_tick = lambda pitch: heard.append("tick")
+    scene._started_at = scene._clock - tt.flip_at  # the throw falls between this frame and the next
+    scene._toss_age = tt.flip_at - 0.05
+    host.update(1 / 60)
+    assert heard == []
+
+
 def test_a_rematch_shows_the_old_score_then_rolls_the_point_in_before_the_coin(apps):
     host, guest = apps
     assert meet(apps) and after_the_toss(apps)

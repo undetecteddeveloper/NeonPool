@@ -417,6 +417,8 @@ class NetPlayScene(PlayScene):
         tt, audio = self._toss, self.app.audio
         if self.session.prev_winner is not None and before < NET_TOSS_SCORE_AT_S <= age:
             audio.play_tally_ting(self.session.prev_winner == self._me, True)
+        if self.session.match.over:
+            return  # the game ended under the coin: no coin sounds behind the result card
         if before < tt.flip_at <= age:
             audio.play_coin_up()
         turned, all_turns = tt.faces_seen(age), 6 + tt.breaker
@@ -610,14 +612,18 @@ class NetPlayScene(PlayScene):
 
     def _shown_wins(self) -> tuple[int, int]:
         """The score between the plates: after a rematch it starts as it was and gets the point
-        of the last game NET_TOSS_SCORE_AT_S in (it rolls, the board sees the change)."""
+        of the last game NET_TOSS_SCORE_AT_S in (it rolls, the board sees the change). The point
+        of THIS game waits for the next one: while the result card is up it is not shown."""
         if self._clock - self._started_at < NET_TOSS_SCORE_AT_S:
             return self._wins_before
-        return self._wins()
+        return self._card_wins()
 
     def _draw_toss(self, canvas: pg.Surface, v: View) -> None:
         """The start of the game: the table goes dark, the coin waits with its line, is thrown,
-        spins, slows and lands on the breaker's name; the table lights up again."""
+        spins, slows and lands on the breaker's name; the table lights up again. A game that
+        ends in the middle of it (the other player gave up) shows no coin: just the card."""
+        if self.session.match.over:
+            return
         age, tt = self._clock - self._started_at, self._toss
         hud.dim_rect(canvas, v, TABLE_RECT, tt.dim(age))  # (the plates and the side panel stay lit)
         phase = tt.phase(age)
@@ -674,8 +680,9 @@ class NetPlayScene(PlayScene):
         return (self.session.wins[self._me], self.session.wins[self._them])
 
     def _card_wins(self) -> tuple[int, int]:
-        """The row of the result card: the games won BEFORE this one. Its point is added at the
-        start of the next game, between the plates (the player sees it come in)."""
+        """The games won BEFORE this one: what the row of the result card and (once the point of
+        the game before has come in) the plates show. The point of this game is added at the
+        start of the next one, between the plates (the player sees it come in)."""
         won = list(self.session.wins)
         if self.session.match.over and self.session.counted:
             won[self.session.match.winner] -= 1

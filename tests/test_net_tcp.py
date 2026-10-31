@@ -112,6 +112,11 @@ def test_addresses_are_parsed_or_refused():
     assert tcp.local_address().count(".") == 3
 
 
+def coin_landed(host, guest):
+    """Both machines are past the coin toss: the first shot may be taken."""
+    return host._toss_left <= 0 and guest._toss_left <= 0
+
+
 def test_a_whole_game_start_and_a_shot_work_over_real_sockets():
     listener = tcp.TcpListener(0, "127.0.0.1")
     client, server = connect(listener)
@@ -126,6 +131,8 @@ def test_a_whole_game_start_and_a_shot_work_over_real_sockets():
     assert wait(lambda: (tick(), host.playing and guest.playing)[1])
     assert host.names == guest.names == ["Hoa", "Nam"] and host.breaker == guest.breaker
     shooter = host if host.match.turn == s.HOST else guest
+    assert shooter.shoot(Shot(math.pi, 0.1, 0.0)) is None  # the coin is still in the air
+    assert wait(lambda: (tick(), coin_landed(host, guest))[1], 10.0)
     assert shooter.shoot(Shot(math.pi, 0.1, 0.0)) is not None  # a soft miss: a foul
     assert wait(lambda: (tick(), host.checkpoints == 1 and guest.checkpoints == 1)[1], 10.0)
     assert s.capture_balls(host.world) == s.capture_balls(guest.world) and guest.desyncs == 0
@@ -149,6 +156,7 @@ def test_ac14_the_guest_comes_back_over_real_sockets_after_its_connection_died()
     host.set_relink(tcp.HostRelink(listener))
     guest.set_relink(tcp.GuestRelink("127.0.0.1", listener.port, every_s=0.1))
     shooter = host if host.match.turn == s.HOST else guest
+    assert wait(lambda: (tick(), coin_landed(host, guest))[1], 10.0)
     assert shooter.shoot(Shot(math.pi, 0.1, 0.0)) is not None
     assert wait(lambda: (tick(), host.checkpoints == 1 and guest.checkpoints == 1)[1], 10.0)
     client._sock.shutdown(socket.SHUT_RDWR)  # the guest's connection dies, abruptly

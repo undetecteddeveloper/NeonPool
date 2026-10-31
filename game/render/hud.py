@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass, field
 from functools import cache
 
+import numpy as np
 import pygame as pg
 
 from game.config import NET_EMOTE_SHOW_S, SPIN_DIAL_TRAVEL
@@ -394,16 +395,47 @@ def spin_value(y: float) -> float:
 
 
 _dial_cache: dict[tuple, tuple[pg.Surface, tuple[int, int]] | None] = {}
+_dial_centres: dict[tuple, tuple[float, float]] = {}
+DIAL_BALL = 2 * SPIN_R + 4  # side of the cue-ball picture under the ring (logical px)
 
 
-def _dial_face(canvas: pg.Surface, v: View, lit: float, enabled: bool):
+def _dial_ball_at(v: View) -> tuple[int, int]:
+    """Where the ball picture is pasted (device px): whole pixels, as `blit_pm` rounds it."""
+    x, y = v.pt((SPIN_C[0] - SPIN_R - 2, SPIN_C[1] - SPIN_R - 2))
+    return round(x), round(y)
+
+
+def _dial_centre(sprites: BallSprites, v: View) -> tuple[float, float]:
+    """The middle of the dial's ball as it really sits on the screen, in logical units.
+
+    The ball is a small picture pasted on whole pixels, and a picture scaled up has its disc up
+    to a pixel off its own middle, so the ring, the line and the dot are drawn round THIS point
+    (not round SPIN_C): the four then share one centre at every window size."""
+    key = (round(v.s, 4), v.ox, v.oy)
+    if key not in _dial_centres:
+        if len(_dial_centres) >= 32:
+            _dial_centres.clear()
+        ball = _mini_ball(sprites, v, 0, False, DIAL_BALL)
+        alpha = pg.surfarray.array_alpha(ball).astype(np.float64)  # [x][y]; the edge's partial
+        total = alpha.sum()  # cover counts, so the middle is true to a tenth of a pixel
+        mx = (alpha.sum(axis=1) * (np.arange(alpha.shape[0]) + 0.5)).sum() / total
+        my = (alpha.sum(axis=0) * (np.arange(alpha.shape[1]) + 0.5)).sum() / total
+        bx, by = _dial_ball_at(v)
+        _dial_centres[key] = ((bx + mx - v.ox) / v.s, (by + my - v.oy) / v.s)
+    return _dial_centres[key]
+
+
+def _dial_face(
+    canvas: pg.Surface, v: View, lit: float, enabled: bool, centre: tuple[float, float] = SPIN_C
+):
     """The dial's ring and the dark line and ticks the dot slides on, made once per size and
-    brightness (eighths) and then only pasted: (premultiplied surface, top-left) or None."""
+    brightness (eighths) and then only pasted: (premultiplied surface, top-left) or None.
+    `centre` (logical) is a function of the size, so it needs no place in the key."""
     key = (round(v.s, 4), v.pt((0, 0)), canvas.get_size(), round(lit * 8), enabled)
     if key not in _dial_cache:
         if len(_dial_cache) >= 32:
             _dial_cache.clear()
-        cx, cy = SPIN_C
+        cx, cy = centre
         reach = SPIN_R * SPIN_DIAL_TRAVEL
         pad = SPIN_R + 8
         layer = Aa(canvas, v, v.rect(cx - pad, cy - pad, 2 * pad, 2 * pad), 3)
@@ -433,11 +465,10 @@ def spin_dial(
     """The cue ball seen face-on with a dot where the cue strikes it: up = high (the white ball
     runs on after the hit), down = low (it comes back). `lit` (0..1) is how much the pointer is
     on it; `enabled` False dims it while the balls roll."""
-    cx, cy = SPIN_C
-    label(canvas, v, t("hud.spin"), (cx, cy - SPIN_R - 14), size=10, center=True)
-    ball = _mini_ball(sprites, v, 0, not enabled, 2 * SPIN_R + 4)
-    blit_pm(canvas, ball, v.pt((cx - SPIN_R - 2, cy - SPIN_R - 2)))
-    face = _dial_face(canvas, v, lit, enabled)
+    cx, cy = _dial_centre(sprites, v)
+    label(canvas, v, t("hud.spin"), (cx, SPIN_C[1] - SPIN_R - 14), size=10, center=True)
+    blit_pm(canvas, _mini_ball(sprites, v, 0, not enabled, DIAL_BALL), _dial_ball_at(v))
+    face = _dial_face(canvas, v, lit, enabled, (cx, cy))
     if face is not None:
         blit_pm(canvas, *face)
     on = enabled and spin != 0.0
