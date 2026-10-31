@@ -1,5 +1,5 @@
 """After the opening screen a beam of light draws the menu from the top down
-(docs/GAME_DESIGN.md "Phản hồi lần 26")."""
+(docs/GAME_DESIGN.md "Phản hồi lần 26 và 27")."""
 
 import pygame as pg
 import pytest
@@ -88,7 +88,7 @@ def test_the_menu_is_whole_afterwards_and_looks_like_any_other_time(app):
 
 def test_the_beam_is_a_bright_line_across_the_whole_screen(app):
     screen = at(app, config.MENU_INTRO_S * 0.8)
-    y = round(m.UI_BOX[1] + m.UI_BOX[3] * 0.8)
+    y = round(screen.get_height() * 0.8)  # the beam runs from the top of the screen to the bottom
     for x in (5, 300, 640, 1000, 1270):
         assert max(min(screen.get_at((x, yy))[:3]) for yy in range(y - 6, y + 7)) > 120, x
 
@@ -121,7 +121,9 @@ def test_the_sound_of_the_beam_plays_once_when_it_starts(app):
 
 def test_the_title_stutters_on_as_the_beam_arrives(app):
     app.menu.start_intro()
-    assert app.menu._opened == pytest.approx(app.menu._clock + config.MENU_INTRO_START_S)
+    arrives = app.menu._arrives(m.INTRO_TITLE.top)
+    assert 0 < arrives < 0.3  # near the top of the screen, so soon after the beam starts
+    assert app.menu._opened == pytest.approx(app.menu._clock + config.MENU_INTRO_START_S + arrives)
 
 
 def test_a_new_window_size_ends_the_beam(app):
@@ -154,3 +156,40 @@ def test_the_splash_hands_over_to_a_menu_that_draws_with_the_beam(app):
     app.start_splash()
     run(app, sp.SPLASH_S + 0.05)
     assert app.scene is app.menu and app.menu.mode == "intro"
+
+
+# --- the pause and the black frame (design log no. 27) -------------------------------------------
+def test_the_beam_waits_half_a_second_more_than_before_in_a_black_frame():
+    assert config.MENU_INTRO_START_S == pytest.approx(0.35 + 0.5)
+
+
+def test_the_whole_frame_is_black_until_the_beam_starts_not_just_the_words(app):
+    app.menu.start_intro()
+    for _ in range(round((config.MENU_INTRO_START_S - 0.05) * 60)):
+        app.update(1 / 60)
+        app.draw()
+        screen = pg.display.get_surface()
+        # the sky, the sun, the ribbons, the floor, the words: nothing is there
+        assert all(
+            max(screen.get_at((x, y))[:3]) <= 8  # (the scan lines of the whole game are on top)
+            for x in range(0, 1280, 80)
+            for y in range(0, 720, 60)
+        )
+
+
+def test_the_beam_draws_the_sky_and_the_floor_too_as_it_passes(app):
+    screen = at(app, config.MENU_INTRO_S * 0.5)  # half way down
+    assert any(sum(screen.get_at((x, 60))[:3]) > 25 for x in range(0, 1280, 20))  # the sky above
+    sun = pg.Rect(560, 280, 160, 70)
+    assert any(max(screen.get_at((x, y))[:3]) > 200 for x in range(sun.left, sun.right, 4)
+               for y in range(sun.top, sun.bottom, 4))  # fmt: skip
+    assert all(max(screen.get_at((x, 600))[:3]) == 0 for x in range(0, 1280, 40))  # below: black
+
+
+def test_nothing_heavy_is_drawn_while_the_frame_is_black(app):
+    drawn = []
+    app.menu.synth.draw = lambda *a, **k: drawn.append(1)
+    app.menu.start_intro()
+    run(app, 0.3)
+    app.draw()
+    assert drawn == []

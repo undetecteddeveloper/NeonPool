@@ -146,9 +146,7 @@ CREDIT_LEAN = 0.5  # and it leans this share of the slope of the ribbons under i
 CREDIT_LEAN_EASE = 6.0  # 1/s: the lean follows the slope this fast
 CREDIT_TILT_MAX = 14.0  # in all it never turns more than this (degrees)
 # --- After the opening screen a beam of light draws the menu from the top down (scenes/menu.py) ---
-MENU_INTRO_START_S = (
-    0.35  # the beam starts this long after the menu opens (the tube is still coming on)
-)
+MENU_INTRO_START_S = 0.85  # black this long first: 0.35 s for the tube to open, then 0.5 s
 MENU_INTRO_S = 1.2  # ... and takes this long to reach the bottom
 # --- The numbers on the result card count up one after the other (game/tally.py) ---
 TALLY_SPANS = (("score", 1.1), ("shots", 0.6), ("fouls", 0.5))  # in order: name, seconds it runs

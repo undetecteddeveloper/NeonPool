@@ -7,14 +7,23 @@ the left. The rows are scaled in bands of a few device px straight into the scre
 whole picture, no remap of every pixel), at the real resolution of the window.
 
 `Fringe`: the red and the blue of a part of the picture slip apart, one to each side.
+
+`Monitor`: the whole look in one place, for the opening screens (loading and splash): a dark
+ground with dark corners, a faint bright band crawling down, a sideways slip now and then, all
+drawn flat on `pic` and then bowed onto the screen.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 import pygame as pg
+
+from game.render import crt
+from game.render import palette as C
+from game.render.view import View
 
 
 @dataclass(frozen=True)
@@ -29,6 +38,8 @@ class Shape:
 # (the others were NHE 0.05 / 0.015 / 0.06 / 14 and VUA 0.10 / 0.03 / 0.10 / 20).
 ARCADE = Shape(k=0.18, sag=0.05, radius=0.15, glare=26)
 BAND_PX = 4  # rows are scaled this many device px at a time
+BAR_PX, BAR_PEAK, BAR_SPEED = 150, 16, 0.28  # the faint band: height, brightness, screens/s
+TEAR_EVERY_S, TEAR_S, TEAR_PX = 1.25, 0.06, 10  # now and then the picture slips sideways
 EDGE_TILE = 32  # the glass edge is cut in tiles of this many px to find where it is dark
 
 
@@ -135,3 +146,50 @@ class Bulge:
         dst.blit(self._glare, self._glare_at, special_flags=pg.BLEND_RGB_ADD)
         for area in self._frame_areas:
             dst.blit(self._frame, area.topleft, area=area)
+
+
+_bulges: dict[tuple[tuple[int, int], Shape], Bulge] = {}
+
+
+def bulge_for(size: tuple[int, int], shape: Shape = ARCADE) -> Bulge:
+    """The bowed-glass maker for a picture size, made once and shared (it takes ~0.1-0.4 s)."""
+    key = (size, shape)
+    if key not in _bulges:
+        if len(_bulges) >= 3:
+            _bulges.clear()
+        _bulges[key] = Bulge(size, shape)
+    return _bulges[key]
+
+
+class Monitor:
+    """An old arcade monitor's picture. `begin()` gives the flat picture to draw on (dark ground
+    already on it); `present(screen, t)` adds the band and the slip and bows it onto `screen`."""
+
+    def __init__(self, v: View) -> None:
+        self.view = v
+        self.pic = pg.Surface(v.canvas)  # the flat picture
+        self._bg = pg.Surface(v.canvas)
+        self._bg.fill(C.BG)
+        crt.darken_corners(self._bg)
+        w, _ = v.canvas
+        rows = (np.sin(np.linspace(0, math.pi, v.i(BAR_PX))) ** 2 * BAR_PEAK).astype(np.uint8)
+        self._bar = pg.surfarray.make_surface(np.repeat(np.tile(rows, (w, 1))[:, :, None], 3, 2))
+        self.bulge = bulge_for(v.canvas)
+
+    def begin(self) -> pg.Surface:
+        self.pic.blit(self._bg, (0, 0))
+        return self.pic
+
+    def present(self, screen: pg.Surface, t: float, tear: bool = True) -> None:
+        pic, v = self.pic, self.view
+        if tear and t >= 2.0 and (t / TEAR_EVERY_S) % 1.0 < TEAR_S / TEAR_EVERY_S:
+            w, h = pic.get_size()  # for a few frames a band of the picture slips sideways
+            y, bh = int((t * 7.3 % 1.0) * h * 0.8), v.i(26)
+            band = pic.subsurface((0, y, w, min(bh, h - y))).copy()
+            pic.blit(band, (v.i(TEAR_PX * math.sin(t * 90)), y))
+        y = int(((t * BAR_SPEED) % 1.3 - 0.15) * pic.get_height())
+        pic.blit(self._bar, (0, y), special_flags=pg.BLEND_RGB_ADD)
+        if screen.get_size() == pic.get_size():
+            self.bulge.apply(pic, screen)
+        else:  # (the window is being resized and the pictures are for the old size)
+            screen.blit(pic, (0, 0))

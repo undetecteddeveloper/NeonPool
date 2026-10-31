@@ -386,6 +386,17 @@ class Audio:
         for name, style in music.TRACKS.items():
             self._built[name] = music.render(style)
 
+    def prepare_music(self) -> bool:
+        """Make ONE track that is not made yet, here and now (the loading screen does this, so no
+        thread is working against the first frames of the game). Returns whether it made one."""
+        if not self.available or os.environ.get("NEONPOOL_NO_MUSIC"):
+            return False
+        for name, style in music.TRACKS.items():
+            if name not in self._tracks:
+                self._tracks[name] = self._make(music.render(style))
+                return True
+        return False
+
     def music_level(self, name: str) -> float:
         return self._level[name]
 
@@ -394,7 +405,8 @@ class Audio:
         under the result jingle. The first call starts making the tracks in the background."""
         if not self.available:
             return
-        if self._music_thread is None and not os.environ.get("NEONPOOL_NO_MUSIC"):
+        missing = any(name not in self._tracks for name in music.TRACKS)
+        if self._music_thread is None and missing and not os.environ.get("NEONPOOL_NO_MUSIC"):
             self._music_thread = threading.Thread(target=self._build_music, daemon=True)
             self._music_thread.start()
         for name in list(self._built):

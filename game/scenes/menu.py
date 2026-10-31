@@ -6,9 +6,10 @@ The chosen button is lit, a little bigger, and a lit frame glides to it from the
 Settings open as a panel over the menu. The small "Credit" link in the corner (or the C key)
 dims the menu's words away and rolls the credits over the same night (scenes/credits.py); when
 the last piece has drifted off, or on Space, the words come back and the title stutters on again.
-After the opening screen the menu is drawn by a beam of light that sweeps down the screen: what the
-beam has not reached is not there yet, each part flickers on as the beam passes it, and its colours
-are fringed apart just behind the beam and come together.
+After the opening screen the whole frame is black for a moment, then a beam of light sweeps down
+the screen and draws it (the sky, the sun, the ribbons, the floor, the words): what the beam has not
+reached is black, each word flickers on as the beam passes it, and the colours are fringed apart
+just behind the beam and come together.
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ INTRO_HINT = pg.Rect(LOGICAL_SIZE[0] // 2 - 250, LOGICAL_SIZE[1] - 40, 500, 40)
 # a part flickers on as the beam reaches it: (seconds after, how lit it is) until it holds
 INTRO_FLICKER = ((0.0, 0.9), (0.06, 0.25), (0.12, 1.0), (0.2, 0.6), (0.26, 1.0))
 INTRO_SETTLE_S = 0.4  # the beam is gone this long after it reaches the bottom: the intro is over
-INTRO_FRINGE_BAND, INTRO_FRINGE_PX = 90, 3  # just behind the beam the colours slip apart
+INTRO_FRINGE_BAND, INTRO_FRINGE_PX = 90, 3  # just behind the beam the colours slip apart (logical)
 
 
 def title_level(since_open: float) -> float:
@@ -90,8 +91,7 @@ class MenuScene:
         self.synth = Synthwave(v, HORIZON, floaters=True)
         self.credits = CreditsRoll(v, self.synth.strands)
         self.mode, self._layer = "menu", None  # (a new size ends the credits: the water is new)
-        box = v.rect(*UI_BOX).clip(pg.Rect(0, 0, *v.canvas))
-        self._fringe = Fringe((max(1, box.w), max(1, v.i(INTRO_FRINGE_BAND))))
+        self._fringe = Fringe((v.canvas[0], max(1, v.i(INTRO_FRINGE_BAND))))  # a band across all
 
     def enter(self) -> None:
         """The menu is shown again: the title stutters on again."""
@@ -125,10 +125,17 @@ class MenuScene:
     def start_intro(self) -> None:
         """The menu has just opened after the opening screen: a beam of light draws it."""
         self.mode, self._mode_t, self._swept = "intro", 0.0, False
-        self._opened = self._clock + MENU_INTRO_START_S  # the title stutters on as the beam arrives
+        arrives = self._arrives(INTRO_TITLE.top)  # the title stutters on as the beam arrives
+        self._opened = self._clock + MENU_INTRO_START_S + arrives
 
     def _beam_age(self) -> float:
+        """Seconds since the beam left the top (negative: the frame is still black)."""
         return self._mode_t - MENU_INTRO_START_S
+
+    def _arrives(self, y: float) -> float:
+        """Seconds after the beam left the top when it is at the logical height `y`."""
+        v = self.view
+        return (y * v.s + v.oy) / v.canvas[1] * MENU_INTRO_S
 
     @staticmethod
     def _flicker(age: float) -> float:
@@ -254,6 +261,9 @@ class MenuScene:
             if panel.covers_scene(canvas.get_size()):  # the panel holds a picture of the menu
                 panel.draw(canvas, v)
                 return
+        if self.mode == "intro" and self._beam_age() < 0:  # the whole frame is black for a moment
+            canvas.fill((0, 0, 0))
+            return
         self.synth.draw(canvas, self._clock)
         self.credits.draw(canvas)
         if self.mode == "intro":
@@ -282,37 +292,56 @@ class MenuScene:
         canvas.blit(self._layer, box.topleft)
 
     def _draw_intro(self, canvas: pg.Surface, v: View) -> float:
-        """The menu as the beam draws it. Returns how lit the corner link is."""
+        """The frame as the beam draws it (the night is already on `canvas`, the words not yet
+        covered). Returns how lit the corner link is."""
         age = self._beam_age()
-        top, height = UI_BOX[1], UI_BOX[3]
-        reach = top + height * age / MENU_INTRO_S  # where the beam is (logical y)
-        parts = [INTRO_TITLE, *(r.inflate(16, 16) for r in self._rects()), INTRO_HINT]
-        link_k = self._flicker(age - (INTRO_HINT.top - top) / height * MENU_INTRO_S)
+        w, h = canvas.get_size()
+        link_k = self._flicker(age - self._arrives(LINK_Y))
         box = v.rect(*UI_BOX).clip(canvas.get_rect())
         if box.w <= 0 or box.h <= 0 or age >= MENU_INTRO_S + INTRO_SETTLE_S:
             self._paint_words(canvas, v)
             return 1.0
         if self._layer is None or self._layer.get_size() != box.size:
             self._layer = pg.Surface(box.size)
-        self._layer.blit(canvas, (0, 0), area=box)  # the night, kept
+        self._layer.blit(canvas, (0, 0), area=box)  # the night behind the words, kept
         self._paint_words(canvas, v)
-        beam_y = round(v.pt((0, reach))[1]) if age < MENU_INTRO_S else canvas.get_height()
-        if age < MENU_INTRO_S:  # what the beam has not reached is not there
-            self._cover(canvas, box, pg.Rect(box.x, beam_y, box.w, box.bottom - beam_y), 1.0)
-        for rect in parts:  # each part flickers on as the beam reaches it
-            k = self._flicker(age - (rect.top - top) / height * MENU_INTRO_S)
+        beam_y = round(h * age / MENU_INTRO_S) if age < MENU_INTRO_S else h
+        if beam_y < h:  # what the beam has not reached is black
+            canvas.fill((0, 0, 0), (0, beam_y, w, h - beam_y))
+        for rect in (INTRO_TITLE, *(r.inflate(16, 16) for r in self._rects()), INTRO_HINT):
+            k = self._flicker(age - self._arrives(rect.top))  # each part flickers on
             if 0.0 < k < 1.0:
                 area = v.rect(*rect).clip(box)
                 area.height = max(0, min(area.bottom, beam_y) - area.top)
                 self._cover(canvas, box, area, 1.0 - k)
-        if age >= 0:
-            self._beam(canvas, v, beam_y, 1.0 - max(0.0, min(1.0, (age - MENU_INTRO_S) / 0.15)))
-            behind = v.i(INTRO_FRINGE_BAND)  # the colours are apart just behind the beam
-            band = pg.Rect(box.x, max(box.y, beam_y - behind), box.w, 0)
-            band.height = max(0, min(beam_y, box.bottom) - band.top)
-            if band.height > 0 and age < MENU_INTRO_S + 0.1:
-                self._fringe.apply(canvas, band, max(1, v.i(INTRO_FRINGE_PX)))
+        self._beam(canvas, v, beam_y, 1.0 - max(0.0, min(1.0, (age - MENU_INTRO_S) / 0.15)))
+        behind = v.i(INTRO_FRINGE_BAND)  # the colours are apart just behind the beam
+        band = pg.Rect(0, max(0, beam_y - behind), w, 0)
+        band.height = max(0, min(beam_y, h) - band.top)
+        if band.height > 0 and age < MENU_INTRO_S + 0.1:
+            self._fringe.apply(canvas, band, max(1, v.i(INTRO_FRINGE_PX)))
         return link_k
+
+    def prewarm_looks(self, canvas: pg.Surface) -> None:
+        """Paint the menu onto `canvas` in each state it will be seen in (the title at every
+        brightness it flickers and breathes through, the beam drawing it, the lit corner link) so
+        that no sprite has to be made while it is on show. Leaves the menu as it was."""
+        v = self.view
+        was = self.mode, self._mode_t, self._opened, self._clock, self._credit_hot
+        try:
+            self.mode = "menu"
+            for since in (*(at for at, _ in FLICKER), *(1.0 + 0.25 * i for i in range(17))):
+                self._clock, self._opened = since, 0.0
+                self._paint_words(canvas, v)
+            self._credit_hot = True
+            self._paint_link(canvas, v, 1.0)
+            self.mode, self._clock, self._opened = "intro", 0.0, 0.0
+            for age in (0.05, 0.2, 0.45, 0.7, 0.95, 1.2, 1.5):
+                self._mode_t = MENU_INTRO_START_S + age
+                self.synth.draw(canvas, 0.0)
+                self._paint_link(canvas, v, self._draw_intro(canvas, v))
+        finally:
+            self.mode, self._mode_t, self._opened, self._clock, self._credit_hot = was
 
     def _cover(self, canvas: pg.Surface, box: pg.Rect, area: pg.Rect, alpha: float) -> None:
         """Put the night as it was (kept for `box`) back over `area`, `alpha` opaque."""

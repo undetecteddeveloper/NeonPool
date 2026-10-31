@@ -12,6 +12,7 @@ import ctypes
 import logging
 import sys
 import time
+from collections.abc import Callable
 
 import pygame as pg
 
@@ -25,6 +26,7 @@ from game.render.view import View
 from game.render.viewport import window_to_logical
 from game.rules.eight_ball import PLAYING
 from game.scenes.help import HelpPanel
+from game.scenes.loading import LoadingScene
 from game.scenes.menu import MenuScene
 from game.scenes.net_play import NetPlayScene
 from game.scenes.play import PlayScene
@@ -63,6 +65,7 @@ class App:
         self._window_changed_at = float("-inf")
         self._old_frame: pg.Surface | None = None  # the picture that is switching off
         self._tube = TUBE_OFF_S  # time into the switch; past TUBE_OFF_S + TUBE_ON_S: done
+        self._warmed: tuple | None = None  # what the pictures made ahead are for (_warm_key)
 
     # --- scenes ----------------------------------------------------------------------------
     def _switch(self, scene) -> None:
@@ -78,18 +81,54 @@ class App:
         self._tube = TUBE_OFF_S + TUBE_ON_S
         self._old_frame = None
 
-    def prepare(self) -> None:
-        """Make now, once, everything the menu would otherwise make while it is on show (about a
-        second of work, in a few frames of 30-650 ms): the how-to-play pictures, the settings
-        panel and the result card. The real game does this before the first frame, behind a
-        loading line, so the menu then runs smoothly and every card opens at once."""
-        while self.help.prefetch_one():
-            pass
+    def _warm_key(self) -> tuple:
+        """What the made-ahead pictures are for: the window shape and the language."""
+        return self.view.s, self.view.canvas, i18n.get_lang()
+
+    def prepare_steps(self) -> list[tuple[str, Callable[[], bool]]]:
+        """Everything the game makes before it is first seen, so that the menu then runs smoothly
+        and every card opens at once, as (key of the line on the loading screen, work). The work
+        is called again while it returns True (it made one piece and more is left); the step is
+        done when it returns False."""
+        screen = pg.display.get_surface() or self.screen
+
+        def once(work: Callable[[], object]) -> Callable[[], bool]:
+            def run() -> bool:
+                work()
+                return False
+
+            return run
+
+        return [
+            ("loading.help", self.help.prefetch_one),
+            ("loading.panels", once(lambda: self._warm_panels())),
+            ("loading.cards", once(lambda: self._warm_cards())),
+            ("loading.credits", once(self.menu.credits.prewarm)),
+            ("loading.looks", once(lambda: self._warm_looks(screen))),
+            ("loading.music", self.audio.prepare_music),
+        ]
+
+    def _warm_panels(self) -> None:
         self.menu.settings.prewarm(self.view)
         self.menu.play_panel.prewarm(self.view)
-        self.menu.credits.prewarm()
+
+    def _warm_cards(self) -> None:
         hud.prewarm_result(self.view)
         hud.prewarm_net(self.view)
+
+    def _warm_looks(self, screen: pg.Surface) -> None:
+        """Draw the opening screen and the menu's own effects once, so the first time they are
+        seen no sprite has to be made."""
+        self.splash.prewarm(screen)
+        self.menu.prewarm_looks(screen)
+
+    def prepare(self) -> None:
+        """Do every step now, in one go (tools and tests; the real game does the same behind its
+        loading screen, a piece at a time: `boot`)."""
+        for _, work in self.prepare_steps():
+            while work():
+                pass
+        self._warmed = self._warm_key()
 
     def start_splash(self) -> None:
         """Open on the title screen; it hands over to the menu by itself (or on any key)."""
@@ -157,18 +196,15 @@ class App:
             self.fps += (1.0 / dt - self.fps) * FPS_SMOOTH
         self._tube = min(TUBE_OFF_S + TUBE_ON_S, self._tube + dt)
         self.help.update(dt)
-        if (  # the menu has settled (the title is lit): make the first picture before it is needed
+        if (  # the menu has settled: after a language or size change, make the pictures again
             self.help.prefetch
             and self.scene is self.menu
             and not self.help.is_open
             and self.menu.idle_s() > PREFETCH_AFTER_S
-            and not self.help.prefetch_one()  # the pictures are done: now the panels
+            and self._warmed != self._warm_key()
+            and not self.help.prefetch_one()  # (one picture a frame; then the rest in one go)
         ):
-            self.menu.settings.prewarm(self.view)
-            self.menu.play_panel.prewarm(self.view)
-            self.menu.credits.prewarm()
-            hud.prewarm_result(self.view)
-            hud.prewarm_net(self.view)
+            self.prepare()
         self.audio.update_music(
             dt,
             "menu" if self.scene is self.menu else None if self.scene is self.splash else "play",
@@ -264,17 +300,43 @@ class App:
 
     # --- real window ---------------------------------------------------------------------------
     @staticmethod
+    def boot(screen: pg.Surface) -> App | None:
+        """Make the app behind the loading screen (a boot log on the arcade monitor, redrawn
+        between the pieces of work), then open on the opening screen. None if the window was
+        closed meanwhile."""
+        i18n.set_lang(settings.load().lang)  # the player's language, before the App exists
+        loading = LoadingScene(screen)
+        loading.begin("loading.start")
+        if not loading.show(screen):
+            return None
+        app = App(screen)
+        loading.done("loading.start")
+        app.help.prefetch = True  # (later, after a language or size change, the menu re-makes them)
+        for key, work in app.prepare_steps():
+            loading.begin(key)
+            while True:
+                if not loading.show(screen):
+                    return None
+                if not work():
+                    break
+            loading.done(key)
+        app._warmed = app._warm_key()
+        loading.begin("splash.ready")
+        loading.show(screen)
+        app.start_splash()
+        return app
+
+    @staticmethod
     def run_forever() -> None:
         logging.basicConfig(level=logging.INFO)
         _enable_dpi_awareness()
         pg.init()
         pg.display.set_caption("NeonPool")
         screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)  # the whole desktop, at its resolution
-        _show_loading(screen)  # the window is up at once; making the first pictures takes a while
-        app = App(screen)
-        app.help.prefetch = True  # (later, after a language or size change, the menu re-makes them)
-        app.prepare()
-        app.start_splash()
+        app = App.boot(screen)
+        if app is None:
+            pg.quit()
+            return
         clock = pg.time.Clock()  # made after the long wait: the first frame is not a "long frame"
         while app.running:
             dt = clock.tick(60) / 1000
@@ -284,17 +346,6 @@ class App:
             app.draw()
             pg.display.flip()
         pg.quit()
-
-
-def _show_loading(screen: pg.Surface) -> None:
-    """A dark screen with a small line in the middle, shown while the game gets ready."""
-    i18n.set_lang(settings.load().lang)  # the player's language, before the App exists
-    v = View.for_window(screen.get_size())
-    screen.fill(C.BG)
-    cx, cy = LOGICAL_SIZE[0] / 2, LOGICAL_SIZE[1] / 2
-    hud.label(screen, v, t("app.loading"), (cx, cy), C.TEXT_DIM, 14, center=True)
-    pg.display.flip()
-    pg.event.pump()  # the system sees the window answering
 
 
 def _enable_dpi_awareness() -> None:

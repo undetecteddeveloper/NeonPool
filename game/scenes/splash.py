@@ -11,16 +11,13 @@ the menu is drawn by a beam of light (scenes/menu.py).
 
 from __future__ import annotations
 
-import math
-
-import numpy as np
 import pygame as pg
 
 from game.config import LOGICAL_SIZE
 from game.i18n import t
-from game.render import crt, hud
+from game.render import hud
 from game.render import palette as C
-from game.render.tube import ARCADE, Bulge, Fringe
+from game.render.tube import Fringe, Monitor
 from game.render.view import View
 
 SPLASH_S = 6.2  # the whole of it, then the menu
@@ -37,8 +34,6 @@ OFF_AT = SPLASH_S - 0.2  # the sound of the tube switching off starts here
 LOG_X, LOG_W, LOG_Y, LOG_STEP, LOG_PT = CX - 250, 500, 360, 42, 22
 FRINGE_PX = 2  # the red and the blue of the title are this far apart (logical px)
 FRINGE_BOX = (CX - 340, 100, 680, 200)  # where the title and its halo are
-TEAR_EVERY_S, TEAR_S, TEAR_PX = 1.25, 0.06, 10  # now and then the picture slips sideways
-BAR_PX, BAR_PEAK, BAR_SPEED = 150, 16, 0.28  # the faint band: height, brightness, screens/s
 
 
 def log_text(key: str) -> str:
@@ -74,15 +69,8 @@ class SplashScene:
     def set_view(self, v: View) -> None:
         """(Re)build the pictures that depend on the resolution."""
         self.view = v
-        self.pic = pg.Surface(v.canvas)  # the flat picture, bowed onto the screen
-        self.bg = pg.Surface(v.canvas)
-        self.bg.fill(C.BG)
-        crt.darken_corners(self.bg)
-        self.tube = Bulge(v.canvas, ARCADE)
-        w, _ = v.canvas
-        rows = (np.sin(np.linspace(0, math.pi, v.i(BAR_PX))) ** 2 * BAR_PEAK).astype(np.uint8)
-        self.bar = pg.surfarray.make_surface(np.repeat(np.tile(rows, (w, 1))[:, :, None], 3, 2))
-        self._fringe_box = v.rect(*FRINGE_BOX).clip(self.bg.get_rect())
+        self.monitor = Monitor(v)  # the glass, the dark corners, the band, the slip
+        self._fringe_box = v.rect(*FRINGE_BOX).clip(pg.Rect(0, 0, *v.canvas))
         self._fringe = Fringe(self._fringe_box.size)
 
     def restart(self) -> None:
@@ -114,8 +102,7 @@ class SplashScene:
 
     # --- drawing -----------------------------------------------------------------------------
     def draw(self, canvas: pg.Surface) -> None:
-        v, pic = self.view, self.pic
-        pic.blit(self.bg, (0, 0))
+        v, pic = self.view, self.monitor.begin()
         self._title(pic, v)
         k = min(1.0, max(0.0, (self.t - SUBTITLE_AT) / SUBTITLE_S))
         if k > 0:
@@ -123,13 +110,20 @@ class SplashScene:
                      (CX, SUBTITLE_Y), bold=True, center=True, track=3.0)  # fmt: skip
         self._fringe.apply(pic, self._fringe_box, max(1, v.i(FRINGE_PX)))
         self._log(pic, v)
-        self._tear(pic, v)
-        y = int(((self.t * BAR_SPEED) % 1.3 - 0.15) * pic.get_height())
-        pic.blit(self.bar, (0, y), special_flags=pg.BLEND_RGB_ADD)
-        if canvas.get_size() == pic.get_size():
-            self.tube.apply(pic, canvas)  # bowed out like the glass of the monitor
-        else:  # (the window is being resized and the pictures are for the old size)
-            canvas.blit(pic, (0, 0))
+        self.monitor.present(canvas, self.t)  # bowed out like the glass of the monitor
+
+    def prewarm(self, canvas: pg.Surface) -> None:
+        """Draw the screen at a few moments onto `canvas` so that every sprite it needs (the
+        halos of a letter lighting up, the typed lines, the bowed rows) is made before it is
+        shown. Leaves the time as it was."""
+        was = self.t
+        try:
+            for at in (0.0, LETTER_AT + 0.02, LETTER_AT + 0.07, LETTER_AT + 0.2, SUBTITLE_AT + 0.5,
+                       TOOLS_AT + 0.5, READY_AT + 0.2):  # fmt: skip
+                self.t = at
+                self.draw(canvas)
+        finally:
+            self.t = was
 
     def _title(self, canvas: pg.Surface, v: View) -> None:
         title = t("app.title")
@@ -176,12 +170,3 @@ class SplashScene:
     def _cursor(canvas: pg.Surface, v: View, typed: str, y: float, colour) -> None:
         x = LOG_X + hud.text_width(v, typed, LOG_PT, bold=True) + 3
         canvas.fill(colour, v.rect(x, y - 2, 12, 24), special_flags=pg.BLEND_RGB_ADD)
-
-    def _tear(self, canvas: pg.Surface, v: View) -> None:
-        """For a few frames now and then a band of the picture slips sideways."""
-        if self.t < 2.0 or (self.t / TEAR_EVERY_S) % 1.0 >= TEAR_S / TEAR_EVERY_S:
-            return
-        w, h = canvas.get_size()
-        y, bh = int((self.t * 7.3 % 1.0) * h * 0.8), v.i(26)
-        band = canvas.subsurface((0, y, w, min(bh, h - y))).copy()
-        canvas.blit(band, (v.i(TEAR_PX * math.sin(self.t * 90)), y))

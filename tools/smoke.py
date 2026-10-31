@@ -262,6 +262,23 @@ def main() -> int:
     app.start_splash()
     app.splash.t = 3.0
     splash = measure(app, 60)
+    from game.scenes.loading import LoadingScene
+
+    loading_scene = LoadingScene(screen)  # the boot log, with most of its lines there
+    for key in (
+        "loading.start",
+        "loading.help",
+        "loading.panels",
+        "loading.cards",
+        "loading.music",
+    ):
+        loading_scene.begin(key)
+    loading_times = []
+    for _ in range(60):
+        t0 = time.perf_counter()
+        loading_scene.draw(screen)
+        loading_times.append((time.perf_counter() - t0) * 1000)
+    app.draw()
     app.go_menu()
     app.skip_transition()
     app.menu.start_intro()  # the beam draws the menu, top to bottom
@@ -283,6 +300,7 @@ def main() -> int:
         & report("hướng dẫn (đang lật trang)", turning)
         & report("hướng dẫn", guide)
         & report("màn mở đầu (đang gõ công cụ, kính lồi)", splash)
+        & report("màn loading (nhật ký khởi động)", loading_times)
         & report("menu được tia quét vẽ ra", intro)
         & report("credit (chữ rơi và nổi trên sóng)", credits)
         & net_ok
