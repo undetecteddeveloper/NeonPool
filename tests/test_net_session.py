@@ -512,6 +512,22 @@ def test_ac14_a_break_on_the_guests_turn_and_the_guest_shoots_after_coming_back(
     assert host.last_shooter == GUEST and same_table(host, guest)
 
 
+def test_ac14_a_second_line_made_while_the_first_is_heard_out_is_hung_up():
+    """A relinker that makes another connection while the guest's Resume is on its way: the
+    extra one is closed at once (left open, at the relay it would hold the guest's place)."""
+    room, host, guest = room_pair(latency=0.05)
+    room.cut()
+    run(room, (host, guest), 3.0)
+    room.reconnect()
+    run(room, (host, guest), 1 / 60)  # the guest takes the new line and says who it is
+    extra = NetSim()
+    room._fresh[1].append(extra.b)
+    run(room, (host, guest), 1 / 60)
+    assert not extra.up
+    assert run(room, (host, guest), 5.0, lambda: back_together(host, guest))
+    assert same_table(host, guest)
+
+
 def test_ac14_a_break_while_placing_the_cue_ball_in_hand():
     room, host, guest = room_pair(latency=0.02)
     play_shot(room, host, guest, no_hit_shot())  # a foul: the other player has the ball in hand

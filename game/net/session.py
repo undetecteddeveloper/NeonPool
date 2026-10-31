@@ -396,6 +396,8 @@ class Session:
             if fresh is not None and not self._resuming:
                 self.transport, self._resuming, self._silent = fresh, True, 0.0
                 self._send(p.Resume(p.PROTOCOL_VERSION, self._build, self._fingerprint, self.token))
+            elif fresh is not None:
+                fresh.close()  # one try is being heard out; a second line would only get in its way
             elif self._resuming and self._silent > config.NET_HANDSHAKE_TIMEOUT_S:
                 self.transport.close()  # no answer: this try is over, the next one starts
                 self._resuming = False

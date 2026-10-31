@@ -5,10 +5,15 @@ that only move whole frames between the socket and two queues, and `poll()` / `s
 the queues. A run of unreliable frames waiting to go out is cut down to the newest one (an old
 cue position is worth nothing), but reliable frames keep their order. Hanging up flushes what is
 still queued first, so a goodbye is delivered. Windows asks once whether the game may listen.
+
+A room met through the relay (`relay.py`) keeps a door here for a guest on the same network, but
+that door has a secret: whoever knocks must first say LAN_MAGIC and the room's secret (given by
+the relay to someone who typed the room's code), or the door shuts.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
 import socket
 import sys
@@ -29,11 +34,14 @@ ERR_REFUSED, ERR_TIMEOUT, ERR_ADDRESS, ERR_UNREACHABLE = (
     "unreachable",  # the network says no
 )
 _RECV = 65536
+LAN_MAGIC = b"NPL1"  # the first bytes through a door with a secret ...
+SECRET_LEN = 16  # ... then the secret
+ADMIT_TIMEOUT_S = 2.0  # a knock that does not say them in this long is sent away
 SWITCH_INTERVAL_S = 0.0002
 _switch_interval_set = False
 
 
-def _wake_threads_fast() -> None:
+def wake_threads_fast() -> None:
     """Make the network threads get the interpreter at once. By default a thread waiting for it
     asks the busy one to let go only after 5 ms; on Windows that wait is rounded up to a clock tick,
     so a frame from the network sat ~10 ms behind a busy main thread (measured: tools/netbench.py
@@ -83,7 +91,7 @@ class TcpTransport:
     """A connected socket as a `Transport`."""
 
     def __init__(self, sock: socket.socket) -> None:
-        _wake_threads_fast()
+        wake_threads_fast()
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         sock.settimeout(None)
         self._sock = sock
@@ -146,9 +154,12 @@ class TcpTransport:
 
 class TcpListener:
     """A room waiting for its guest. `accept()` hands over each new connection once, without
-    waiting; a third person knocking while the room is full is told so and sent away."""
+    waiting; a third person knocking while the room is full is told so and sent away. With a
+    `secret`, only a knock that says it first comes in."""
 
-    def __init__(self, port: int = config.NET_PORT, bind: str = "0.0.0.0") -> None:
+    def __init__(
+        self, port: int = config.NET_PORT, bind: str = "0.0.0.0", secret: bytes | None = None
+    ) -> None:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if sys.platform != "win32":  # on Windows this would let a second program share the port
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -157,6 +168,7 @@ class TcpListener:
         self.port: int = self._sock.getsockname()[1]
         self._fresh: deque[TcpTransport] = deque()
         self._current: TcpTransport | None = None
+        self._secret = secret
         self._open = True
         threading.Thread(target=self._accept_loop, name="net-accept", daemon=True).start()
 
@@ -179,24 +191,61 @@ class TcpListener:
                 conn, _ = self._sock.accept()
             except OSError:
                 return
-            if self._current is not None and self._current.connected:
-                try:
-                    conn.sendall(p.encode(p.Reject(p.REJECT_BUSY)))
-                    conn.close()
-                except OSError:
-                    pass
+            if self._secret is not None:
+                threading.Thread(
+                    target=self._admit, args=(conn,), name="net-admit", daemon=True
+                ).start()
                 continue
-            self._current = TcpTransport(conn)
-            self._fresh.append(self._current)
+            self._take(conn)
+
+    def _admit(self, conn: socket.socket) -> None:
+        """Hear the knock out (in its own thread: a slow one must not hold the door)."""
+        want = LAN_MAGIC + self._secret
+        got = b""
+        try:
+            conn.settimeout(ADMIT_TIMEOUT_S)
+            while len(got) < len(want):
+                data = conn.recv(len(want) - len(got))
+                if not data:
+                    break
+                got += data
+        except OSError:
+            pass
+        if self._open and hmac.compare_digest(got, want):
+            self._take(conn)
+        else:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+    def _take(self, conn: socket.socket) -> None:
+        if self._current is not None and self._current.connected:
+            try:
+                conn.sendall(p.encode(p.Reject(p.REJECT_BUSY)))
+                conn.close()
+            except OSError:
+                pass
+            return
+        self._current = TcpTransport(conn)
+        self._fresh.append(self._current)
 
 
 class Connector:
-    """Joining a room, in a thread: ask `result()` each frame."""
+    """Joining a room, in a thread: ask `result()` each frame. A door with a secret is told it
+    first."""
 
-    def __init__(self, host: str, port: int, timeout: float = config.NET_CONNECT_TIMEOUT_S) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        timeout: float = config.NET_CONNECT_TIMEOUT_S,
+        secret: bytes | None = None,
+    ) -> None:
         self.state = CONNECT_CONNECTING
         self.error: str | None = None
         self._transport: TcpTransport | None = None
+        self._secret = secret
         threading.Thread(
             target=self._run, args=(host, port, timeout), name="net-connect", daemon=True
         ).start()
@@ -209,6 +258,8 @@ class Connector:
     def _run(self, host: str, port: int, timeout: float) -> None:
         try:
             sock = socket.create_connection((host, port), timeout)
+            if self._secret is not None:
+                sock.sendall(LAN_MAGIC + self._secret)
         except ConnectionRefusedError:
             self.error = ERR_REFUSED
         except TimeoutError:
