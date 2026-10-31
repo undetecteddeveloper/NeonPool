@@ -1,0 +1,17 @@
+# NeonPool relay (docs/ARCHITECTURE.md, network play). Run on this machine:
+#   npm install && npx wrangler dev --ip 127.0.0.1 --port 8787
+# Put online (needs the owner's Cloudflare login, once: npx wrangler login):
+#   npx wrangler deploy
+name = "neonpool-relay"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# the free plan only has Durable Objects backed by SQLite
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
