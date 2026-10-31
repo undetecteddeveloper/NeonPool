@@ -126,9 +126,10 @@ SFX_MIN_SPEED = 0.05  # m/s; softer impacts make no sound (no ticking at the end
 CREDIT_FADE_OUT_S = 0.4  # the menu's words dim away this long before the first piece falls
 CREDIT_FADE_IN_S = 0.7  # ... and come back this long once the last piece has left
 CREDIT_FIRST_S = 0.3  # the first piece starts to fall this long after the menu has gone
-CREDIT_EVERY_S = 1.0  # a new piece falls this often
-CREDIT_FLOW = 250.0  # logical px/s: the current carries a piece sideways from the first moment,
-#                      so two pieces that fell one second apart land this far from each other
+CREDIT_EVERY_S = 2.5  # a new piece falls this often (was 1.0; the user added 1.5 s)
+CREDIT_FLOW = 112.5  # logical px/s: the current carries a piece sideways from the first moment,
+#                      so two pieces that fell EVERY_S apart land this far from each other
+#                      (45% of the first 250 px/s, design log no. 26)
 CREDIT_LANE_X = 380.0  # where every piece lands (the middle of it), logical px
 CREDIT_MAX_W = 220.0  # no piece is wider: it must clear the one before it (FLOW * EVERY_S)
 CREDIT_GRAVITY = 900.0  # logical px/s^2, in the air
@@ -138,6 +139,17 @@ CREDIT_SINK = 4.0  # a floating piece sits this far below the surface (logical p
 CREDIT_PRESS = 260.0  # px/s^2 a floating piece pushes the ribbons down under its weight
 CREDIT_SPLASH = 0.55  # a piece landing kicks the ribbons this hard (times its speed / 600 px/s)
 CREDIT_SPLASH_MAX = 1.3  # ... at most this many times that
+CREDIT_SWAY_DEG = 7.0  # a floating piece rocks this far each way (turning about the Z axis) ...
+CREDIT_SWAY_HZ = 0.45  # ... this many times a second,
+CREDIT_SWAY_IN_S = 0.6  # starting gently this long after it landed
+CREDIT_LEAN = 0.5  # and it leans this share of the slope of the ribbons under it
+CREDIT_LEAN_EASE = 6.0  # 1/s: the lean follows the slope this fast
+CREDIT_TILT_MAX = 14.0  # in all it never turns more than this (degrees)
+# --- After the opening screen a beam of light draws the menu from the top down (scenes/menu.py) ---
+MENU_INTRO_START_S = (
+    0.35  # the beam starts this long after the menu opens (the tube is still coming on)
+)
+MENU_INTRO_S = 1.2  # ... and takes this long to reach the bottom
 # --- The numbers on the result card count up one after the other (game/tally.py) ---
 TALLY_SPANS = (("score", 1.1), ("shots", 0.6), ("fouls", 0.5))  # in order: name, seconds it runs
 TALLY_START_S = 0.7  # after the game ends: the card has grown in and the jingle is on its way

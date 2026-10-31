@@ -13,6 +13,7 @@ import pygame as pg
 
 from game import music
 from game.config import (
+    MENU_INTRO_S,
     MUSIC_CHANNELS,
     MUSIC_DUCK,
     MUSIC_DUCK_S,
@@ -235,6 +236,82 @@ def synth_spin(freq: float) -> np.ndarray:
     return _to_int16(x * np.minimum(1.0, t / 0.004), gain=0.6)
 
 
+# --- the opening screen: a chip tune, one sound for each thing that appears ---------------------
+# The user listened to two sets (neon sign / 8-bit arcade) and chose the 8-bit one (2026-10-31).
+SPLASH_SCALE = (
+    0,
+    2,
+    4,
+    7,
+    9,
+    12,
+    14,
+    16,
+)  # the eight letters of the title climb a pentatonic scale
+SPLASH_LINE_NOTES = (392, 440, 494, 587)  # the four tools, a note each
+# playback volume of each kind (the clips are all made equally loud)
+SPLASH_VOLUMES = {
+    "on": 0.95, "letter": 0.88, "sub": 0.64, "line": 0.72, "tick": 0.29, "ok": 0.8,
+    "ready": 0.88, "off": 0.95,
+}  # fmt: skip
+
+
+def synth_splash_on() -> np.ndarray:
+    """The tube is switched on: a rising sweep and a puff of noise."""
+    t = _t(0.35)
+    sweep = np.sin(2 * np.pi * np.cumsum(120 + 1800 * (t / 0.35) ** 2) / SAMPLE_RATE)
+    return _to_int16(sweep * _decay(t, 0.2) + 0.3 * _noise(t.size) * _decay(t, 0.03), gain=0.8)
+
+
+def synth_splash_letter(i: int) -> np.ndarray:
+    """A letter of the title lights up: one square note, each higher than the one before."""
+    return _to_int16(_square(523 * 2 ** (SPLASH_SCALE[i] / 12), 0.11, 0.05), gain=0.8)
+
+
+def synth_splash_subtitle() -> np.ndarray:
+    """The line under the title: two coin notes."""
+    return _to_int16(_notes([988, 1319], 0.06, 0.05, tail=0.15), gain=0.7)
+
+
+def synth_splash_line(i: int) -> np.ndarray:
+    """A line of the tools starts to be typed: two chip notes, a different pitch for each."""
+    f = SPLASH_LINE_NOTES[i]
+    return _to_int16(_notes([f, f * 1.5], 0.05, 0.04), gain=0.7)
+
+
+def synth_splash_tick() -> np.ndarray:
+    """One typed character."""
+    return _to_int16(_square(1900, 0.012, 0.004), gain=0.5)
+
+
+def synth_splash_ok() -> np.ndarray:
+    """A line is done: a coin."""
+    return _to_int16(_notes([1319, 1760], 0.05, 0.07, tail=0.2), gain=0.8)
+
+
+def synth_splash_ready() -> np.ndarray:
+    """Everything is ready: a short climb of five notes."""
+    return _to_int16(_notes([523, 659, 784, 1047, 1319], 0.07, 0.08, tail=0.3), gain=0.85)
+
+
+def synth_splash_off() -> np.ndarray:
+    """The tube is switched off: the notes fall away."""
+    return _to_int16(_notes([880, 660, 440, 330, 220, 110], 0.04, 0.04, tail=0.1), gain=0.8)
+
+
+def synth_menu_sweep() -> np.ndarray:
+    """The beam of light that draws the menu, from the top of the screen to the bottom: a chip
+    tone that climbs from 150 Hz to 2.4 kHz in steps, in as long as the beam takes."""
+    t = _t(MENU_INTRO_S)
+    steps = np.floor(np.log2(1 + 15 * t / MENU_INTRO_S) * 6) / 6  # climbs in sixths of an octave
+    freq = 150 * 2 ** (steps * 4 / np.log2(16))
+    phase = 2 * np.pi * np.cumsum(freq) / SAMPLE_RATE
+    wave = np.sin(phase) + np.sin(3 * phase) / 3
+    return _to_int16(
+        wave * np.minimum(1.0, t / 0.03) * np.minimum(1.0, (MENU_INTRO_S - t) / 0.1), gain=0.5
+    )
+
+
 def volume_for_speed(speed: float) -> float:
     return float(min(1.0, 0.12 + 0.88 * (max(speed, 0.0) / SFX_REF_SPEED) ** 0.7))
 
@@ -278,6 +355,15 @@ class Audio:
                 ("warn_last", synth_warn_last),
                 ("coin_up", synth_coin_up),
                 ("coin_land", synth_coin_land),
+                ("splash_on", synth_splash_on),
+                ("splash_sub", synth_splash_subtitle),
+                ("splash_tick", synth_splash_tick),
+                ("splash_ok", synth_splash_ok),
+                ("splash_ready", synth_splash_ready),
+                ("splash_off", synth_splash_off),
+                ("menu_sweep", synth_menu_sweep),
+                *((f"splash_letter{i}", lambda i=i: synth_splash_letter(i)) for i in range(8)),
+                *((f"splash_line{i}", lambda i=i: synth_splash_line(i)) for i in range(4)),
                 ("ting_win", lambda: synth_ting(1319, 1976)),  # bright: E6 and B6
                 ("ting_lose", lambda: synth_ting(440, 659)),  # lower: A4 and E5
                 *((f"tick{i}", lambda f=f: synth_tick(f)) for i, f in enumerate(TICK_NOTES)),
@@ -391,6 +477,16 @@ class Audio:
     def play_tally_ting(self, won: bool, big: bool) -> None:
         """A number stopped: bright after a win, lower after a loss; the score's is loudest."""
         self._play("ting_win" if won else "ting_lose", 0.55 if big else 0.32)
+
+    def play_splash(self, kind: str, i: int = 0) -> None:
+        """A sound of the opening screen: kind "on", "letter" (i: which), "sub", "line" (i: which
+        tool), "tick", "ok", "ready" or "off"."""
+        name = f"splash_{kind}{i}" if kind in ("letter", "line") else f"splash_{kind}"
+        self._play(name, SPLASH_VOLUMES[kind])
+
+    def play_menu_sweep(self) -> None:
+        """The beam draws the menu, after the opening screen."""
+        self._play("menu_sweep", 0.5)
 
     def play_shot(self, power: float) -> None:
         self._play("cue", 0.25 + 0.75 * power)

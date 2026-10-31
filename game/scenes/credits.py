@@ -1,14 +1,16 @@
-"""The credits: pieces of text fall from the top edge one a second into the menu's night.
+"""The credits: pieces of text fall from the top edge, one every few seconds, into the menu's night.
 
 Each piece lands on the ribbons like a ball does: it dips, the ribbons splash and sink under its
-weight, then it floats and the current carries it to the right and off the screen. They all land
-at the same spot, and the current is just fast enough (CREDIT_FLOW * CREDIT_EVERY_S) that a piece
-has moved clear of the spot before the next one lands, so none overlap. The menu scene owns this
-and hides its own words while it runs.
+weight, then it floats, rocking gently about the Z axis (it leans with the ribbons under it and
+sways on its own), and the current carries it to the right and off the screen. They all land at
+the same spot, and the current is just fast enough (CREDIT_FLOW * CREDIT_EVERY_S) that a piece has
+moved clear of the spot before the next one lands, so none overlap. The menu scene owns this and
+hides its own words while it runs.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import pygame as pg
@@ -20,12 +22,18 @@ from game.config import (
     CREDIT_FLOW,
     CREDIT_GRAVITY,
     CREDIT_LANE_X,
+    CREDIT_LEAN,
+    CREDIT_LEAN_EASE,
     CREDIT_MAX_W,
     CREDIT_PRESS,
     CREDIT_SINK,
     CREDIT_SPLASH,
     CREDIT_SPLASH_MAX,
     CREDIT_SPRING,
+    CREDIT_SWAY_DEG,
+    CREDIT_SWAY_HZ,
+    CREDIT_SWAY_IN_S,
+    CREDIT_TILT_MAX,
 )
 from game.i18n import t
 from game.render import hud
@@ -119,6 +127,10 @@ class Piece:
     y: float  # the bottom of the words
     vy: float = 0.0
     afloat: bool = False
+    age: float = 0.0  # seconds since it landed
+    phase: float = 0.0  # where in its sway it starts (each piece its own)
+    lean: float = 0.0  # degrees it leans with the ribbons under it
+    angle: float = 0.0  # degrees it is turned now (counter-clockwise), about its foot
 
 
 class CreditsRoll:
@@ -162,7 +174,9 @@ class CreditsRoll:
         y = top - 4.0
         drop = max(1.0, self.strands.base_y + CREDIT_SINK - y)
         fall_s = (2 * drop / CREDIT_GRAVITY) ** 0.5
-        self.pieces.append(Piece(sprite, w, h, CREDIT_LANE_X - CREDIT_FLOW * fall_s, y))
+        self.pieces.append(
+            Piece(sprite, w, h, CREDIT_LANE_X - CREDIT_FLOW * fall_s, y, phase=2.1 * self._next)
+        )
 
     def update(self, dt: float, clock: float) -> None:
         if not self.running:
@@ -189,6 +203,20 @@ class CreditsRoll:
         p.vy += (-CREDIT_SPRING * (p.y - water) - CREDIT_DAMP * p.vy) * dt
         p.y += p.vy * dt
         self.strands.press(p.x, p.w * PRESS_SIGMA, CREDIT_PRESS, dt)
+        self._turn(p, dt)
+
+    def _turn(self, p: Piece, dt: float) -> None:
+        """Rock about the Z axis: lean with the slope of the ribbons under the piece, and sway."""
+        p.age += dt
+        span = p.w / 2
+        rise = self.strands.surface(p.x - span) - self.strands.surface(
+            p.x + span
+        )  # + = right is up
+        lean = math.degrees(math.atan2(rise, 2 * span)) * CREDIT_LEAN
+        p.lean += (lean - p.lean) * min(1.0, dt * CREDIT_LEAN_EASE)
+        gentle = min(1.0, p.age / CREDIT_SWAY_IN_S)
+        sway = CREDIT_SWAY_DEG * gentle * math.sin(2 * math.pi * CREDIT_SWAY_HZ * p.age + p.phase)
+        p.angle = max(-CREDIT_TILT_MAX, min(CREDIT_TILT_MAX, p.lean + sway))
 
     def _land(self, p: Piece, clock: float) -> None:
         """The piece hits the water: the ribbons splash along its width and a light runs off."""
@@ -201,5 +229,12 @@ class CreditsRoll:
     def draw(self, canvas: pg.Surface) -> None:
         v = self.v
         for p in self.pieces:
-            left, top = v.ipt((p.x - p.w / 2 - PAD, p.y - p.h - PAD))
-            canvas.blit(p.sprite, (left, top), special_flags=pg.BLEND_RGB_ADD)
+            if abs(p.angle) < 0.2:  # (still falling, or level)
+                left, top = v.ipt((p.x - p.w / 2 - PAD, p.y - p.h - PAD))
+                canvas.blit(p.sprite, (left, top), special_flags=pg.BLEND_RGB_ADD)
+                continue
+            # turned about its foot (the water line): the middle of the words swings round it
+            turn, d = math.radians(p.angle), p.h / 2
+            centre = (p.x - d * math.sin(turn), p.y - d * math.cos(turn))
+            spun = pg.transform.rotozoom(p.sprite, p.angle, 1.0)
+            canvas.blit(spun, spun.get_rect(center=v.ipt(centre)), special_flags=pg.BLEND_RGB_ADD)

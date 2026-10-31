@@ -116,19 +116,19 @@ def test_space_while_the_words_are_still_dimming_comes_back_from_where_they_are(
 def test_the_menu_comes_back_by_itself_when_the_last_piece_has_gone(app):
     menu = roll(app)
     seconds = 0.0
-    while menu.mode == "roll" and seconds < 30:
+    while menu.mode == "roll" and seconds < 45:
         run(app, 0.5)
         seconds += 0.5
-    assert menu.mode == "in" and seconds < 15
+    assert menu.mode == "in" and seconds < 30
     run(app, config.CREDIT_FADE_IN_S + 0.05)
     assert menu.mode == "menu"
 
 
 # --- the pieces falling ----------------------------------------------------------------------
-def test_a_piece_falls_from_the_top_edge_one_a_second_in_order(app):
+def test_a_piece_falls_from_the_top_edge_one_every_two_and_a_half_seconds_in_order(app):
     menu = roll(app)
     started, count = [], 0
-    for _ in range(round(6 * 60)):
+    for _ in range(round(16 * 60)):
         app.update(1 / 60)
         if menu.credits._next > count:
             count = menu.credits._next
@@ -148,7 +148,7 @@ def test_a_new_piece_starts_above_the_screen(app):
 
 def test_the_pieces_never_overlap_on_the_water(app):
     menu = roll(app)
-    for _ in range(round(14 * 60)):
+    for _ in range(round(24 * 60)):
         app.update(1 / 60)
         floating = sorted((p for p in menu.credits.pieces if p.afloat), key=lambda p: p.x)
         for a, b in zip(floating, floating[1:], strict=False):
@@ -243,3 +243,46 @@ def test_the_words_really_fade_and_come_back_on_the_screen(app):
     app.handle_event(key(pg.K_SPACE))
     run(app, config.CREDIT_FADE_IN_S + 0.1)
     assert lit_in_buttons() > gone
+
+
+# --- slower, further apart, and rocking on the water (design log no. 26) ---------------
+def test_the_current_is_45_percent_of_the_first_speed_and_the_pieces_fall_2_5_s_apart():
+    assert config.CREDIT_FLOW == pytest.approx(0.45 * 250.0)
+    assert config.CREDIT_EVERY_S == pytest.approx(1.0 + 1.5)
+
+
+def test_a_floating_piece_rocks_both_ways_about_z_but_never_too_far(app):
+    menu = roll(app)
+    seen = []
+    for _ in range(round(6 * 60)):
+        app.update(1 / 60)
+        floating = [p for p in menu.credits.pieces if p.afloat and p.age > 2.0]
+        seen += [p.angle for p in floating]
+        for p in menu.credits.pieces:
+            assert abs(p.angle) <= config.CREDIT_TILT_MAX + 1e-6
+            if not p.afloat:
+                assert p.angle == 0.0  # in the air a piece is level
+    assert max(seen) > 2.0 and min(seen) < -2.0  # it leans and sways both ways
+
+
+def test_a_piece_eases_into_its_rocking_after_landing(app):
+    menu = roll(app)
+    first = None
+    for _ in range(round(4 * 60)):
+        app.update(1 / 60)
+        floating = [p for p in menu.credits.pieces if p.afloat]
+        if floating and first is None:
+            first = floating[0]
+        if first is not None and first.age < 0.05:
+            assert abs(first.angle) < 4.0  # not a jolt the moment it lands
+    assert first is not None
+
+
+def test_a_turned_piece_keeps_its_foot_on_the_water_and_draws(app):
+    menu = roll(app)
+    run(app, 4.0)
+    piece = next(p for p in menu.credits.pieces if p.afloat and abs(p.angle) > 3.0)
+    third = piece.w / 3
+    water = sum(menu.synth.strands.surface(piece.x + k * third) for k in (-1, 0, 1)) / 3
+    assert abs(piece.y - (water + config.CREDIT_SINK)) < 25  # the foot stays on the ribbons
+    app.draw()  # a turned piece (rotozoom) draws, whatever its angle

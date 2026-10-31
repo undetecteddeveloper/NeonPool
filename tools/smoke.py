@@ -264,6 +264,9 @@ def main() -> int:
     splash = measure(app, 60)
     app.go_menu()
     app.skip_transition()
+    app.menu.start_intro()  # the beam draws the menu, top to bottom
+    intro = measure(app, 90)
+    app.menu.mode = "menu"
     app.handle_event(pg.event.Event(pg.KEYDOWN, key=pg.K_c))
     measure(app, 90)  # the words dim away, the first pieces fall
     credits = measure(app, 120)
@@ -279,7 +282,8 @@ def main() -> int:
         & report("hướng dẫn (đang mở ra)", opening)
         & report("hướng dẫn (đang lật trang)", turning)
         & report("hướng dẫn", guide)
-        & report("màn mở đầu (đang gõ công cụ)", splash)
+        & report("màn mở đầu (đang gõ công cụ, kính lồi)", splash)
+        & report("menu được tia quét vẽ ra", intro)
         & report("credit (chữ rơi và nổi trên sóng)", credits)
         & net_ok
     )

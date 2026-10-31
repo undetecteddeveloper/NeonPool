@@ -2,8 +2,11 @@
 game was made with are typed out like a machine starting up, then the tube folds into a line and
 the menu opens out of it (that fold is the app's usual change of scene). Any key or click skips.
 
-It is a tube picture: dark corners and a faint bright band crawling down (both made once), the
-colours of the title fringed apart, and now and then the picture tears sideways for a moment.
+It is an arcade monitor: the picture is bowed out like its glass (render/tube.py), the corners are
+dark and rounded, a faint bright band crawls down it, the colours of the title are fringed apart,
+and now and then the picture slips sideways for a moment. Everything that appears has a chip-tune
+sound of its own (the schedule below is built from the same times the drawing uses). When it ends
+the menu is drawn by a beam of light (scenes/menu.py).
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from game.config import LOGICAL_SIZE
 from game.i18n import t
 from game.render import crt, hud
 from game.render import palette as C
+from game.render.tube import ARCADE, Bulge, Fringe
 from game.render.view import View
 
 SPLASH_S = 6.2  # the whole of it, then the menu
@@ -28,11 +32,32 @@ TOOLS = ("tool.python", "tool.pygame", "tool.numpy", "tool.claude")
 TOOLS_AT, TOOL_STEP = 2.4, 0.7  # the first line starts to be typed here; each next this later
 TYPE_CPS = 40.0  # characters typed a second
 OK_AFTER_S = 0.25  # a typed line gets its OK this long after its last character
+READY_AT = TOOLS_AT + TOOL_STEP * len(TOOLS) + 0.1
+OFF_AT = SPLASH_S - 0.2  # the sound of the tube switching off starts here
 LOG_X, LOG_W, LOG_Y, LOG_STEP, LOG_PT = CX - 250, 500, 360, 42, 22
 FRINGE_PX = 2  # the red and the blue of the title are this far apart (logical px)
 FRINGE_BOX = (CX - 340, 100, 680, 200)  # where the title and its halo are
 TEAR_EVERY_S, TEAR_S, TEAR_PX = 1.25, 0.06, 10  # now and then the picture slips sideways
 BAR_PX, BAR_PEAK, BAR_SPEED = 150, 16, 0.28  # the faint band: height, brightness, screens/s
+
+
+def log_text(key: str) -> str:
+    return f"> {t(key).lower()}"
+
+
+def sound_schedule() -> list[tuple[float, str, int]]:
+    """Every sound of the screen: (when, kind, which), in the order of time. `kind` is what
+    Audio.play_splash takes. The times are the ones the drawing shows things at."""
+    events: list[tuple[float, str, int]] = [(0.0, "on", 0)]
+    events += [(LETTER_AT + LETTER_STEP * i, "letter", i) for i in range(len(t("app.title")))]
+    events.append((SUBTITLE_AT, "sub", 0))
+    for i, key in enumerate(TOOLS):
+        start, n = TOOLS_AT + TOOL_STEP * i, len(log_text(key))
+        events.append((start, "line", i))
+        events += [(start + c / TYPE_CPS, "tick", 0) for c in range(1, n)]
+        events.append((start + n / TYPE_CPS + OK_AFTER_S, "ok", 0))
+    events += [(READY_AT, "ready", 0), (OFF_AT, "off", 0)]
+    return sorted(events, key=lambda e: e[0])
 
 
 class SplashScene:
@@ -42,31 +67,37 @@ class SplashScene:
         self.app = app
         self.t = 0.0
         self._done = False
+        self._events: list[tuple[float, str, int]] = []
+        self._next = 0  # which sound is next
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
-        """(Re)build the pictures that depend on the resolution: the dark ground and the band."""
+        """(Re)build the pictures that depend on the resolution."""
         self.view = v
+        self.pic = pg.Surface(v.canvas)  # the flat picture, bowed onto the screen
         self.bg = pg.Surface(v.canvas)
         self.bg.fill(C.BG)
         crt.darken_corners(self.bg)
+        self.tube = Bulge(v.canvas, ARCADE)
         w, _ = v.canvas
         rows = (np.sin(np.linspace(0, math.pi, v.i(BAR_PX))) ** 2 * BAR_PEAK).astype(np.uint8)
         self.bar = pg.surfarray.make_surface(np.repeat(np.tile(rows, (w, 1))[:, :, None], 3, 2))
         self._fringe_box = v.rect(*FRINGE_BOX).clip(self.bg.get_rect())
-        size = self._fringe_box.size  # three pictures the size of the title, reused every frame
-        self._fringe_bufs = tuple(pg.Surface(size) for _ in range(3))
+        self._fringe = Fringe(self._fringe_box.size)
 
     def restart(self) -> None:
-        self.t, self._done = 0.0, False
+        self.t, self._done, self._next = 0.0, False, 0
+        self._events = sound_schedule()
 
     def shake_offset(self) -> tuple[float, float]:
         return 0.0, 0.0
 
     def finish(self) -> None:
+        """On to the menu, which draws itself in with a beam of light."""
         if not self._done:
             self._done = True
             self.app.go_menu()
+            self.app.menu.start_intro()
 
     def handle_event(self, e: pg.event.Event) -> None:
         if e.type in (pg.KEYDOWN, pg.MOUSEBUTTONDOWN):
@@ -74,23 +105,31 @@ class SplashScene:
 
     def update(self, dt: float) -> None:
         self.t += dt
+        while self._next < len(self._events) and self._events[self._next][0] <= self.t:
+            _, kind, which = self._events[self._next]
+            self._next += 1
+            self.app.audio.play_splash(kind, which)
         if self.t >= SPLASH_S:
             self.finish()
 
     # --- drawing -----------------------------------------------------------------------------
     def draw(self, canvas: pg.Surface) -> None:
-        v = self.view
-        canvas.blit(self.bg, (0, 0))
-        self._title(canvas, v)
+        v, pic = self.view, self.pic
+        pic.blit(self.bg, (0, 0))
+        self._title(pic, v)
         k = min(1.0, max(0.0, (self.t - SUBTITLE_AT) / SUBTITLE_S))
         if k > 0:
-            hud.text(canvas, v, t("app.subtitle").upper(), 17, C.scale(C.CYAN, k),
+            hud.text(pic, v, t("app.subtitle").upper(), 17, C.scale(C.CYAN, k),
                      (CX, SUBTITLE_Y), bold=True, center=True, track=3.0)  # fmt: skip
-        self._fringe(canvas, v)
-        self._log(canvas, v)
-        self._tear(canvas, v)
-        y = int(((self.t * BAR_SPEED) % 1.3 - 0.15) * canvas.get_height())
-        canvas.blit(self.bar, (0, y), special_flags=pg.BLEND_RGB_ADD)
+        self._fringe.apply(pic, self._fringe_box, max(1, v.i(FRINGE_PX)))
+        self._log(pic, v)
+        self._tear(pic, v)
+        y = int(((self.t * BAR_SPEED) % 1.3 - 0.15) * pic.get_height())
+        pic.blit(self.bar, (0, y), special_flags=pg.BLEND_RGB_ADD)
+        if canvas.get_size() == pic.get_size():
+            self.tube.apply(pic, canvas)  # bowed out like the glass of the monitor
+        else:  # (the window is being resized and the pictures are for the old size)
+            canvas.blit(pic, (0, 0))
 
     def _title(self, canvas: pg.Surface, v: View) -> None:
         title = t("app.title")
@@ -111,27 +150,12 @@ class SplashScene:
                           strength=1.5 * lit, face="display")  # fmt: skip
         canvas.set_clip(None)
 
-    def _fringe(self, canvas: pg.Surface, v: View) -> None:
-        """The red of the title slips one way and the blue the other, as on a tired tube."""
-        box = self._fringe_box
-        if box.w <= 0 or box.h <= 0:
-            return
-        src, channel, out = self._fringe_bufs
-        src.blit(canvas, (0, 0), area=box)
-        out.fill((0, 0, 0))
-        d = max(1, v.i(FRINGE_PX))
-        for mask, dx in (((255, 0, 0), d), ((0, 255, 0), 0), ((0, 0, 255), -d)):
-            channel.blit(src, (0, 0))
-            channel.fill(mask, special_flags=pg.BLEND_RGB_MULT)  # only this colour of the picture
-            out.blit(channel, (dx, 0), special_flags=pg.BLEND_RGB_ADD)
-        canvas.blit(out, box.topleft)
-
     def _log(self, canvas: pg.Surface, v: View) -> None:
         """The tools, typed one line at a time with a block cursor; at the end, "ready"."""
         blink = int(self.t * 2) % 2 == 0
         for i, key in enumerate(TOOLS):
             start = TOOLS_AT + TOOL_STEP * i
-            text = f"> {t(key).lower()}"
+            text = log_text(key)
             typed = min(len(text), int((self.t - start) * TYPE_CPS))
             if typed <= 0:
                 continue
@@ -142,8 +166,7 @@ class SplashScene:
                          align="right")  # fmt: skip
             elif typed < len(text) or blink:
                 self._cursor(canvas, v, text[:typed], y, C.CYAN)
-        ready_at = TOOLS_AT + TOOL_STEP * len(TOOLS) + 0.1
-        if self.t > ready_at:
+        if self.t > READY_AT:
             y, text = LOG_Y + LOG_STEP * len(TOOLS), f"> {t('splash.ready')}"
             hud.text(canvas, v, text, LOG_PT, C.MAGENTA, (LOG_X, y), bold=True)
             if blink:

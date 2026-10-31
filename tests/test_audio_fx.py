@@ -218,3 +218,68 @@ def test_the_environment_picks_which_spin_sound_the_game_makes(monkeypatch):
     monkeypatch.setenv("NEONPOOL_SPIN_SOUND", "nonsense")
     default = Audio()
     assert default.spin_notes == audio.spin_notes(audio.SPIN_SOUNDS[audio.DEFAULT_SPIN_SOUND][0])
+
+
+# --- the opening screen's chip tune and the beam that draws the menu (design log no. 26) ---
+SPLASH_SYNTHS = [
+    audio.synth_splash_on,
+    audio.synth_splash_subtitle,
+    audio.synth_splash_tick,
+    audio.synth_splash_ok,
+    audio.synth_splash_ready,
+    audio.synth_splash_off,
+    audio.synth_menu_sweep,
+    *(lambda i=i: audio.synth_splash_letter(i) for i in range(8)),
+    *(lambda i=i: audio.synth_splash_line(i) for i in range(4)),
+]
+
+
+@pytest.mark.parametrize("synth", SPLASH_SYNTHS)
+def test_each_splash_sound_is_audible_short_within_int16_and_the_same_every_run(synth):
+    x = synth()
+    assert x.dtype == np.int16 and 0.01 * SAMPLE_RATE < x.size < 1.5 * SAMPLE_RATE
+    assert np.max(np.abs(x)) > 8000 and np.max(np.abs(x.astype(np.int32))) <= 32767
+    assert np.array_equal(x, synth())
+
+
+def test_the_eight_letters_climb_in_pitch_and_every_tool_has_its_own_note():
+    pitches = [_loudest_pitch(audio.synth_splash_letter(i)) for i in range(8)]
+    assert pitches == sorted(pitches) and len(set(round(p) for p in pitches)) == 8
+    lines = [audio.synth_splash_line(i) for i in range(4)]
+    assert len({x.tobytes() for x in lines}) == 4
+
+
+def test_the_beam_sound_climbs_over_as_long_as_the_beam_takes():
+    from game.config import MENU_INTRO_S
+
+    x = audio.synth_menu_sweep()
+    assert x.size / SAMPLE_RATE == pytest.approx(MENU_INTRO_S, abs=0.01)
+    third = x.size // 3
+    assert _loudest_pitch(x[:third]) < _loudest_pitch(x[2 * third :])
+
+
+def test_play_splash_picks_the_sound_by_kind_and_number_and_plays_it_at_its_volume():
+    played = []
+    a = Audio.__new__(Audio)
+    a._play = lambda name, volume: played.append((name, volume)) or True
+    for kind, i in (("on", 0), ("letter", 5), ("line", 2), ("tick", 0), ("ok", 0), ("off", 0)):
+        a.play_splash(kind, i)
+    a.play_menu_sweep()
+    assert [n for n, _ in played] == [
+        "splash_on", "splash_letter5", "splash_line2", "splash_tick", "splash_ok", "splash_off",
+        "menu_sweep",
+    ]  # fmt: skip
+    assert played[1][1] == audio.SPLASH_VOLUMES["letter"]
+
+
+def test_the_mixer_has_every_splash_sound_and_a_silent_device_still_runs():
+    pg.mixer.quit()
+    a = Audio()
+    try:
+        assert a.available
+        for name in ["splash_on", "splash_sub", "splash_letter7", "splash_line3", "menu_sweep"]:
+            assert name in a._sounds
+        a.play_splash("letter", 7)
+        a.play_menu_sweep()
+    finally:
+        pg.mixer.quit()

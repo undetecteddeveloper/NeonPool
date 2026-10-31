@@ -149,3 +149,79 @@ def test_every_moment_draws_in_both_languages_at_other_window_shapes(
         app.draw()
     pg.quit()
     i18n.set_lang("vi")
+
+
+# --- a sound of its own for everything that appears (design log no. 26) ---
+def test_the_sound_schedule_has_one_for_every_thing_that_appears_in_time_order():
+    events = sp.sound_schedule()
+    assert [e[0] for e in events] == sorted(e[0] for e in events)
+    kinds = [e[1] for e in events]
+    assert kinds.count("letter") == len("NeonPool") and kinds.count("sub") == 1
+    assert kinds.count("line") == kinds.count("ok") == len(sp.TOOLS) and kinds.count("ready") == 1
+    assert kinds[0] == "on" and kinds[-1] == "off"
+    letters = [e for e in events if e[1] == "letter"]
+    assert [e[2] for e in letters] == list(range(8))
+    assert letters[0][0] == pytest.approx(sp.LETTER_AT)
+    assert letters[3][0] == pytest.approx(sp.LETTER_AT + 3 * sp.LETTER_STEP)  # as the letter lights
+    assert max(e[0] for e in events) < sp.SPLASH_S
+
+
+@pytest.mark.parametrize("lang", i18n.LANGS)
+def test_each_typed_character_ticks_and_a_line_gets_its_ok_after_the_last_one(lang):
+    i18n.set_lang(lang)
+    events = sp.sound_schedule()
+    for i, key in enumerate(sp.TOOLS):
+        start, n = sp.TOOLS_AT + sp.TOOL_STEP * i, len(sp.log_text(key))
+        ticks = [e for e in events if e[1] == "tick" and start <= e[0] < start + n / sp.TYPE_CPS]
+        assert len(ticks) == n - 1
+        ok = [e for e in events if e[1] == "ok" and start < e[0] < start + sp.TOOL_STEP + 0.5]
+        assert ok and ok[0][0] > start + n / sp.TYPE_CPS
+
+
+def test_the_sounds_play_once_each_as_time_passes_and_a_restart_plays_them_again(app):
+    heard = []
+    app.audio.play_splash = lambda kind, i=0: heard.append((kind, i))
+    app.start_splash()
+    run(app, sp.SPLASH_S - 0.1)
+    assert heard.count(("letter", 0)) == 1 and heard.count(("on", 0)) == 1
+    assert [k for k, _ in heard].count("letter") == 8
+    assert ("ready", 0) in heard and ("off", 0) in heard
+    before = len(heard)
+    run(app, 0.05)
+    assert len(heard) >= before
+    app.start_splash()
+    heard.clear()
+    run(app, 1.0)
+    assert ("letter", 0) in heard
+
+
+def test_a_sound_waits_for_its_moment(app):
+    heard = []
+    app.audio.play_splash = lambda kind, i=0: heard.append((kind, i))
+    app.start_splash()
+    run(app, sp.LETTER_AT - 0.1)
+    assert heard == [("on", 0)]
+    run(app, 0.2)
+    assert ("letter", 0) in heard and ("letter", 1) not in heard
+
+
+# --- the glass: bowed like an arcade monitor ---
+def test_the_picture_is_bowed_out_and_the_corners_of_the_glass_are_black(app):
+    screen = pg.display.get_surface()
+    app.start_splash()
+    app.splash.t = 3.0
+    app.draw()
+    w, h = screen.get_size()
+    for corner in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)):
+        assert sum(screen.get_at(corner)[:3]) == 0
+
+    def edge(y):  # how far in the lit picture starts on a row
+        return next(x for x in range(w // 2) if sum(screen.get_at((x, y))[:3]) > 6)
+
+    assert edge(h // 2) < edge(h // 8) < edge(12)  # narrowest at the top, widest in the middle
+
+
+def test_the_flat_picture_is_still_what_is_drawn_while_the_window_is_changing_size(app):
+    big = pg.Surface((1500, 900))
+    app.start_splash()
+    app.splash.draw(big)  # the pictures are for the old size: no crash, just the flat picture

@@ -44,7 +44,9 @@ def main() -> int:
     parser.add_argument("--frames", type=int, default=60)
     parser.add_argument("--out", default="tools/_out/shot.png")
     parser.add_argument("--size", default="1280x720")
-    parser.add_argument("--scene", choices=("menu", "play", "help", "splash"), default="play")
+    parser.add_argument(
+        "--scene", choices=("menu", "play", "help", "splash", "intro"), default="play"
+    )
     parser.add_argument("--page", type=int, default=0)
     parser.add_argument("--lang", choices=("vi", "en"), default="")
     parser.add_argument(
@@ -69,6 +71,8 @@ def main() -> int:
     app = App(screen)
     if args.scene == "play":
         app.go_play()
+    if args.scene == "intro":
+        app.menu.start_intro()  # --frames N = N sixtieths of a second after the menu opened
     if args.scene == "splash":
         app.start_splash()  # --frames N = N sixtieths of a second after it opened
     if args.scene == "help":
