@@ -23,6 +23,14 @@ def test_ac7_netbench_reports_both_labels(capsys):
         assert part in out
 
 
+def test_netbench_measures_both_ways_through_a_relay_on_this_machine(capsys):
+    bench = load_bench()
+    assert bench.main(["--relay", "--quick"]) == 0
+    out = capsys.readouterr().out
+    assert "máy trung chuyển trên máy này (đã đo)" in out
+    assert "khách -> chủ phòng" in out and "chủ phòng -> khách" in out
+
+
 def test_netbench_percentiles_and_the_cue_budget():
     bench = load_bench()
     assert bench.percentile([1, 2, 3, 4, 5], 50) == 3

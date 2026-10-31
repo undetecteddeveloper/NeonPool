@@ -14,7 +14,7 @@ from functools import cache
 import numpy as np
 import pygame as pg
 
-from game.config import NET_EMOTE_SHOW_S, SPIN_DIAL_TRAVEL
+from game.config import NET_EMOTE_SHOW_S, NET_ROOM_LEN, SPIN_DIAL_TRAVEL
 from game.i18n import t
 from game.render import fonts, glow
 from game.render import palette as C
@@ -974,6 +974,36 @@ def text_field(canvas: pg.Surface, v: View, rect: pg.Rect, value: str, *, focus:
         blit_rrect(
             canvas, v, rect.x + 14 + w + 3, rect.centery - 11, 2, 22, 1, C.CYAN, 0, C.CYAN, 0.4
         )
+
+
+CODE_GAP = 12  # logical px between two letter tiles of a room code
+
+
+def code_tiles(canvas: pg.Surface, v: View, rect: pg.Rect, code: str, *, clock: float,
+               focus: bool | None = None, error: bool = False) -> None:  # fmt: skip
+    """A room code as one lit tile per letter, across `rect`. Shown (`focus` None): every tile
+    lit. Typed (`focus` True/False): filled tiles lit, the next one pink with a caret."""
+    n = NET_ROOM_LEN
+    w = (rect.w - CODE_GAP * (n - 1)) / n
+    for i in range(n):
+        x = rect.x + i * (w + CODE_GAP)
+        letter = code[i] if i < len(code) else ""
+        here = bool(focus) and i == min(len(code), n - 1) and len(code) < n
+        if error:
+            edge, glow = C.ERROR, 0.6
+        elif here:
+            edge, glow = C.MAGENTA, 0.8
+        elif letter:
+            edge, glow = C.CYAN, 0.7
+        else:
+            edge, glow = C.PANEL_EDGE, 0.0
+        blit_rrect(canvas, v, x, rect.y, w, rect.h, 8, C.BG, 1.6, edge, glow)
+        mid = (x + w / 2, rect.centery)
+        if letter:
+            size = min(44, rect.h * 0.62)
+            glow_text(canvas, v, letter, size, C.WHITE, C.CYAN, mid, face="display")
+        elif here and int(clock * 2) % 2 == 0:
+            blit_rrect(canvas, v, mid[0] - 1, mid[1] - 11, 2, 22, 1, C.CYAN, 0, C.CYAN, 0.4)
 
 
 # --- a player's name plate above the table (two-player game) ------------------------------------

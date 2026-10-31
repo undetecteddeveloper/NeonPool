@@ -54,13 +54,17 @@ def net_smoke(size: tuple[int, int]) -> bool:
     import pygame as pg
 
     from game.app import App
+    from game.net.relay import WsTransport
     from game.physics import Shot
     from game.render import hud
     from game.rules.eight_ball import LOST, WON
+    from server.local_relay import Relay
 
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         os.environ["NEONPOOL_NET_PORT"] = str(probe.getsockname()[1])
+    relay_server = Relay()  # the relay on this machine, as the real one would be on the internet
+    os.environ["NEONPOOL_RELAY_URL"] = relay_server.url
     screen = pg.display.set_mode(size)
     host, guest = App(screen), App(screen)
     for a in (host, guest):
@@ -95,10 +99,16 @@ def net_smoke(size: tuple[int, int]) -> bool:
     hp.open()
     hp.name = "Hoa"
     hp._start_hosting()
+    ok = step(lambda: hp.room.code != "", 15, "tạo phòng")
+    if hp.room.door is not None:
+        hp.room.door.close()  # (one machine is one network: shut the straight way, use the relay)
     gp.open()
-    gp.name, gp.addr = "Nam", "127.0.0.1"
+    gp.name, gp.code = "Nam", hp.room.code
     gp._start_joining()
-    ok = step(lambda: host.net is not None and guest.net is not None, 15, "phòng chờ")
+    ok = ok and step(lambda: host.net is not None and guest.net is not None, 15, "phòng chờ")
+    if ok and not isinstance(guest.net.session.transport, WsTransport):
+        print("smoke ván hai máy: khách KHÔNG đi qua máy trung chuyển")
+        ok = False
     ok = ok and step(lambda: all(a.net._toss_done() for a in apps) and settled(), 15, "tung xu")
     for turn in range(3):  # a real break, then two more shots at the nearest object ball
         if not ok:
@@ -173,6 +183,7 @@ def net_smoke(size: tuple[int, int]) -> bool:
         )
     for a in apps:
         a.go_menu()
+    relay_server.close()
     return good
 
 

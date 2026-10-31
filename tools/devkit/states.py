@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import pygame as pg
 
 from game import config
+from game.net import relay
 from game.scenes import play_panel as pp
 from tools.devkit.harness import LATENCIES, SPEEDS, Harness
 
@@ -52,15 +53,32 @@ def _menu(h: Harness) -> None:
     h.reset()
 
 
-def _panel(h: Harness, step: str, *, name: str = "", addr: str = "", error: str | None = None):
+class _ShownRoom:
+    """A room as the panel sees it, without a relay: a code, nobody coming."""
+
+    def __init__(self, code: str) -> None:
+        self.code, self.error = code, None
+        self.state = relay.READY if code else relay.CONNECTING
+
+    def accept(self):
+        return None
+
+    def close(self) -> None:
+        pass
+
+
+def _panel(h: Harness, step: str, *, name: str = "", code: str = "", error: str | None = None,
+           room: str = "KXQM"):  # fmt: skip
     h.reset()
     panel = h.app.menu.play_panel
     panel.open()
-    panel.name, panel.addr = name, addr
+    panel.name = name
     if step != pp.CHOOSE:
         panel._goto(step)
+    panel.code = code
     panel.error = error
-    panel.address = "192.168.1.23"
+    if step == pp.HOSTING:
+        panel.room = _ShownRoom(room)
     panel.k = 1.0
 
 
@@ -74,34 +92,39 @@ def _play_setup_empty(h: Harness) -> None:
     _panel(h, pp.SETUP)
 
 
-@state(MENU, "Bảng Chơi: nhập tên (không mở được phòng)")
+@state(MENU, "Bảng Chơi: nhập tên (không có internet)")
 def _play_setup_error(h: Harness) -> None:
-    _panel(h, pp.SETUP, name="Dev", error="net.err.port")
+    _panel(h, pp.SETUP, name="Dev", error="net.err.offline")
 
 
-@state(MENU, "Bảng Chơi: chờ bạn vào (địa chỉ giả)")
+@state(MENU, "Bảng Chơi: đang tạo phòng")
+def _play_making(h: Harness) -> None:
+    _panel(h, pp.HOSTING, name="Dev", room="")
+
+
+@state(MENU, "Bảng Chơi: chờ bạn vào (mã giả)")
 def _play_hosting(h: Harness) -> None:
     _panel(h, pp.HOSTING, name="Dev")
 
 
-@state(MENU, "Bảng Chơi: nhập địa chỉ")
+@state(MENU, "Bảng Chơi: nhập mã (đang gõ)")
 def _play_joining(h: Harness) -> None:
-    _panel(h, pp.JOINING, name="Dev", addr="192.168.1.23")
+    _panel(h, pp.JOINING, name="Dev", code="KX")
 
 
-@state(MENU, "Bảng Chơi: địa chỉ lỗi (không có phòng)")
+@state(MENU, "Bảng Chơi: mã lỗi (không có phòng)")
 def _play_joining_error(h: Harness) -> None:
-    _panel(h, pp.JOINING, name="Dev", addr="192.168.1.23", error="net.err.refused")
+    _panel(h, pp.JOINING, name="Dev", code="KXQM", error="net.err.no_room")
 
 
 @state(MENU, "Bảng Chơi: hai bản game khác nhau")
 def _play_version_error(h: Harness) -> None:
-    _panel(h, pp.JOINING, name="Dev", addr="192.168.1.23", error="net.err.version")
+    _panel(h, pp.JOINING, name="Dev", code="KXQM", error="net.err.version")
 
 
 @state(MENU, "Bảng Chơi: đang kết nối")
 def _play_connecting(h: Harness) -> None:
-    _panel(h, pp.CONNECTING, name="Dev", addr="192.168.1.23")
+    _panel(h, pp.CONNECTING, name="Dev", code="KXQM")
 
 
 @state(MENU, "Cài đặt")

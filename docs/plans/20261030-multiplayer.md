@@ -78,7 +78,7 @@ Cơ đối thủ: 30 gói/s, 240 byte/s nội dung (~1440 kể cả tiêu đề 
 Kiến trúc `net/` được GIỮ như dự kiến (protocol / transport / session thuần; TCP cho LAN). Lý do không đổi: phần game không phải nút cổ chai, nên không cần đường đặc biệt nào ở chặng 1.
 
 ## Chặng sau (KHÔNG làm ở phiên này)
-- Chặng 2 (ĐANG LÀM 2026-10-31, xem `20261031-multiplayer-chang2.md`): mã phòng + danh bạ + máy trung chuyển miễn phí + tự chuyển trực tiếp/trung chuyển; đo lại 50 ms. Tra lại điều khoản gói miễn phí bằng WebSearch trước khi chốt nền tảng (CHƯA LÀM). Hiện địa chỉ → bỏ.
+- Chặng 2 (ĐANG LÀM 2026-10-31, xem `20261031-multiplayer-chang2.md`): mã phòng + danh bạ + máy trung chuyển miễn phí + tự chuyển trực tiếp/trung chuyển; đo lại 50 ms. Đã tra điều khoản gói miễn phí (2026-10-31) và người dùng chọn Cloudflare. Hiện địa chỉ → bỏ.
 - Chặng 3 (ĐÃ LÀM 2026-10-31, xem `20261031-multiplayer-chang3.md`): rớt mạng/vào lại 60 s, đồng hồ 60 s (khung `TURN_TIMEOUT` + `Match.timeout` đã có), Đấu lại + tỉ số, biểu cảm (`EMOTE`), nút Đầu hàng + thoát = thua. Hướng dẫn thêm trang chơi mạng.
 - Chặng 4: trang xem nhanh (số phòng, người, độ trễ), nhật ký có lý do ngắt, cập nhật một lệnh, thông báo khi máy chủ sập.
 - Không bao giờ: tài khoản, xếp hạng, chat tự do, khán giả, 3–4 người, ghép ngẫu nhiên, tự cập nhật, bot, vật lý trên máy chủ.

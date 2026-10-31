@@ -1,4 +1,6 @@
-"""The Play panel and the two-player table: two games meet over a real socket on 127.0.0.1."""
+"""The Play panel and the two-player table: two games meet by room code through a relay on
+127.0.0.1 (`server/local_relay.py`), then straight over a socket (the same machine is the same
+network)."""
 
 import math
 import re
@@ -10,14 +12,15 @@ import pytest
 
 from game import config, i18n
 from game.app import App
+from game.net import relay, toss
 from game.net import session as net_session
-from game.net import toss
 from game.physics import Shot
 from game.render import hud
 from game.render.layout import OUTER_X, to_px
 from game.rules.eight_ball import LOST, PLAYING, WON
 from game.scenes import play_panel as pp
 from game.scenes.net_play import TABLE_RECT, NetPlayScene
+from server.local_relay import Relay
 
 
 def key(k):
@@ -35,7 +38,15 @@ def free_port():
 
 
 @pytest.fixture
-def apps(monkeypatch, tmp_path):
+def relay_server(monkeypatch):
+    server = Relay()
+    monkeypatch.setenv("NEONPOOL_RELAY_URL", server.url)
+    yield server
+    server.close()
+
+
+@pytest.fixture
+def apps(monkeypatch, tmp_path, relay_server):
     monkeypatch.setenv("NEONPOOL_NET_PORT", str(free_port()))
     monkeypatch.setenv("NEONPOOL_SETTINGS", str(tmp_path / "settings.json"))
     pg.init()
@@ -65,14 +76,15 @@ def run(apps_, until, seconds=15.0, dt=1 / 60):
 
 
 def meet(apps_, seconds=15.0):
-    """The host makes a room, the guest joins it by address; True once both are at the table."""
+    """The host makes a room, the guest types its code; True once both are at the table."""
     host, guest = apps_
     hp, gp = host.menu.play_panel, guest.menu.play_panel
     hp.open()
     hp.name = "Hoa"
     hp._start_hosting()
+    assert run([host], lambda: hp.room.code != "", seconds)
     gp.open()
-    gp.name, gp.addr = "Nam", "127.0.0.1"
+    gp.name, gp.code = "Nam", hp.room.code
     gp._start_joining()
     return run(apps_, lambda: host.net is not None and guest.net is not None, seconds)
 
@@ -141,19 +153,47 @@ def test_the_name_is_saved_when_a_room_is_made_and_comes_back_next_time(apps):
     assert panel.name == "Lan Anh"
 
 
-def test_a_bad_address_is_refused_on_the_spot_and_a_closed_door_says_so(apps):
+def test_a_room_shows_its_code_once_the_relay_gives_it(apps):
+    host, _ = apps
+    panel = host.menu.play_panel
+    panel.open()
+    panel._start_hosting()
+    assert panel.step == pp.HOSTING
+    assert run([host], lambda: panel.room.code != "")
+    assert relay.is_code(panel.room.code) and panel.room.door is not None
+
+
+def test_ac23_a_short_code_is_refused_on_the_spot_and_a_wrong_one_says_so(apps):
     host, _ = apps
     panel = host.menu.play_panel
     panel.open()
     panel._goto(pp.JOINING)
-    panel.addr = "not an address!"
+    panel.code = "KX"
     panel._start_joining()
-    assert panel.error == "net.err.bad_address" and panel.step == pp.JOINING
-    panel.addr = "127.0.0.1"  # nobody is listening on the room's port
-    panel._start_joining()
-    assert panel.step == pp.CONNECTING
+    assert panel.error == "net.err.bad_code" and panel.step == pp.JOINING
+    host.handle_event(typed("q-m"))  # the fourth letter goes in: off it goes at once
+    assert panel.code == "KXQM" and panel.step == pp.CONNECTING
     assert run([host], lambda: panel.step == pp.JOINING)
-    assert panel.error in ("net.err.refused", "net.err.unreachable", "net.err.timeout")
+    assert panel.error == "net.err.no_room"
+    host.handle_event(typed("z"))  # (the code is full: a fifth letter does not try again)
+    assert panel.step == pp.JOINING and panel.code == "KXQM"
+    host.handle_event(key(pg.K_BACKSPACE))
+    assert panel.code == "KXQ" and panel.error is None
+
+
+def test_ac23_no_internet_is_said_on_both_sides(apps, monkeypatch):
+    host, guest = apps
+    monkeypatch.setenv("NEONPOOL_RELAY_URL", "ws://127.0.0.1:9")
+    hp, gp = host.menu.play_panel, guest.menu.play_panel
+    hp.open()
+    hp._start_hosting()
+    assert run([host], lambda: hp.step == pp.SETUP)
+    assert hp.error == "net.err.offline" and hp.room is None
+    gp.open()
+    gp._goto(pp.JOINING)
+    gp.code = "KXQM"
+    gp._start_joining()
+    assert run([guest], lambda: gp.step == pp.JOINING) and gp.error == "net.err.offline"
 
 
 # --- two games meeting ---
@@ -163,7 +203,7 @@ def test_two_games_meet_through_the_panel_and_both_open_the_table(apps):
     assert isinstance(host.net, NetPlayScene) and host.scene is host.net
     assert host.net.session.names == guest.net.session.names == ["Hoa", "Nam"]
     assert host.net.session.breaker == guest.net.session.breaker
-    assert not host.menu.play_panel.is_open and host.menu.play_panel.listener is None
+    assert not host.menu.play_panel.is_open and host.menu.play_panel.room is None
 
 
 def test_a_guest_with_another_build_gets_the_update_message(apps, monkeypatch):
@@ -177,7 +217,7 @@ def test_a_guest_with_another_build_gets_the_update_message(apps, monkeypatch):
     assert not meet(apps, seconds=3.0)
     assert run(apps, lambda: guest.menu.play_panel.error == "net.err.version", seconds=8)
     assert guest.net is None and guest.menu.play_panel.step == pp.JOINING
-    assert host.net is None and host.menu.play_panel.listener is not None  # the room stays open
+    assert host.net is None and host.menu.play_panel.room is not None  # the room stays open
 
 
 def test_the_coin_toss_comes_first_and_nobody_can_shoot_until_it_is_done(apps):

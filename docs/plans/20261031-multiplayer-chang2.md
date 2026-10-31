@@ -44,3 +44,16 @@ Người dùng chốt 2026-10-31: làm Chặng 2 (Chặng 4 sau khi chơi thử)
 | AC21 | ván hai `Session` qua máy trung chuyển: rớt giữa ván rồi vào lại → `same_table`, ván xong cùng kết quả | `test_ac21_*` |
 | AC22 | bộ test giao thức xanh trên bản Cloudflare chạy máy mình (`wrangler dev`) | `NEONPOOL_RELAY_TEST_URL=... pytest tests/test_net_relay.py` (ghi kết quả ở đây) |
 | AC23 | bảng Chơi: mã hiện, gõ mã, lỗi; vi/en cùng bộ khoá; ảnh đã nhìn ở 1280×720 và 1050×590 | `test_net_play.py`, `test_i18n.py`, `tools/_out/20261031-ma-phong/` |
+
+## Kết quả (2026-10-31, nhánh `feat/ma-phong`)
+Task 1–6 xong; task 7 (đưa lên Cloudflare) CHƯA LÀM: cần người dùng đăng nhập Cloudflare và nói "đưa lên".
+Giao diện người dùng chọn (ảnh `tools/_out/20261031-ma-phong/`, GAME_DESIGN lần 20): bốn ô (`hud.code_tiles`), đủ 4 chữ tự vào, bỏ dòng gợi ý, giữ nối thẳng. Hướng dẫn trang Chơi đôi không nhắc địa chỉ/wifi nên không đổi.
+| Kiểm | Kết quả |
+|---|---|
+| AC18–AC21 trên `server/local_relay.py` | 15/15 xanh (`tests/test_net_relay.py`) |
+| AC22: cùng bộ test trên bản Cloudflare chạy máy mình (`wrangler dev`, wrangler 4.156.0) | 14 xanh, 1 bỏ qua (mốc 90 s / 30 phút); thử riêng mốc 90 s: chủ rời → "away", 60 s vẫn "away", 95 s → "no_room" (đúng). Mốc 30 phút phòng bỏ quên trên Cloudflare: CHƯA THỬ |
+| Lỗi bộ test bắt được ở bản Cloudflare | khung nhị phân tới Durable Object dạng `Blob` (ngày tương thích mới) và bị gửi đi thành chữ `{}` → sửa `binaryType = "arraybuffer"` |
+| Lỗi tìm được khi chạy cả bộ test (AC21 đỏ 1 lần, chạy riêng 6 lần xanh) | khách đang nối lại thì bộ nối lại mở thêm đường sau 0,1 s và `Session` bỏ đường thừa mà không đóng → ở máy trung chuyển đường thừa có thể chiếm chỗ đường thật. Sửa: `Session` đóng ngay, `GuestRelink` chờ hết `NET_HANDSHAKE_TIMEOUT_S` sau mỗi lần nối được; test đỏ trước sửa / xanh sau sửa. Chưa chứng minh đây là nguyên nhân duy nhất của lần đỏ đó |
+| Smoke hai game (bảng Chơi thật, cửa nối thẳng đóng → cả ván qua máy trung chuyển cục bộ, Đấu lại) | xanh, mọi giai đoạn ≤ 16,7 ms/khung |
+Số đo (`tools\netbench.py --relay`, 300 khung mỗi chiều, luồng chính bận 4 ms/khung, ms p50/p95/p99, **trên máy này, đã đo**): máy trung chuyển Python 0,72/1,44/1,82 (khách → chủ), 0,71/1,29/1,70 (chủ → khách); bản Cloudflare trong `wrangler dev` 0,89/1,33/1,73 và 0,89/1,28/1,67. Đây là phần của game + máy trung chuyển, CHƯA có đường internet. **Qua Cloudflare thật: CHƯA ĐO** (sau khi đưa lên: `tools\netbench.py --relay wss://<địa chỉ>`).
+Giới hạn đã biết: WebSocket chạy trên TCP nên mất gói vẫn chờ chặn như Chặng 1 (p99 có thể ~200 ms khi mạng mất 2%); Cloudflare không cho UDP.

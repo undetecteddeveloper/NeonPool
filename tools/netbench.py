@@ -2,6 +2,8 @@
 
     .venv\\Scripts\\python.exe tools\\netbench.py            # đầy đủ (vài giây)
     .venv\\Scripts\\python.exe tools\\netbench.py --quick    # ít vòng (test dùng)
+    .venv\\Scripts\\python.exe tools\\netbench.py --relay    # qua máy trung chuyển trên máy này
+    .venv\\Scripts\\python.exe tools\\netbench.py --relay wss://...  # qua máy trung chuyển thật
 
 Mạng là `NetSim` (thời gian ảo: trễ, jitter, mất gói có hạt giống); phần việc của GAME (mã hoá,
 đưa vào hàng đợi, giải mã, áp cú đánh vào World) được đo bằng đồng hồ thật của máy này. Số ra
@@ -33,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 
 from game import config  # noqa: E402
 from game.net import protocol as p  # noqa: E402
-from game.net import tcp  # noqa: E402
+from game.net import relay, tcp  # noqa: E402
 from game.net.transport import NetSim  # noqa: E402
 from game.physics import Shot, World  # noqa: E402
 from game.rules.two_player import Match  # noqa: E402
@@ -210,6 +212,63 @@ def report_tcp(shots: int) -> dict[str, float]:
     return p95s
 
 
+def relay_loopback(url: str, shots: int) -> tuple[list[float], list[float]]:
+    """Both ends in this process, meeting by code through the relay at `url` (no straight door):
+    ms from `send` until the frame is in the other end's queue, guest -> host and host -> guest,
+    with the main thread busy as while drawing. Both ends are on this machine, so through a relay
+    on the internet each frame goes there and back: what two players far apart would see."""
+    room = relay.HostRoom(url, door=False)
+    deadline = time.monotonic() + 10
+    while room.state == relay.CONNECTING and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if room.state != relay.READY:
+        raise RuntimeError(f"no room from the relay ({room.error})")
+    join = relay.Join(room.code, url)
+    guest = host = None
+    while time.monotonic() < deadline and (guest is None or host is None):
+        guest = guest or join.result()
+        host = host or room.accept()
+        time.sleep(0.001)
+    if guest is None or host is None:
+        raise RuntimeError(f"could not join the room ({join.error})")
+    host._in, guest._in = _Stamped(), _Stamped()
+    frame = p.encode(p.ShotMsg.from_shot(1, Shot(1.0, 0.5, 0.0)))
+    ways: tuple[list[float], list[float]] = ([], [])
+    try:
+        for n in range(2 * shots):
+            sender, receiver = (guest, host) if n % 2 == 0 else (host, guest)
+            t0 = time.perf_counter()
+            sender.send(frame)
+            end = time.monotonic() + 5
+            while time.monotonic() < end:
+                _spin(0.004)
+                if receiver.poll():
+                    break
+            else:
+                raise RuntimeError("a frame did not come through the relay")
+            ways[n % 2].append((receiver._in.last - t0) * 1000)
+            time.sleep(0.004)
+    finally:
+        guest.close()
+        room.close()
+    return ways
+
+
+def report_relay(url: str, shots: int) -> None:
+    local = url.startswith("ws://127.") or url.startswith("ws://localhost")
+    label = "máy trung chuyển trên máy này (đã đo)" if local else f"qua {url} (đã đo, thật)"
+    print(f"== Từ `send` tới hàng đợi bên kia, {label}: {shots} khung mỗi chiều (ms)")
+    print(f"   {'chiều':40} {'p50':>7} {'p95':>7} {'p99':>7}")
+    to_host, to_guest = relay_loopback(url, shots)
+    for name, values in (("khách -> chủ phòng", to_host), ("chủ phòng -> khách", to_guest)):
+        p50, p95, p99 = stats(values)
+        print(f"   {name:40} {p50:7.2f} {p95:7.2f} {p99:7.2f}")
+    print(f"   (+ chờ đầu khung B ~8 ms TB, 16,7 ms tệ nhất; mục tiêu ≤ {LIMIT_P95_MS:.0f} ms)")
+    if not local:
+        print("   Hai đầu cùng ở máy này: mỗi khung đi máy này -> máy trung chuyển -> máy này,")
+        print("   đúng quãng đường giữa hai người cùng ở xa máy trung chuyển như máy này.")
+
+
 def run(shots: int) -> dict:
     results = {"scenarios": [], "cue": cue_bandwidth(), "checkpoint": checkpoint_bytes()}
     for i, (name, lat, jit, loss) in enumerate(SCENARIOS):
@@ -248,18 +307,37 @@ def report(results: dict, shots: int) -> None:
     )
     print(f"== Điểm kiểm sau mỗi cú: {results['checkpoint']} byte")
     print(f"== {REAL_LABEL}. Kịch bản chạy khi nhờ được bạn:")
-    print("   1) Hai máy cùng wifi, cùng bản game (git checkout nhánh feat/multiplayer).")
+    print("   1) Hai máy cùng bản game; cùng wifi (nối thẳng) hoặc hai nhà (qua máy chủ).")
     print("   2) Máy A: Chơi > Chơi đôi > Tạo phòng (cho phép tường lửa Windows nếu hỏi).")
-    print("   3) Máy B: Chơi > Chơi đôi > Vào phòng > gõ địa chỉ máy A.")
+    print("   3) Máy B: Chơi > Chơi đôi > Vào phòng > gõ mã 4 chữ của máy A.")
     print("   4) Bật Cài đặt > Hiện FPS; đánh 20 cú ở mỗi máy; ghi cảm giác trễ và số 'lệch'.")
-    print("   5) Đo số ms: chạy tools\\netbench.py --tcp trên MỘT máy (loopback) rồi hai máy.")
+    print("   5) Đo ms qua máy trung chuyển thật: tools\\netbench.py --relay wss://... (một máy).")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="few shots (tests)")
     parser.add_argument("--tcp", action="store_true", help="real sockets on 127.0.0.1 only")
+    parser.add_argument(
+        "--relay",
+        nargs="?",
+        const="local",
+        help="through a relay: its ws(s):// address, or none for one on this machine",
+    )
     args = parser.parse_args(argv)
+    if args.relay:
+        shots = 40 if args.quick else 300
+        if args.relay == "local":
+            from server.local_relay import Relay
+
+            server = Relay()
+            try:
+                report_relay(server.url, shots)
+            finally:
+                server.close()
+        else:
+            report_relay(args.relay.rstrip("/"), shots)
+        return 0
     if args.tcp:
         report_tcp(40 if args.quick else 400)
         return 0

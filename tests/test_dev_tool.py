@@ -59,8 +59,9 @@ def test_the_panels_and_help_pages_are_where_their_names_say(dev):
     app, h = dev
     go(dev, "Bảng Chơi: chờ bạn vào")
     assert app.menu.play_panel.is_open and app.menu.play_panel.step == pp.HOSTING
-    go(dev, "Bảng Chơi: địa chỉ lỗi")
-    assert app.menu.play_panel.step == pp.JOINING and app.menu.play_panel.error == "net.err.refused"
+    assert app.menu.play_panel.room.code == "KXQM"
+    go(dev, "Bảng Chơi: mã lỗi")
+    assert app.menu.play_panel.step == pp.JOINING and app.menu.play_panel.error == "net.err.no_room"
     go(dev, "Cài đặt")
     assert app.menu.settings.is_open and not app.menu.play_panel.is_open
     go(dev, "Hướng dẫn trang 7")

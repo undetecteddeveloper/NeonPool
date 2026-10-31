@@ -1,6 +1,7 @@
 """The Play panel: a lit panel over the menu with two big choices, Solo and Two players. Two
-players goes on in the same panel: your name, then Create a room (the address to give your
-friend, and a wait) or Join a room (type the address). Everything is one panel changing steps.
+players goes on in the same panel: your name, then Create a room (a four-letter code from the
+relay to give your friend, and a wait) or Join a room (type the code). Everything is one panel
+changing steps. On the same network the guest goes straight to the host (`net/relay.py`).
 
 Keys: up/down (or Tab) choose, Enter does it, Esc goes back a step (and closes at the first one).
 While a field has the keyboard, typed letters go into it (and M, W, S are just letters).
@@ -18,11 +19,11 @@ import pygame as pg
 from game import config
 from game.i18n import t
 from game.net import protocol as p
+from game.net import relay, tcp
 from game.net import session as net_session
-from game.net import tcp
 from game.render import hud
 from game.render import palette as C
-from game.render.draw import blit_dot, blit_rrect
+from game.render.draw import blit_dot
 from game.render.floating import FloatPanel
 from game.render.view import View
 
@@ -33,7 +34,7 @@ ITEMS = {
     CHOOSE: ("solo", "duo", "back"),
     SETUP: ("name", "create", "join", "back"),
     HOSTING: ("cancel",),
-    JOINING: ("addr", "go", "back"),
+    JOINING: ("code", "go", "back"),
     CONNECTING: ("cancel",),
 }
 PANEL = pg.Rect(400, 150, 480, 440)  # the column and the centre; the height is the step's
@@ -60,27 +61,34 @@ RECTS = {
         "back": _back(SETUP),
     },
     HOSTING: {"cancel": _back(HOSTING)},
-    JOINING: {"addr": _at(JOINING, 122, 46), "go": _at(JOINING, 206, 50), "back": _back(JOINING)},
+    JOINING: {"code": _at(JOINING, 122, 46), "go": _at(JOINING, 206, 50), "back": _back(JOINING)},
     CONNECTING: {"cancel": _back(CONNECTING)},
 }
-ADDRESS_MAX = 40
-FIELDS = ("name", "addr")
+FIELDS = ("name", "code")
 # why a session ended -> the words shown (net.err.*)
 CLOSE_ERRORS = {
     net_session.CLOSE_VERSION: "net.err.version",
     net_session.CLOSE_BUSY: "net.err.busy",
     net_session.CLOSE_TIMEOUT: "net.err.timeout",
 }
-CONNECT_ERRORS = {
-    tcp.ERR_REFUSED: "net.err.refused",
-    tcp.ERR_TIMEOUT: "net.err.timeout",
-    tcp.ERR_ADDRESS: "net.err.bad_address",
-    tcp.ERR_UNREACHABLE: "net.err.unreachable",
+# why the relay or the room said no -> the words shown
+RELAY_ERRORS = {
+    relay.ERR_NO_SERVER: "net.err.no_server",
+    relay.ERR_OFFLINE: "net.err.offline",
+    relay.ERR_BUSY: "net.err.server_busy",
+    relay.ERR_VERSION: "net.err.version",
+    relay.ERR_BAD_CODE: "net.err.bad_code",
+    relay.ERR_NO_ROOM: "net.err.no_room",
+    relay.ERR_FULL: "net.err.busy",
+    relay.ERR_AWAY: "net.err.away",
+    relay.ERR_GONE: "net.err.room_closed",
+    relay.ERR_IDLE: "net.err.room_closed",
 }
 
 
 def net_port() -> int:
-    """The room's port: NEONPOOL_NET_PORT for two games on one machine (tests, the smoke run)."""
+    """The room's door on this network: NEONPOOL_NET_PORT for two games on one machine (tests,
+    the smoke run). A port that is taken is no problem: the room takes any free one."""
     try:
         port = int(os.environ.get("NEONPOOL_NET_PORT", config.NET_PORT))
     except ValueError:
@@ -105,13 +113,11 @@ class PlayPanel(FloatPanel):
         self.sel = 0
         self.fx = hud.ButtonFx()
         self.name = ""
-        self.addr = ""
+        self.code = ""  # the code being typed
         self.error: str | None = None  # an i18n key
-        self.address = ""  # what the host tells their friend
-        self.listener: tcp.TcpListener | None = None
-        self.connector: tcp.Connector | None = None
+        self.room: relay.HostRoom | None = None
+        self.join: relay.Join | None = None
         self.session: net_session.Session | None = None
-        self._join_target: tuple[str, int] | None = None  # where the guest came in (to come back)
         self._clock = 0.0
 
     def title(self) -> str:
@@ -182,9 +188,9 @@ class PlayPanel(FloatPanel):
             pass
 
     def _drop_connection(self) -> None:
-        if self.listener is not None:
-            self.listener.close()
-        self.listener = self.connector = None
+        if self.room is not None:
+            self.room.close()
+        self.room = self.join = None
         if self.session is not None:
             self.session.leave()
         self.session = None
@@ -219,7 +225,7 @@ class PlayPanel(FloatPanel):
         elif item == "join":
             self.error = None
             self._goto(JOINING)
-        elif item == "addr":
+        elif item == "code":
             self._choose(1)
         elif item == "go":
             self._start_joining()
@@ -238,30 +244,26 @@ class PlayPanel(FloatPanel):
 
     def _start_hosting(self) -> None:
         self._save_name()
-        try:
-            self.listener = tcp.TcpListener(net_port())
-        except OSError as exc:
-            log.warning("net: cannot open the room: %s", exc)
-            self.error = "net.err.port"
-            return
-        port = self.listener.port
-        self.address = tcp.local_address() + ("" if port == config.NET_PORT else f":{port}")
         self.error = None
+        self.room = relay.HostRoom(port=net_port())
         self._goto(HOSTING)
 
+    def _hosting_failed(self, error_key: str) -> None:
+        self._drop_connection()
+        self.error = error_key
+        self._goto(SETUP)
+
     def _start_joining(self) -> None:
-        parsed = tcp.parse_address(self.addr, net_port())
-        if parsed is None:
-            self.error = "net.err.bad_address"
+        if not relay.is_code(self.code):
+            self.error = "net.err.bad_code"
             return
         self._save_name()
         self.error = None
-        self.connector = tcp.Connector(*parsed)
-        self._join_target = parsed
+        self.join = relay.Join(self.code)
         self._goto(CONNECTING)
 
     def _join_failed(self, error_key: str) -> None:
-        self.connector = None
+        self.join = None
         if self.session is not None:
             self.session = None
         self.error = error_key
@@ -269,12 +271,11 @@ class PlayPanel(FloatPanel):
 
     def _begin_match(self) -> None:
         session, self.session = self.session, None
-        if self.listener is not None:  # the door stays open: the guest may have to come back in
-            session.set_relink(tcp.HostRelink(self.listener))
-        elif self._join_target is not None:  # ... and the guest knows where to knock
-            session.set_relink(tcp.GuestRelink(*self._join_target))
-        self.listener = self.connector = None
-        self._join_target = None
+        if self.room is not None:  # the room stays open: the guest may have to come back in
+            session.set_relink(relay.HostRelink(self.room))
+        elif self.join is not None:  # ... and the guest knows the way back
+            session.set_relink(relay.GuestRelink(self.join))
+        self.room = self.join = None
         self.dismiss()
         self.app.start_net(session)
 
@@ -284,10 +285,12 @@ class PlayPanel(FloatPanel):
         if item == "name":
             keep = "".join(c for c in chars if c.isprintable())
             self.name = (self.name + keep)[: config.NET_NAME_MAX]
-        elif item == "addr":
-            keep = "".join(c for c in chars if c.isascii() and (c.isalnum() or c in ".:-"))
-            self.addr = (self.addr + keep)[:ADDRESS_MAX]
+        elif item == "code":
+            short = len(self.code) < config.NET_ROOM_LEN
+            self.code = relay.clean_code(self.code + chars)
             self.error = None
+            if short and relay.is_code(self.code):  # the last letter is in: off it goes
+                self._activate("go")
 
     def handle_event(self, e: pg.event.Event) -> None:
         if e.type == pg.TEXTINPUT:
@@ -320,7 +323,7 @@ class PlayPanel(FloatPanel):
             if self._item() == "name":
                 self.name = self.name[:-1]
             else:
-                self.addr, self.error = self.addr[:-1], None
+                self.code, self.error = self.code[:-1], None
         elif key in (pg.K_RETURN, pg.K_KP_ENTER) or (key == pg.K_SPACE and not typing):
             self._activate(self._item())
 
@@ -331,19 +334,21 @@ class PlayPanel(FloatPanel):
         if not self.is_open:
             return
         self.fx.update(dt, self._item(), self._rects(), self._clock)
-        if self.listener is not None and self.session is None:
-            transport = self.listener.accept()
-            if transport is not None:
+        if self.room is not None and self.session is None:
+            transport = self.room.accept()
+            if self.room.state == relay.FAILED:
+                self._hosting_failed(RELAY_ERRORS.get(self.room.error, "net.err.offline"))
+            elif transport is not None:
                 feel = config.DEFAULT_FEEL
                 self.session = net_session.Session(
                     transport, True, self.display_name(), feel=feel, spin=spin_key()
                 )
-        if self.connector is not None and self.session is None:
-            transport = self.connector.result()
+        if self.join is not None and self.session is None:
+            transport = self.join.result()
             if transport is not None:
                 self.session = net_session.Session(transport, False, self.display_name())
-            elif self.connector.state == tcp.CONNECT_FAILED:
-                self._join_failed(CONNECT_ERRORS.get(self.connector.error, "net.err.unreachable"))
+            elif self.join.state == tcp.CONNECT_FAILED:
+                self._join_failed(RELAY_ERRORS.get(self.join.error, "net.err.offline"))
         if self.session is not None:
             self.session.update(dt)
             if self.session.playing:
@@ -376,29 +381,28 @@ class PlayPanel(FloatPanel):
                            clock=self._clock, placeholder=t("net.name_hint"))  # fmt: skip
             button("create", t("net.create"))
             button("join", t("net.join"))
-            # one line under the buttons: the hint, or (instead of it) what went wrong
-            line, color = (self.error, C.ERROR) if self.error else ("net.same_wifi", C.TEXT_DIM)
-            hud.text(canvas, pv, t(line), 13, color, (cx, top + 326), center=True)
+            if self.error:  # the line under the buttons is only for what went wrong
+                hud.text(canvas, pv, t(self.error), 13, C.ERROR, (cx, top + 326), center=True)
             button("back", t("play.back"))
         elif step == HOSTING:
-            hud.label(canvas, pv, t("net.addr_title"), (cx, top + 106), C.TEXT_DIM, 13, center=True)
-            blit_rrect(canvas, pv, X, top + 128, W, 74, 8, C.BG, 1.6, C.CYAN, 0.7)
-            size = 40 if len(self.address) <= 15 else 30
-            hud.glow_text(canvas, pv, self.address, size, C.WHITE, C.CYAN, (cx, top + 166),
-                          face="display")  # fmt: skip
-            hud.text(canvas, pv, t("net.addr_howto"), 13, C.TEXT_DIM, (cx, top + 232), center=True)
+            hud.label(canvas, pv, t("net.code_title"), (cx, top + 106), C.TEXT_DIM, 13, center=True)
+            code = self.room.code if self.room is not None else ""
+            hud.code_tiles(canvas, pv, pg.Rect(X, top + 128, W, 74), code, clock=self._clock)
+            hud.text(canvas, pv, t("net.code_howto"), 13, C.TEXT_DIM, (cx, top + 232), center=True)
+            # one pulsing line, centred: the room is being made, then the wait for the friend
+            status = t("net.waiting" if code else "net.making_room")
+            left = cx - (hud.text_width(pv, status, 17, True) + 16) / 2
             pulse = 0.5 + 0.5 * math.sin(self._clock * 3.0)
-            blit_dot(canvas, pv, (cx - 96, top + 288), 4, C.lerp(C.AMBER, C.WHITE, 0.3 * pulse),
+            blit_dot(canvas, pv, (left, top + 288), 4, C.lerp(C.AMBER, C.WHITE, 0.3 * pulse),
                      0.6 + pulse)  # fmt: skip
-            hud.text(canvas, pv, t("net.waiting"), 17, C.AMBER, (cx - 80, top + 282), bold=True)
+            hud.text(canvas, pv, status, 17, C.AMBER, (left + 16, top + 282), bold=True)
             if self.error:
                 hud.text(canvas, pv, t(self.error), 13, C.ERROR, (cx, top + 314), center=True)
             button("cancel", t("net.cancel"))
         elif step == JOINING:
-            hud.label(canvas, pv, t("net.type_addr"), (X, top + 104), C.TEXT_DIM, 13)
-            hud.text_field(canvas, pv, rects["addr"], self.addr, focus=item == "addr",
-                           clock=self._clock, placeholder=t("net.addr_hint"),
-                           error=bool(self.error))  # fmt: skip
+            hud.label(canvas, pv, t("net.type_code"), (X, top + 104), C.TEXT_DIM, 13)
+            hud.code_tiles(canvas, pv, rects["code"], self.code, clock=self._clock,
+                           focus=item == "code", error=bool(self.error))  # fmt: skip
             if self.error:
                 hud.text(canvas, pv, t(self.error), 13, C.ERROR, (X, top + 184))
             button("go", t("net.go"))
