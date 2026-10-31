@@ -477,7 +477,7 @@ class PlayScene:
             a = self.drag.angle
             d = (math.cos(a), math.sin(a))
             contact = first_contact(self.world.balls, (cue.x, cue.y), d)
-            draw.draw_aim(canvas, v, cue, contact, d)
+            draw.draw_aim(canvas, v, cue, contact)
             draw.draw_cue(
                 canvas,
                 v,
@@ -600,7 +600,6 @@ class PlayScene:
             score=shown["score"],
             rows=[(t("hud.shots"), shown["shots"]), (t("hud.fouls"), shown["fouls"])],
             flashes=flashes,
-            hover=self._hover,
             age=self._clock - self._ended_at,
             fx=self.result_fx,
             clock=self._clock,

@@ -184,7 +184,7 @@ def test_a_ball_hides_the_strands_behind_it():
     x = 600.0
     y = sw.strands.surface(x) + fl.r * synth.FLOAT_SINK
     fl.balls = [synth.FloatBall(3, x, y, floating=True)]
-    sw._draw_strands = lambda layer, clock: layer.fill((255, 255, 255))  # ribbon light everywhere
+    sw._draw_strands = lambda layer: layer.fill((255, 255, 255))  # ribbon light everywhere
     sw._draw_front = lambda canvas, ball, spot: None  # and nothing in front of the ball
     canvas = _canvas()
     sw.draw(canvas, 0.0)
@@ -199,7 +199,7 @@ def test_the_strands_in_front_cross_the_ball_but_only_inside_it():
     j = len(xs) // 2
     x, y = (xs[j] - V.ox) / V.s, (ys[5, j] - V.oy) / V.s  # the ball sits right on the last strand
     fl.balls = [synth.FloatBall(3, x, y, floating=True)]  # depth 3: strands 3, 4, 5 are in front
-    sw._draw_strands = lambda layer, clock: None  # the ribbons themselves are off
+    sw._draw_strands = lambda layer: None  # the ribbons themselves are off
     with_front, without = _canvas(), _canvas()
     sw.draw(with_front, 0.0)
     sw._draw_front = lambda canvas, ball, spot: None
@@ -589,9 +589,7 @@ def test_the_result_card_grows_in_from_one_sprite_not_one_per_frame():
     canvas = pg.Surface(v.canvas)
 
     def card(age):
-        hud.draw_result(
-            canvas, v, won=True, reason=None, score=0, rows=[("", 0), ("", 0)], hover=None, age=age
-        )
+        hud.draw_result(canvas, v, won=True, reason=None, score=0, rows=[("", 0), ("", 0)], age=age)
 
     card(0.05)  # the first frame makes the sprite
     made = len(draw._rr_cache)

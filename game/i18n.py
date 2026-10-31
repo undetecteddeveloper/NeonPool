@@ -35,11 +35,6 @@ def get_lang() -> str:
     return _current
 
 
-def toggle_lang() -> str:
-    set_lang(LANGS[(LANGS.index(_current) + 1) % len(LANGS)])
-    return _current
-
-
 def t(key: str, **fmt: object) -> str:
     """Text for `key` in the current language; falls back to the other language, then the key."""
     for lang in (_current, *(x for x in LANGS if x != _current)):

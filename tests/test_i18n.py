@@ -66,9 +66,8 @@ def test_switching_language_changes_text_and_falls_back_to_the_key():
     assert i18n.t("no.such.key") == "no.such.key"
 
 
-def test_toggle_cycles_and_rejects_unknown():
+def test_an_unknown_language_is_rejected():
     i18n.set_lang("vi")
-    assert i18n.toggle_lang() == "en" and i18n.toggle_lang() == "vi"
     with pytest.raises(ValueError):
         i18n.set_lang("fr")
 

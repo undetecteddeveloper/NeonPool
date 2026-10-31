@@ -11,7 +11,7 @@ import pytest
 
 from game import config, i18n
 from game.app import App
-from game.config import POCKETS, PX_PER_M
+from game.config import POCKETS, PX_PER_M, TABLE_L, TABLE_W
 from game.render import backdrop, draw, hud, table
 from game.render import palette as C
 from game.render.layout import (
@@ -232,11 +232,20 @@ def test_the_cushion_edge_facing_the_cloth_is_lit(surf):
     assert _brightness(surf, (mid[0], mid[1] + 14)) < 120  # ... and the cloth under it is night
 
 
+def pocket_outward(px: float, py: float) -> tuple[float, float]:
+    """Unit vector towards the outside of the table at a pocket: diagonal at a corner pocket,
+    straight up/down at a middle pocket."""
+    ux = (px > TABLE_L * 0.75) - (px < TABLE_L * 0.25)  # -1, 0 or +1
+    uy = (py > TABLE_W * 0.75) - (py < TABLE_W * 0.25)
+    n = math.hypot(ux, uy)
+    return ux / n, uy / n
+
+
 def test_pockets_are_a_ring_of_pink_light_round_a_black_hole(surf):
     for px, py, pr in POCKETS:
         c = to_px(px, py)
         r = pr * PX_PER_M
-        ux, uy = table.pocket_outward(px, py)
+        ux, uy = pocket_outward(px, py)
 
         def at(radius: float, c=c, ux=ux, uy=uy) -> tuple[int, int, int]:
             return _px(surf, (c[0] + ux * radius, c[1] + uy * radius))
@@ -244,12 +253,6 @@ def test_pockets_are_a_ring_of_pink_light_round_a_black_hole(surf):
         ring = max((at(r + table.LIP_PX + d) for d in (-1.0, -0.5, 0.0, 0.5, 1.0)), key=sum)
         assert ring[0] > 180 and ring[2] > 140 and ring[1] < ring[0] - 80  # pink light
         assert all(sum(at(r * k)) < 25 for k in (0.0, 0.3, 0.6, 0.85))  # black all the way in
-
-
-def test_pocket_outward_points_away_from_the_middle_of_the_table():
-    assert table.pocket_outward(0.0, 0.0) == pytest.approx((-math.sqrt(0.5), -math.sqrt(0.5)))
-    assert table.pocket_outward(1.27, 0.0) == pytest.approx((0.0, -1.0))
-    assert table.pocket_outward(1.27, 1.27) == pytest.approx((0.0, 1.0))
 
 
 @pytest.fixture

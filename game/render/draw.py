@@ -478,7 +478,7 @@ def draw_cue(
     layer.done()
 
 
-def draw_aim(canvas: pg.Surface, v: View, cue, contact, shot_dir) -> None:
+def draw_aim(canvas: pg.Surface, v: View, cue, contact) -> None:
     """Light line from the cue ball to the first contact, a ghost ball there and an arrow on a hit
     ball: one supersampled layer."""
     look = C.LOOK

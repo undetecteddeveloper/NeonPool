@@ -815,7 +815,7 @@ def prewarm_result(v: View) -> None:
     for won in (True, False):
         for age in (RESULT_IN_S / 2, 1.0):
             rows = [("", 0), ("", 0)]
-            draw_result(probe, v, won=won, reason=None, score=0, rows=rows, hover=None, age=age)
+            draw_result(probe, v, won=won, reason=None, score=0, rows=rows, age=age)
 
 
 def draw_result(
@@ -826,7 +826,6 @@ def draw_result(
     reason: str | None,
     score: int,
     rows: list[tuple[str, int]],
-    hover: str | None,
     age: float = 1.0,
     fx: ButtonFx | None = None,
     clock: float = 0.0,

@@ -16,7 +16,7 @@ from functools import cache
 
 import pygame as pg
 
-from game.config import POCKETS, PX_PER_M, TABLE_L, TABLE_W
+from game.config import POCKETS, PX_PER_M
 from game.render import backdrop, crt, glow
 from game.render import palette as C
 from game.render.layout import (
@@ -119,15 +119,6 @@ def neon_paths() -> list[list[tuple[float, float]]]:
     """Every neon line of the table as a polyline (logical px): the rim, then the six cushions.
     A wave over the table lights these up where it passes."""
     return [rim_path()] + [cushion_line(a, b, out) for a, b, out in cushion_strips()]
-
-
-def pocket_outward(px: float, py: float) -> tuple[float, float]:
-    """Unit vector towards the outside of the table at a pocket: diagonal at a corner pocket,
-    straight up/down at a middle pocket."""
-    ux = (px > TABLE_L * 0.75) - (px < TABLE_L * 0.25)  # -1, 0 or +1
-    uy = (py > TABLE_W * 0.75) - (py < TABLE_W * 0.25)
-    n = math.hypot(ux, uy)
-    return ux / n, uy / n
 
 
 # --- the three steps ---------------------------------------------------------------------------

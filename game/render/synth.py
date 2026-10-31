@@ -431,7 +431,7 @@ class Synthwave:
         self._geometry(clock)
         layer = self.layer
         layer.fill((0, 0, 0))
-        self._draw_strands(layer, clock)
+        self._draw_strands(layer)
         canvas.blit(layer, (0, self.layer_top), special_flags=pg.BLEND_RGB_ADD)
         if self.floaters is not None:  # the balls hide the strands behind them; the strands in
             self.floaters.draw(canvas, self._draw_front)  # front of a ball cross over its face
@@ -487,7 +487,7 @@ class Synthwave:
         ys = (st.base_y + spread[:, None] + st.y * (0.7 + 0.3 * u)[:, None]) * v.s + v.oy
         self._geo = (st.x * v.s + v.ox, ys, st.glow_at(clock))
 
-    def _draw_strands(self, layer: pg.Surface, clock: float) -> None:
+    def _draw_strands(self, layer: pg.Surface) -> None:
         v = self.v
         top = self.layer_top
         xs, ys, light = self._geo

@@ -308,7 +308,7 @@ class NetPlayScene(PlayScene):
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             for key, rect in rects.items():
                 if rect.collidepoint(e.pos):
-                    self._card_do(name, key)
+                    self._card_do(key)
                     return
         elif e.type == pg.KEYDOWN:
             if e.key == pg.K_ESCAPE and name != "link":
@@ -317,9 +317,9 @@ class NetPlayScene(PlayScene):
                 self._card_sel = (self._card_sel + 1) % len(keys)
                 self.app.audio.play_hover()
             elif e.key in (pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
-                self._card_do(name, keys[self._card_sel])
+                self._card_do(keys[self._card_sel])
 
-    def _card_do(self, name: str, key: str) -> None:
+    def _card_do(self, key: str) -> None:
         self.app.audio.play_click()
         self._card_fx.press(key, self._clock)
         if key in ("resume", "back"):
