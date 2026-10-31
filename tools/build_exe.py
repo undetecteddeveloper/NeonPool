@@ -29,6 +29,7 @@ def main() -> int:
         "--windowed",  # no black console window behind the game
         "--onedir" if args.folder else "--onefile",
         "--noconfirm", "--clean",
+        "--icon", str(ROOT / "assets" / "icon.ico"),  # the program file's own icon
         "--add-data", f"{ROOT / 'assets'};assets",
         "--add-data", f"{ROOT / 'lang'};lang",
         "--distpath", str(ROOT / "dist"),

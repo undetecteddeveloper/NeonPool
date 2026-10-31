@@ -13,6 +13,7 @@ import logging
 import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import pygame as pg
 
@@ -40,6 +41,9 @@ WINDOW_MARGIN = (40, 130)  # room for the title bar, borders and taskbar
 TUBE_OFF_S = 0.14  # changing scene: the old picture folds into a line ...
 TUBE_ON_S = 0.2  # ... and the new one opens out of it
 PREFETCH_AFTER_S = 1.5  # the menu has been up this long: time to make the how-to-play pictures
+ICON_FILE = (
+    Path(__file__).resolve().parents[1] / "assets" / "icon.png"
+)  # made by tools/make_icon.py
 FPS_SMOOTH = 0.1  # the FPS counter follows the frame time this quickly (0..1 per frame)
 
 
@@ -324,6 +328,7 @@ class App:
         _enable_dpi_awareness()
         pg.init()
         pg.display.set_caption("NeonPool")
+        _set_window_icon()
         screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)  # the whole desktop, at its resolution
         app = App.boot(screen)
         if app is None:
@@ -338,6 +343,15 @@ class App:
             app.draw()
             pg.display.flip()
         pg.quit()
+
+
+def _set_window_icon() -> None:
+    """The game's icon on its window and in the taskbar (before the window is made). A missing
+    file only costs the icon."""
+    try:
+        pg.display.set_icon(pg.image.load(str(ICON_FILE)))
+    except (pg.error, FileNotFoundError) as exc:
+        log.warning("no window icon: %s", exc)
 
 
 def _enable_dpi_awareness() -> None:
