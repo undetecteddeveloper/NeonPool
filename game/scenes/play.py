@@ -294,13 +294,14 @@ class PlayScene:
             cx, cy = to_px(cue.x, cue.y)
             if math.hypot(e.pos[0] - cx, e.pos[1] - cy) <= GRAB_RADIUS_M * PX_PER_M:
                 self.placing, self._place_ok = True, True
+                self.app.audio.play_cue_pick()
                 return True
         elif e.type == pg.MOUSEMOTION and self.placing:
             self._place_ok = self.world.place_cue(*to_m(*e.pos))  # False: it stays on its last spot
         elif e.type == pg.MOUSEBUTTONUP and e.button == 1 and self.placing:
             self.placing = False
             self.rules.cue_placed()
-            self.app.audio.play_click()
+            self.app.audio.play_cue_put()
             return True
         return False
 

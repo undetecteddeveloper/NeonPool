@@ -98,6 +98,28 @@ def test_the_cue_ball_in_hand_is_dragged_to_a_new_spot_and_dropped(app):
     assert (cue.x, cue.y) == pytest.approx((1.0, 0.4), abs=0.003)
 
 
+def test_picking_up_and_putting_down_the_cue_ball_each_make_their_own_sound(app):
+    scratch(app)
+    heard = []
+    app.audio.play_cue_pick = lambda: heard.append("pick")
+    app.audio.play_cue_put = lambda: heard.append("put")
+    app.audio.play_click = lambda: heard.append("click")
+    cue = app.play.world.balls[0]
+    app.handle_event(mouse(pg.MOUSEBUTTONDOWN, cue.x, cue.y))
+    app.handle_event(mouse(pg.MOUSEMOTION, 1.0, 0.4))
+    assert heard == ["pick"]  # moving about with it makes no sound
+    app.handle_event(mouse(pg.MOUSEBUTTONUP, 1.0, 0.4))
+    assert heard == ["pick", "put"]
+
+
+def test_pressing_the_cue_ball_to_aim_makes_no_pick_up_sound(app):
+    heard = []
+    app.audio.play_cue_pick = lambda: heard.append("pick")
+    cue = app.play.world.balls[0]
+    app.handle_event(mouse(pg.MOUSEBUTTONDOWN, cue.x, cue.y))
+    assert app.play.drag.active and heard == []
+
+
 def test_dragging_onto_a_pocket_or_a_ball_leaves_the_cue_ball_on_its_last_good_spot(app):
     scratch(app)
     cue = app.play.world.balls[0]

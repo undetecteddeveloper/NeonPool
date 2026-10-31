@@ -88,6 +88,22 @@ def synth_cue_hit() -> np.ndarray:
     return _to_int16(x)
 
 
+def synth_ball_pick() -> np.ndarray:
+    """The cue ball is lifted: a light, bright tap that slips upwards."""
+    t = _t(0.07)
+    phase = 2 * np.pi * np.cumsum(1700 + 9000 * t) / SAMPLE_RATE
+    x = np.sin(phase) * _decay(t, 0.016) + 0.4 * _noise(t.size) * _decay(t, 0.0015)
+    return _to_int16(x * np.minimum(1.0, t / 0.002), gain=0.7)
+
+
+def synth_ball_put() -> np.ndarray:
+    """The cue ball is put down on the cloth: a soft thud, then a small tick."""
+    t = _t(0.12)
+    thud = np.sin(2 * np.pi * 210 * t) * _decay(t, 0.03)
+    tick = np.convolve(_noise(t.size), np.ones(6) / 6, mode="same") * _decay(t, 0.004)
+    return _to_int16(thud + 1.2 * tick, gain=0.8)
+
+
 def synth_click() -> np.ndarray:
     """UI tick."""
     t = _t(0.05)
@@ -249,6 +265,8 @@ class Audio:
                 ("cushion", synth_cushion),
                 ("pocket", synth_pocket),
                 ("cue", synth_cue_hit),
+                ("pick", synth_ball_pick),
+                ("put", synth_ball_put),
                 ("click", synth_click),
                 ("blip", synth_blip),
                 ("confirm", synth_confirm),
@@ -376,6 +394,14 @@ class Audio:
 
     def play_shot(self, power: float) -> None:
         self._play("cue", 0.25 + 0.75 * power)
+
+    def play_cue_pick(self) -> None:
+        """The cue ball in hand was picked up."""
+        self._play("pick", 0.45)
+
+    def play_cue_put(self) -> None:
+        """The cue ball in hand was put down on the table."""
+        self._play("put", 0.55)
 
     def on_events(self, events: Iterable[Event]) -> int:
         """Play the loudest few impacts of one frame; returns how many sounds were started."""

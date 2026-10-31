@@ -245,6 +245,22 @@ def test_a_shot_is_seen_on_the_other_table_and_the_turn_goes_by_the_rules(apps):
     assert any(i18n.t("notice.hand_drag") in s for s in lines)
 
 
+def test_the_cue_ball_in_hand_makes_the_pick_up_and_put_down_sounds_in_a_two_player_game(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    first, other = players(apps)
+    first.fire(Shot(math.pi, 0.1, 0.0))  # a soft miss: a foul, the other has the ball in hand
+    assert run(apps, lambda: other.session.checkpoints >= 1 and settled(host, guest))
+    heard = []
+    other.app.audio.play_cue_pick = lambda: heard.append("pick")
+    other.app.audio.play_cue_put = lambda: heard.append("put")
+    cue = other.world.balls[0]
+    for kind, (x, y) in ((pg.MOUSEBUTTONDOWN, (cue.x, cue.y)), (pg.MOUSEBUTTONUP, (1.0, 0.4))):
+        px = tuple(round(v) for v in to_px(x, y))
+        other.handle_event(pg.event.Event(kind, pos=px, button=1))
+    assert heard == ["pick", "put"]
+
+
 def test_the_other_players_cue_shows_while_they_aim(apps):
     host, guest = apps
     assert meet(apps) and after_the_toss(apps)

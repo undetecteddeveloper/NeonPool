@@ -23,6 +23,8 @@ SYNTHS = [
     audio.synth_cushion,
     audio.synth_pocket,
     audio.synth_cue_hit,
+    audio.synth_ball_pick,
+    audio.synth_ball_put,
     audio.synth_click,
 ]
 
@@ -84,7 +86,24 @@ def test_game_runs_silent_when_there_is_no_audio_device(monkeypatch):
     assert not a.available
     a.play_click()
     a.play_shot(1.0)
+    a.play_cue_pick()
+    a.play_cue_put()
     assert a.on_events([BallHitBall(1, 2, 3.0), BallPocketed(1, 0)]) == 0
+
+
+def test_the_cue_ball_in_hand_has_its_own_pick_up_and_put_down_sounds():
+    played = []
+    a = Audio.__new__(Audio)
+    a._play = lambda name, volume: played.append(name) or True
+    a.play_cue_pick()
+    a.play_cue_put()
+    assert played == ["pick", "put"]  # not the shared button click any more
+
+
+def test_the_pick_up_rises_and_the_put_down_is_lower_than_the_ball_hit():
+    pick, put, hit = audio.synth_ball_pick(), audio.synth_ball_put(), audio.synth_ball_hit()
+    assert _loudest_pitch(pick[: pick.size // 3]) < _loudest_pitch(pick[pick.size // 3 :])
+    assert _loudest_pitch(put) < _loudest_pitch(hit)  # a thud on the cloth, not a ball's tok
 
 
 # --- AC7: effects ------------------------------------------------------------------------------
