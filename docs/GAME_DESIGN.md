@@ -66,9 +66,9 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 | Hạng mục | Quyết định | Chặng |
 |---|---|---|
 | Trận | HAI người, thay phiên, 8-ball. Không khán giả, không 3–4 người, không đánh cùng lúc | 1 |
-| Gặp nhau | Bấm Chơi → Chơi đôi, ở CHÍNH bảng nổi đó: gõ tên, rồi một người "Tạo phòng" (hiện địa chỉ cục bộ, "Đang chờ bạn chơi…"), người kia "Vào phòng" và gõ địa chỉ (báo lỗi ngay dưới ô) — chặng 1 chỉ cùng mạng LAN/wifi. Về sau: MÃ PHÒNG (tạo / gõ mã). Không ghép ngẫu nhiên, không tài khoản, không xếp hạng. Tên hiển thị tự gõ, lưu trong cài đặt của máy | 1 / 2 |
+| Gặp nhau | Bấm Chơi → Chơi đôi, ở CHÍNH bảng nổi đó: gõ tên, rồi một người "Tạo phòng" (hiện MÃ PHÒNG 4 chữ cái, ví dụ KXQM, không có I/L/O; "Đang chờ bạn chơi…"), người kia "Vào phòng" và gõ mã (báo lỗi ngay dưới ô). Chơi được ở hai nhà khác nhau qua internet; cần internet để tìm phòng, kể cả khi cùng wifi (người dùng chốt 2026-10-31, lần 20; chặng 1 là gõ địa chỉ cục bộ, chỉ cùng wifi). Không ghép ngẫu nhiên, không tài khoản, không xếp hạng. Tên hiển thị tự gõ, lưu trong cài đặt của máy | 1 / 2 |
 | Trọng tài | Máy chủ phòng tính luật và kết quả; hai người tin nhau (bạn bè), chủ phòng gian lận được thì chấp nhận. Chủ phòng rớt hẳn = trận kết thúc | 1 |
-| Kết nối | Nối thẳng hai máy khi được; không được thì tự chuyển qua máy trung chuyển miễn phí. Người chơi chủ yếu ở Việt Nam. Ngân sách miễn phí hoặc gần miễn phí | 1 (LAN) / 2 |
+| Kết nối | Hai máy cùng wifi thì nối thẳng (tự thử trong 0,6 s); không được thì tự chuyển qua máy trung chuyển miễn phí trên Cloudflare (người dùng chọn 2026-10-31: không thẻ, không máy phải tự trông). Người chơi không chọn đường. Người chơi chủ yếu ở Việt Nam. Ngân sách miễn phí: quá mức miễn phí trong ngày thì phòng mới bị từ chối đến 7 giờ sáng hôm sau | 1 (LAN) / 2 |
 | Phá | Game TUNG ĐỒNG XU chọn người phá (hai bên cùng thấy kết quả); Đấu lại thì tung lại. Đoạn mở ván dài 5,5 s (ván đầu) / 6,3 s (Đấu lại), có nhịp: nhìn bàn → bàn tối, xu đứng yên kèm dòng "Tung xu chọn người phá bi" → xu tung có tiếng → xu nằm báo "{tên} phá bi" → bàn sáng lại (đổi ở lần 18; ý đầu là xu quay 2,2 s ngay khi vào) | 1 / 3 |
 | Lượt | Bỏ bi NHÓM MÌNH vào lỗ thì đánh tiếp; bàn còn "mở" (chưa có nhóm) thì bi nào vào lỗ cũng đánh tiếp; trượt, hoặc chỉ bỏ bi nhóm ĐỐI THỦ vào lỗ, thì đổi lượt (bi đối thủ đã vào lỗ vẫn nằm đó, không phải lỗi). Người chơi chốt 2026-10-30 | 1 |
 | Lỗi | LỖI (luật như tập một mình: `EightBall`) = mất lượt + đối thủ được đặt bi trắng TỰ DO. Người bỏ bi đầu tiên hợp lệ (sau cú phá) chọn nhóm, người kia nhận nhóm đối ngược | 1 |
@@ -83,8 +83,14 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 | Biểu cảm | Không chat. Chỉ vài biểu cảm có sẵn (Hay! / Tiếc quá / GG), gửi MÃ chứ không gửi chữ, mỗi máy hiện theo ngôn ngữ của mình | 3 |
 | Phiên bản | Bản game khác nhau không vào nhau được: so số phiên bản lúc vào phòng, báo rõ "cần cập nhật" (i18n vi + en) | 1 |
 | Không bao giờ | Tài khoản, xếp hạng, chat tự do, khán giả, 3–4 người, ghép ngẫu nhiên, tự cập nhật, bot, vật lý chạy trên máy chủ | — |
-Riêng tư: nối thẳng làm bạn kia thấy địa chỉ mạng của mình; chấp nhận giữa bạn bè nhưng sau chặng 1 giao diện KHÔNG hiện địa chỉ mạng (chỉ mã phòng).
-Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng: phải bấm cho phép (mạng riêng) thì người kia mới vào được.
+Riêng tư: nối thẳng làm bạn kia thấy địa chỉ mạng của mình; chấp nhận giữa bạn bè nhưng từ chặng 2 giao diện KHÔNG hiện địa chỉ mạng (chỉ mã phòng). Người cùng wifi mà không có mã thì không vào được cửa nối thẳng.
+Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng: cho phép (mạng riêng) thì cùng wifi nối thẳng được; không cho phép thì vẫn chơi được qua máy trung chuyển.
+
+## Phản hồi lần 20 (2026-10-31, người dùng chốt làm Chặng 2 của chơi đôi; brief `docs/plans/20261031-multiplayer-chang2.md`)
+- Gặp nhau bằng MÃ PHÒNG 4 chữ cái (bỏ I, L, O vì dễ nhầm với 1, 0), qua internet: hai người ở hai nhà chơi được. Thay cho việc gõ địa chỉ cục bộ của chặng 1 (bỏ hẳn, kể cả khi cùng wifi; mất internet thì không tìm được phòng — người dùng chọn, để màn hình gọn).
+- Máy trung chuyển miễn phí trên Cloudflare (người dùng chọn giữa Cloudflare / Oracle miễn phí cần thẻ / Fly.io ~2 USD mỗi tháng). Mức miễn phí đủ khoảng 9 giờ ngắm cơ liên tục mỗi ngày; quá mức thì phòng mới bị từ chối đến 7 giờ sáng hôm sau (giờ Việt Nam).
+- Cùng wifi: game tự nối thẳng, người chơi không thấy gì khác. Mọi thứ của Chặng 3 (rớt mạng / vào lại 60 s, Đấu lại, đầu hàng, đồng hồ, biểu cảm) giữ nguyên qua máy trung chuyển.
+- Chặng 4 (trang tình trạng máy chủ) làm sau khi người dùng chơi thử Chặng 2.
 
 ## Phản hồi lần 19 (2026-10-31, người dùng thử bằng dev tool với bot tự chơi và báo lỗi trạng thái; gửi ảnh bảng xoáy "hơi lệch")
 - Ba lỗi trạng thái, tái hiện được bằng máy, đều là lỗi thật của game (không phải do bản dev): (a) ván vừa hết thì số giữa hai khung nhảy +1 dù thẻ kết quả đang hiện và chưa ai bấm Đấu lại: lệch với lần 18 (điểm vào ở ván mới). Nay số giữa hai khung và hàng "VÁN THẮNG" của thẻ cùng giữ số TRƯỚC ván cho đến khi ván mới mở và điểm cuộn vào. (b) Ván kết thúc lúc xu đang tung (đối thủ đầu hàng hoặc thoát trong ~6 s đầu): xu, lớp tối bàn và tiếng xu vẫn chạy dưới thẻ kết quả. Người dùng chọn "xu biến mất ngay": thẻ đứng trên bàn sáng, không chờ xu tung nốt. (c) Bot của dev tool đánh được lúc xu còn trên không: màn hình thật đã chặn người chơi, nhưng LUẬT nằm ở màn hình chứ không ở phiên. Nay `Session` tự từ chối đánh và đặt bi khi xu chưa rơi (`_toss_left`), nên cách nhập nào cũng không lọt.
