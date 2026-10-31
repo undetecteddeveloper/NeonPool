@@ -48,5 +48,8 @@ Chặng 2 (mã phòng + máy trung chuyển) và 4 (trang vận hành) KHÔNG l�
 | AC16 | vi/en cùng bộ khoá; Hướng dẫn 7 trang | `test_i18n.py`, `test_help.py` |
 | AC17 | ảnh các màn mới đã nhìn (vi + en, 1280×720 và 1050×590) | `tools/_out/20261031-chang3/` |
 
+## Kết quả
+Task 1–9 xong trên `feat/multiplayer` (xem PROGRESS.md: số đo và lý do). Thêm ngoài brief theo yêu cầu người dùng: `tools\dev.py` (công cụ dev, đối thủ giả). Khác brief: tiếng tích thay số ở đồng hồ (người dùng chọn khi xem ảnh phác); bảng bên của ván hai người có danh sách phím riêng (`hud.NET_PANEL_KEYS`, không còn R / H vô tác dụng).
+
 ## Chưa đo được (một máy)
 Nối lại trên hai máy thật qua wifi (đổi mạng, cắm lại cáp) CHƯA thử; ổ cắm thật cùng máy thì thử được bằng cách đóng đường nối từ một phía.
