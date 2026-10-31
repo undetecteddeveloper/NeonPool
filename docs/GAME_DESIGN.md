@@ -97,7 +97,7 @@ Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng
 - Ván hai người có một dòng chữ nhỏ ở góc DƯỚI PHẢI, thẳng mép phải bảng bên, ví dụ "Ping 48 ms": số là thời gian đi-về tới đối thủ (đo mỗi giây). Màu: dưới 60 ms xanh, 60–120 ms hổ phách, trên 120 ms đỏ; chưa đo được hoặc đang rớt mạng thì "Ping -- ms" màu xám. Người dùng chọn kiểu có đổi màu (đổi ý so với kiểu không đổi màu / chỉ hiện khi bật Hiện FPS).
 - Khi đối thủ đang chỉnh chấm xoáy (giữ chấm hoặc lăn chuột trên bảng xoáy) và tới lượt họ, bạn thấy dòng "{tên} đang chỉnh xoáy…" (chấm nhấp nháy, màu hồng) NGAY TRÊN khung tên của họ; họ thôi chỉnh thì dòng còn thêm khoảng 1 giây rồi mờ đi. KHÁC với điều đã hỏi người dùng: "ngay dưới khung tên" (người dùng chọn) không có chỗ, vì thanh đồng hồ nằm đúng đó và mép bàn cách 4 px; nên đặt ở dải trống 24 px phía trên khung. Nếu muốn chỗ khác thì hỏi lại.
 - Bạn không thấy mức xoáy đối thủ chọn, chỉ thấy họ đang chỉnh. Giao thức đổi sang phiên bản 3: bản game cũ (v2) và mới không vào được nhau (báo "cần cập nhật").
-- Người dùng chốt làm tiếp trên nhánh `feat/ma-phong` (không gộp trước, dù luật nhánh hỏi).
+- Người dùng chốt làm tiếp trên nhánh `feat/ma-phong` (không gộp trước, dù luật nhánh hỏi). Sau đó nhánh đã gộp vào `main` và xoá.
 
 ## Phản hồi lần 20 (2026-10-31, người dùng chốt làm Chặng 2 của chơi đôi; brief `docs/plans/20261031-multiplayer-chang2.md`)
 - Gặp nhau bằng MÃ PHÒNG 4 chữ cái (bỏ I, L, O vì dễ nhầm với 1, 0), qua internet: hai người ở hai nhà chơi được. Thay cho việc gõ địa chỉ cục bộ của chặng 1 (bỏ hẳn, kể cả khi cùng wifi; mất internet thì không tìm được phòng — người dùng chọn, để màn hình gọn).

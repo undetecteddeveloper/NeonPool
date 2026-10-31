@@ -45,7 +45,7 @@ Người dùng chốt 2026-10-31: làm Chặng 2 (Chặng 4 sau khi chơi thử)
 | AC22 | bộ test giao thức xanh trên bản Cloudflare chạy máy mình (`wrangler dev`) | `NEONPOOL_RELAY_TEST_URL=... pytest tests/test_net_relay.py` (ghi kết quả ở đây) |
 | AC23 | bảng Chơi: mã hiện, gõ mã, lỗi; vi/en cùng bộ khoá; ảnh đã nhìn ở 1280×720 và 1050×590 | `test_net_play.py`, `test_i18n.py`, `tools/_out/20261031-ma-phong/` |
 
-## Kết quả (2026-10-31, nhánh `feat/ma-phong`)
+## Kết quả (2026-10-31, nhánh `feat/ma-phong`, đã gộp vào `main` và xoá nhánh)
 Task 1–7 xong. Task 7 (đưa lên Cloudflare) làm 2026-10-31 sau khi người dùng tạo tài khoản và nói "đưa lên": `wrangler login` (người dùng bấm Allow), `wrangler deploy`; Worker `neonpool-relay` ở `wss://neonpool-relay.neonpool-relay.workers.dev` (tên miền con `neonpool-relay` do wrangler đăng ký tự động cho tài khoản; đổi được ở trang Workers của Cloudflare, khi đó phải sửa `config.NET_RELAY_URL`). Gói miễn phí, Durable Object SQLite.
 Giao diện người dùng chọn (ảnh `tools/_out/20261031-ma-phong/`, GAME_DESIGN lần 20): bốn ô (`hud.code_tiles`), đủ 4 chữ tự vào, bỏ dòng gợi ý, giữ nối thẳng. Hướng dẫn trang Chơi đôi không nhắc địa chỉ/wifi nên không đổi.
 | Kiểm | Kết quả |

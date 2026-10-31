@@ -55,7 +55,7 @@ Chặng 1
 | AC10 | ảnh các màn mới đã nhìn | `tools/_out/20261030-multiplayer/` |
 
 ## Kết quả phiên này
-Chặng 0 + 1 xong trên nhánh `feat/multiplayer`. Chạy thử trên MỘT máy: `NEONPOOL_NET_PORT=47600` rồi mở hai cửa sổ `main.py`, một bên Chơi → Chơi đôi → Tạo phòng, bên kia Vào phòng và gõ `127.0.0.1:47600`; hoặc `tools\smoke.py` (ván hai máy tới thắng/thua). Ảnh: `tools/_out/20261030-multiplayer/` (phác) và `.../real/` (ảnh thật).
+Chặng 0 + 1 xong trên nhánh `feat/multiplayer` (đã gộp vào `main` và xoá nhánh). Chạy thử trên MỘT máy: `NEONPOOL_NET_PORT=47600` rồi mở hai cửa sổ `main.py`, một bên Chơi → Chơi đôi → Tạo phòng, bên kia Vào phòng và gõ `127.0.0.1:47600`; hoặc `tools\smoke.py` (ván hai máy tới thắng/thua). Ảnh: `tools/_out/20261030-multiplayer/` (phác) và `.../real/` (ảnh thật).
 
 ## Số đo (`tools\netbench.py`; nhãn "giả lập" = thời gian ảo của NetSim + đồng hồ thật cho phần việc của game)
 Một chiều "thả chuột ở A → B áp cú đánh", 4000 cú mỗi dòng, ms, **giả lập (đã đo)**, 2026-10-30:
@@ -84,7 +84,7 @@ Kiến trúc `net/` được GIỮ như dự kiến (protocol / transport / sess
 - Không bao giờ: tài khoản, xếp hạng, chat tự do, khán giả, 3–4 người, ghép ngẫu nhiên, tự cập nhật, bot, vật lý trên máy chủ.
 
 ## Kịch bản đo hai máy thật (người dùng chạy khi nhờ được bạn) — CHƯA ĐO
-1. Hai máy cùng wifi, cùng bản (nhánh `feat/multiplayer`). Máy A: Chơi → Chơi đôi → gõ tên → Tạo phòng (Windows hỏi tường lửa lần đầu: cho phép mạng riêng). Máy B: Chơi đôi → Vào phòng → gõ địa chỉ máy A.
+1. Hai máy cùng wifi, cùng bản (nay là `main`; nhánh `feat/multiplayer` đã xoá). Máy A: Chơi → Chơi đôi → gõ tên → Tạo phòng (Windows hỏi tường lửa lần đầu: cho phép mạng riêng). Máy B: Chơi đôi → Vào phòng → gõ địa chỉ máy A.
 2. Cài đặt → Hiện FPS trên cả hai. Đánh 20 cú mỗi bên; ghi: có thấy cơ đối thủ mượt không, bi hai bên có "nhảy" sau cú không (= điểm kiểm dán lại), thẻ kết quả hai bên có cùng số không.
 3. Số ms: chạy `tools
 etbench.py --tcp` ở MỘT máy (loopback, đã có: p95 0,37 ms khi luồng chính bận); hai máy thật cần thêm bản đo ping/pong giữa hai `Session` (`Session.rtt_s` đã đo mỗi giây; chưa hiện lên màn hình) — việc của chặng 3.

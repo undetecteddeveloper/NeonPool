@@ -49,7 +49,7 @@ Chặng 2 (mã phòng + máy trung chuyển) và 4 (trang vận hành) KHÔNG l�
 | AC17 | ảnh các màn mới đã nhìn (vi + en, 1280×720 và 1050×590) | `tools/_out/20261031-chang3/` |
 
 ## Kết quả
-Task 1–9 xong trên `feat/multiplayer` (xem PROGRESS.md: số đo và lý do). Thêm ngoài brief theo yêu cầu người dùng: `tools\dev.py` (công cụ dev, đối thủ giả). Khác brief: tiếng tích thay số ở đồng hồ (người dùng chọn khi xem ảnh phác); bảng bên của ván hai người có danh sách phím riêng (`hud.NET_PANEL_KEYS`, không còn R / H vô tác dụng).
+Task 1–9 xong trên `feat/multiplayer` (đã gộp vào `main` và xoá nhánh; xem PROGRESS.md: số đo và lý do). Thêm ngoài brief theo yêu cầu người dùng: `tools\dev.py` (công cụ dev, đối thủ giả). Khác brief: tiếng tích thay số ở đồng hồ (người dùng chọn khi xem ảnh phác); bảng bên của ván hai người có danh sách phím riêng (`hud.NET_PANEL_KEYS`, không còn R / H vô tác dụng).
 
 ## Phản hồi sau khi test (2026-10-31, cùng nhánh; quyết định ở `docs/GAME_DESIGN.md` "Phản hồi lần 18")
 Người dùng chơi thử: tung xu nhanh quá, không có hồi hộp, chưa kịp nhìn giao diện; tỉ số cần animation cộng điểm.
