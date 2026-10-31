@@ -1,7 +1,9 @@
 # NeonPool relay (docs/ARCHITECTURE.md, network play). Run on this machine:
 #   npm install && npx wrangler dev --ip 127.0.0.1 --port 8787
 # Put online (needs the owner's Cloudflare login, once: npx wrangler login):
-#   npx wrangler deploy
+#   npx wrangler deploy      (or: .venv\Scripts\python.exe tools\relay_ops.py deploy)
+# The key for /v1/status is the secret ADMIN_KEY: tools\relay_ops.py setup puts it there.
+# Test with a key on this machine: npx wrangler dev --var ADMIN_KEY:k3y-for-tests
 name = "neonpool-relay"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
@@ -11,7 +13,15 @@ workers_dev = true
 name = "ROOMS"
 class_name = "Room"
 
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
 # the free plan only has Durable Objects backed by SQLite
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Hub"]
