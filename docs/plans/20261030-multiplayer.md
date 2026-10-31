@@ -80,7 +80,7 @@ Kiến trúc `net/` được GIỮ như dự kiến (protocol / transport / sess
 ## Chặng sau (KHÔNG làm ở phiên này)
 - Chặng 2 (ĐANG LÀM 2026-10-31, xem `20261031-multiplayer-chang2.md`): mã phòng + danh bạ + máy trung chuyển miễn phí + tự chuyển trực tiếp/trung chuyển; đo lại 50 ms. Đã tra điều khoản gói miễn phí (2026-10-31) và người dùng chọn Cloudflare. Hiện địa chỉ → bỏ.
 - Chặng 3 (ĐÃ LÀM 2026-10-31, xem `20261031-multiplayer-chang3.md`): rớt mạng/vào lại 60 s, đồng hồ 60 s (khung `TURN_TIMEOUT` + `Match.timeout` đã có), Đấu lại + tỉ số, biểu cảm (`EMOTE`), nút Đầu hàng + thoát = thua. Hướng dẫn thêm trang chơi mạng.
-- Chặng 4: trang xem nhanh (số phòng, người, độ trễ), nhật ký có lý do ngắt, cập nhật một lệnh, thông báo khi máy chủ sập.
+- Chặng 4 (ĐÃ LÀM 2026-10-31, xem `20261031-multiplayer-chang4.md`): xem nhanh (số phòng, người, ping), nhật ký có lý do ngắt, cập nhật một lệnh, báo sập qua dịch vụ theo dõi ngoài. Người dùng chọn LỆNH trên máy thay cho trang web.
 - Không bao giờ: tài khoản, xếp hạng, chat tự do, khán giả, 3–4 người, ghép ngẫu nhiên, tự cập nhật, bot, vật lý trên máy chủ.
 
 ## Kịch bản đo hai máy thật (người dùng chạy khi nhờ được bạn) — CHƯA ĐO
