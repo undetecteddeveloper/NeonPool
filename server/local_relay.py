@@ -13,10 +13,12 @@ from __future__ import annotations
 import argparse
 import hmac
 import json
+import math
 import secrets
 import threading
 import time
 import urllib.parse
+from collections import deque
 from dataclasses import dataclass, field
 
 from websockets.exceptions import ConnectionClosed
@@ -29,6 +31,11 @@ GUEST_STALE_S = 4.0  # a guest silent this long gives its place to whoever comes
 ROOM_IDLE_S = 30 * 60.0  # a room nobody has come into for this long is closed
 TEXT_MAX = 512  # longest text message taken from a player
 CLOSE_HOST_AWAY = 4000  # the guest's link is closed because the host's broke
+LOG_MAX = 200  # lines of the log kept (the newest)
+DAILY_LIMIT = 100_000  # requests a day on the free plan of the real relay (a frame message is 1/20)
+HEALTH_LIMIT_PCT = 90.0  # `/v1/health` says "near_limit" (HTTP 503) from here
+FRAMES_PER_REQUEST = 20
+RTT_MAX_MS = 60_000
 
 
 @dataclass
@@ -43,6 +50,8 @@ class Room:
     guest_seen: float = 0.0
     host_away_at: float | None = None
     quiet_since: float = field(default_factory=time.monotonic)  # no guest since then
+    born: float = field(default_factory=time.monotonic)
+    rtt_ms: int | None = None  # the host's word on the ping between the two players
 
 
 def _send(conn: ServerConnection | None, word) -> None:
@@ -71,13 +80,20 @@ class Relay:
         host_grace_s: float = HOST_GRACE_S,
         guest_stale_s: float = GUEST_STALE_S,
         room_idle_s: float = ROOM_IDLE_S,
+        admin_key: str = "",
+        daily_limit: int = DAILY_LIMIT,
+        clock=time.time,
     ) -> None:
         self.host_grace_s, self.guest_stale_s, self.room_idle_s = (
             host_grace_s,
             guest_stale_s,
             room_idle_s,
         )
+        self.admin_key, self.daily_limit, self._clock = admin_key, daily_limit, clock
         self.rooms: dict[str, Room] = {}
+        self.log: deque[dict] = deque(maxlen=LOG_MAX)
+        self._day = ""
+        self._today = {"rooms": 0, "joins": 0, "frames": 0, "events": 0}
         self._lock = threading.Lock()
         self._server: Server = serve(
             self._handle,
@@ -104,8 +120,69 @@ class Relay:
         if room is not None and room.host_away_at is not None:
             if time.monotonic() - room.host_away_at > self.host_grace_s:
                 del self.rooms[code]
+                self._note("room_end", code, "expired")
                 return None
         return room
+
+    # --- the log and the day's numbers (call with the lock held) ---
+    def _roll(self) -> None:
+        day = time.strftime("%Y-%m-%d", time.gmtime(self._clock()))
+        if day != self._day:
+            self._day = day
+            self._today = {"rooms": 0, "joins": 0, "frames": 0, "events": 0}
+
+    def _note(self, ev: str, code: str, why: str | None = None) -> None:
+        self._roll()
+        line = {"at": int(self._clock() * 1000), "ev": ev, "code": code}
+        if why is not None:
+            line["why"] = why
+        self.log.append(line)
+        self._today["events"] += 1
+        if ev == "room_new":
+            self._today["rooms"] += 1
+        elif ev == "guest_in":
+            self._today["joins"] += 1
+
+    def _count_frame(self) -> None:
+        self._roll()
+        self._today["frames"] += 1
+
+    def _used_pct(self) -> float:
+        used = math.ceil(self._today["frames"] / FRAMES_PER_REQUEST) + self._today["events"]
+        return round(100.0 * used / self.daily_limit, 2)
+
+    @staticmethod
+    def _state(room: Room) -> str:
+        if room.host is None:
+            return "host_away"
+        return "playing" if room.guest is not None else "waiting"
+
+    def _health(self) -> tuple[int, dict]:
+        self._roll()
+        pct = self._used_pct()
+        body = {"ok": pct < HEALTH_LIMIT_PCT, "rooms": len(self.rooms), "used_pct": pct}
+        if not body["ok"]:
+            body["why"] = "near_limit"
+        return (200 if body["ok"] else 503), body
+
+    def _status(self, lines: int) -> dict:
+        self._roll()
+        now = time.monotonic()
+        rooms = [
+            {
+                "code": room.code,
+                "state": self._state(room),
+                "age_s": int(now - room.born),
+                "rtt_ms": room.rtt_ms if room.guest is not None else None,
+            }
+            for room in self.rooms.values()
+        ]
+        return {
+            "day": self._day,
+            "rooms": rooms,
+            "today": {**self._today, "used_pct": self._used_pct()},
+            "log": list(self.log)[-lines:] if lines > 0 else [],
+        }
 
     def _guest_fresh(self, room: Room) -> bool:
         return room.guest is not None and time.monotonic() - room.guest_seen <= self.guest_stale_s
@@ -121,6 +198,7 @@ class Relay:
                         continue
                     if now - room.quiet_since > self.room_idle_s:
                         del self.rooms[code]
+                        self._note("room_end", code, "idle")
                         _send(room.host, {"t": "error", "why": r.ERR_IDLE})
                         _close(room.host)
 
@@ -133,12 +211,31 @@ class Relay:
             return conn.respond(200, "neonpool relay 1\n")
         if url.path in (f"{r.API}/host", f"{r.API}/join"):
             return None  # a WebSocket: on to `_handle`
+        query = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
+        if url.path == f"{r.API}/health":
+            with self._lock:
+                status, body = self._health()
+            return self._json(conn, status, body)
+        if url.path == f"{r.API}/status":
+            given = query.get("key", "")
+            if not self.admin_key or not hmac.compare_digest(given, self.admin_key):
+                return conn.respond(403, "no\n")
+            lines = int(query["log"]) if query.get("log", "").isdigit() else 20
+            with self._lock:
+                body = self._status(lines)
+            return self._json(conn, 200, body)
         if url.path != f"{r.API}/look":
             return conn.respond(404, "no such thing\n")
-        code = urllib.parse.parse_qs(url.query).get("code", [""])[0]
+        code = query.get("code", "")
         with self._lock:
             answer = self._look(code)
         return conn.respond(200, json.dumps(answer))
+
+    @staticmethod
+    def _json(conn: ServerConnection, status: int, body: dict):
+        response = conn.respond(status, json.dumps(body))
+        response.headers["Content-Type"] = "application/json"
+        return response
 
     def _look(self, code: str) -> dict:
         if not r.is_code(code):
@@ -168,6 +265,7 @@ class Relay:
                 while code in self.rooms:
                     code = r.new_code()
                 room = self.rooms[code] = Room(code, secrets.token_hex(16))
+                self._note("room_new", code)
             else:
                 room = self._room(code)
                 if room is None or not hmac.compare_digest(room.key, key):
@@ -176,6 +274,7 @@ class Relay:
                 _close(room.host)  # (a link of the host's that had not noticed it was dead) ...
                 guest, room.guest = room.guest, None
                 _close(guest, CLOSE_HOST_AWAY)  # ... took the guest's channel with it
+                self._note("host_back", code)
             room.host, room.host_away_at, room.acked = conn, None, None
             _send(conn, {"t": "room", "code": room.code, "key": room.key})
         closing = False
@@ -183,6 +282,7 @@ class Relay:
             for msg in conn:
                 if isinstance(msg, bytes):
                     with self._lock:
+                        self._count_frame()
                         if room.host is conn and room.guest is not None and room.acked == room.n:
                             _send(room.guest, msg)
                 elif len(msg) <= TEXT_MAX:
@@ -200,6 +300,9 @@ class Relay:
                     _close(guest, CLOSE_HOST_AWAY)  # the guest's game waits and comes back
                     if closing and self.rooms.get(room.code) is room:
                         del self.rooms[room.code]
+                        self._note("room_end", room.code, "host_closed")
+                    elif not closing:
+                        self._note("host_out", room.code, "host_link")
 
     def _host_says(self, room: Room, conn: ServerConnection, text: str) -> bool:
         """A word from the host; True when it closes the room."""
@@ -216,6 +319,11 @@ class Relay:
                 room.lan = word["lan"][:300]
             elif word.get("t") == "ack" and word.get("n") == room.n and room.guest is not None:
                 room.acked = room.n
+            elif word.get("t") == "stat":
+                rtt = word.get("rtt")
+                if isinstance(rtt, (int, float)) and not isinstance(rtt, bool):
+                    if 0 <= rtt <= RTT_MAX_MS and room.guest is not None:
+                        room.rtt_ms = int(rtt)
             elif word.get("t") == "close":
                 return True
         return False
@@ -229,7 +337,11 @@ class Relay:
                 return
             old, room.guest = room.guest, conn
             _close(old)  # (a guest that had gone silent)
+            if old is not None:
+                self._note("guest_replaced", code)
+            self._note("guest_in", code)
             room.n += 1
+            room.rtt_ms = None
             room.acked = None
             room.guest_seen = time.monotonic()
             _send(room.host, {"t": "peer", "on": True, "n": room.n})
@@ -239,6 +351,7 @@ class Relay:
                 room.guest_seen = time.monotonic()
                 if isinstance(msg, bytes):
                     with self._lock:
+                        self._count_frame()
                         if room.guest is conn and room.host is not None:
                             _send(room.host, msg)
         except ConnectionClosed:
@@ -246,8 +359,9 @@ class Relay:
         finally:
             with self._lock:
                 if room.guest is conn:
-                    room.guest, room.acked = None, None
+                    room.guest, room.acked, room.rtt_ms = None, None, None
                     room.quiet_since = time.monotonic()
+                    self._note("guest_out", code, "guest_link")
                     _send(room.host, {"t": "peer", "on": False})
 
 
@@ -255,8 +369,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=47480)
+    parser.add_argument("--key", default="", help="admin key for /v1/status (none: refused)")
     args = parser.parse_args()
-    relay = Relay(args.host, args.port)
+    relay = Relay(args.host, args.port, admin_key=args.key)
     print(f"relay at {relay.url}  (NEONPOOL_RELAY_URL={relay.url}); Ctrl+C stops it", flush=True)
     try:
         while True:

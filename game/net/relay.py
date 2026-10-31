@@ -401,6 +401,7 @@ class HostRoom:
         self._ws: ClientConnection | None = None
         self._lock = threading.Lock()
         self._closed = False
+        self._stat_at = -config.NET_STAT_EVERY_S  # (the first report goes at once)
         self.door = self._open_door(port) if door else None
         if not self.url:
             self.state, self.error = FAILED, ERR_NO_SERVER
@@ -447,6 +448,15 @@ class HostRoom:
             out.finish()
         elif ws is not None:
             _hang_up(ws)
+
+    def report_rtt(self, rtt_s: float | None, now: float | None = None) -> None:
+        """Tell the relay the ping between the two players (its status page shows it); at most
+        once per NET_STAT_EVERY_S. Only a number: the relay learns nothing about the game."""
+        out, now = self._out, time.monotonic() if now is None else now
+        if out is None or rtt_s is None or now - self._stat_at < config.NET_STAT_EVERY_S:
+            return
+        self._stat_at = now
+        out.put(_note({"t": "stat", "rtt": round(rtt_s * 1000)}), True)
 
     # --- the relay link (its own thread) ---
     def _send(self, item, reliable: bool) -> None:
@@ -551,6 +561,9 @@ class HostRelink:
 
     def poll(self):
         return self._room.accept()
+
+    def report_rtt(self, rtt_s: float | None) -> None:
+        self._room.report_rtt(rtt_s)
 
     def close(self) -> None:
         self._room.close()

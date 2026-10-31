@@ -514,6 +514,9 @@ class Session:
             if sent is not None:
                 rtt = self.time - sent
                 self.rtt_s = rtt if self.rtt_s is None else self.rtt_s * 0.7 + rtt * 0.3
+                report = getattr(self._relink, "report_rtt", None)  # (the host's relay room)
+                if report is not None and self.me == HOST:
+                    report(self.rtt_s)
         elif isinstance(msg, p.Welcome) and self._resuming:
             self._link_up()
         elif isinstance(msg, p.Reject) and self._resuming:
