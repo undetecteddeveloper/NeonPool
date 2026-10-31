@@ -563,6 +563,8 @@ class Session:
 
     def _begin(self, seed: int, breaker: int, feel: str, spin: str) -> None:
         """A game begins (the first one, or a rematch): a new table, a new coin."""
+        if self.match is not None:
+            self._count_result()  # (the one that just ended counts, even if this came at once)
         self.world = World(seed, config.FEEL_SETS[feel], True, config.SPIN_SETS[spin])
         self.match = Match(breaker)
         self.breaker = breaker
@@ -597,6 +599,7 @@ class Session:
         for ball in self.world.balls:  # the table stops where it is, here and (by the
             ball.vx = ball.vy = ball.qx = ball.qy = 0.0  # checkpoint) on the other machine
         self._judged.append(self.match.surrender(loser, reason))
+        self._count_result()
         self._send_checkpoint(p.CHECK_END)
 
     # --- the shot ---

@@ -490,3 +490,18 @@ def test_ac9_net_keys_in_both_languages():
         assert k in en, k
         assert set(re.findall(r"{(\w+)}", vi[k])) == set(re.findall(r"{(\w+)}", en[k])), k
     assert any(k.startswith("net.err.") for k in vi)
+
+
+def test_nothing_opens_over_the_lost_link_card_and_the_chosen_button_stays_in_range(apps):
+    host, guest = apps
+    assert meet(apps) and after_the_toss(apps)
+    host.net.session.link_down_s = config.NET_LINK_CARD_DELAY_S + 0.5
+    host.update(1 / 60)
+    assert host.net._card_showing() == "link"
+    host.net._open_card("sure")  # (the developer's tool does this; a player cannot)
+    assert host.net._card is None and host.net._card_showing() == "link"
+    host.net._card_sel = 5
+    for _ in range(3):
+        host.update(1 / 60)
+        host.draw()
+    assert host.net._card_sel == 0

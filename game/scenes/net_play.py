@@ -248,6 +248,8 @@ class NetPlayScene(PlayScene):
         return self._card if self.rules.phase == PLAYING else None
 
     def _open_card(self, name: str, sel: int | None = None) -> None:
+        if self._link_open:
+            return  # the card for a lost link has the screen: nothing opens over it
         self._card, self._card_at = name, self._clock
         self._card_sel = self._card_spec(name)[4] if sel is None else sel
         self._card_fx = hud.ButtonFx()
@@ -425,8 +427,9 @@ class NetPlayScene(PlayScene):
             self._link_open = False
         card = self._card_showing()
         if card is not None:
-            keys = list(self._card_rects(card))
-            self._card_fx.update(dt, keys[self._card_sel], self._card_rects(card), self._clock)
+            rects = self._card_rects(card)
+            self._card_sel = min(self._card_sel, len(rects) - 1)
+            self._card_fx.update(dt, list(rects)[self._card_sel], rects, self._clock)
         rects = dict(enumerate(hud.emote_rects()))
         self._emote_fx.update(dt, self._emote_hover, rects, self._clock)
 

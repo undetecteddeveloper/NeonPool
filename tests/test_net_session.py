@@ -788,3 +788,13 @@ def test_the_8_on_the_break_racks_again_on_both_machines_without_a_desync():
     assert host.match.turn == player.me  # the same player breaks again
     assert same_table(host, guest) and guest.desyncs == 0
     assert host.world.balls[0].x == config.HEAD_SPOT[0]
+
+
+def test_ac13_a_game_that_ends_is_counted_even_if_the_next_one_starts_in_the_same_breath():
+    sim, host, guest = started()
+    assert host.surrender()  # counted at once, before any frame runs
+    assert host.wins == [0, 1]
+    host.ask_rematch()
+    guest.rematch[GUEST] = True  # (the guest's word reaches the host before the next frame)
+    host._handle(p.Rematch())
+    assert host.game_no == 2 and host.wins == [0, 1]  # the new game began; the old one is not lost
