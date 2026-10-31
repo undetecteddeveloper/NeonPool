@@ -145,7 +145,7 @@ SCORE_PER_BALL_LOST = 50  # a lost game only counts the balls that went down (th
 GAME_VERSION = "0.1"  # two builds with different values never meet; bump it with any change that
 # can alter a shot's result (the physics numbers are also checked: protocol.physics_fingerprint)
 NET_PORT = 47474  # where a room listens on the local network (taken: any free port)
-NET_RELAY_URL = ""  # the relay rooms meet through (wss://...); empty until it is put online
+NET_RELAY_URL = "wss://neonpool-relay.neonpool-relay.workers.dev"  # the relay rooms meet through
 NET_ROOM_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ"  # a room code's letters: no I, L, O (1, 0)
 NET_ROOM_LEN = 4  # letters in a room code
 NET_LAN_TRY_S = 0.6  # on the same network: try the straight way this long before the relay

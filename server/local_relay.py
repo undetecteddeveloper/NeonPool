@@ -127,6 +127,8 @@ class Relay:
     # --- plain requests ---
     def _http(self, conn: ServerConnection, request):
         url = urllib.parse.urlsplit(request.path)
+        if (request.headers.get("User-Agent") or "").startswith("Python-urllib"):
+            return conn.respond(403, "error code: 1010\n")  # (as Cloudflare does: its default name)
         if url.path == "/":
             return conn.respond(200, "neonpool relay 1\n")
         if url.path in (f"{r.API}/host", f"{r.API}/join"):

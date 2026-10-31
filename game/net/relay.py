@@ -32,6 +32,9 @@ from game.net import tcp
 log = logging.getLogger("neonpool")
 
 API = "/v1"
+# Cloudflare turns away the library's own default name (Python-urllib: error 1010), so every
+# request says who it is
+USER_AGENT = f"NeonPool/{config.GAME_VERSION}"
 CONNECTING, READY, FAILED = "connecting", "ready", "failed"
 # what went wrong, for the screens (net.err.*)
 ERR_NO_SERVER = "no_server"  # this build knows no relay
@@ -50,6 +53,7 @@ WS_OPTIONS = {
     "max_size": 4 * p.MAX_FRAME,
     "close_timeout": 2.0,
     "open_timeout": config.NET_CONNECT_TIMEOUT_S,
+    "user_agent_header": USER_AGENT,
 }
 
 
@@ -107,8 +111,11 @@ def _status_error(status: int) -> str:
 def look(url: str, code: str, timeout: float = config.NET_CONNECT_TIMEOUT_S) -> dict:
     """Ask the relay about a room: {"ok": True, "lan": ...} or {"ok": False, "why": ...}."""
     query = urllib.parse.urlencode({"code": code})
+    request = urllib.request.Request(
+        f"{_http_base(url)}{API}/look?{query}", headers={"User-Agent": USER_AGENT}
+    )
     try:
-        with urllib.request.urlopen(f"{_http_base(url)}{API}/look?{query}", timeout=timeout) as r:
+        with urllib.request.urlopen(request, timeout=timeout) as r:
             answer = json.loads(r.read(4096).decode("utf-8"))
     except urllib.error.HTTPError as exc:
         return {"ok": False, "why": _status_error(exc.code)}

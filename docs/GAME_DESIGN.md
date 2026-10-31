@@ -88,7 +88,7 @@ Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng
 
 ## Phản hồi lần 20 (2026-10-31, người dùng chốt làm Chặng 2 của chơi đôi; brief `docs/plans/20261031-multiplayer-chang2.md`)
 - Gặp nhau bằng MÃ PHÒNG 4 chữ cái (bỏ I, L, O vì dễ nhầm với 1, 0), qua internet: hai người ở hai nhà chơi được. Thay cho việc gõ địa chỉ cục bộ của chặng 1 (bỏ hẳn, kể cả khi cùng wifi; mất internet thì không tìm được phòng — người dùng chọn, để màn hình gọn).
-- Máy trung chuyển miễn phí trên Cloudflare (người dùng chọn giữa Cloudflare / Oracle miễn phí cần thẻ / Fly.io ~2 USD mỗi tháng). Mức miễn phí đủ khoảng 9 giờ ngắm cơ liên tục mỗi ngày; quá mức thì phòng mới bị từ chối đến 7 giờ sáng hôm sau (giờ Việt Nam).
+- Máy trung chuyển miễn phí trên Cloudflare (người dùng chọn giữa Cloudflare / Oracle miễn phí cần thẻ / Fly.io ~2 USD mỗi tháng). Mức miễn phí đủ khoảng 9 giờ ngắm cơ liên tục mỗi ngày (ước tính từ giới hạn 100.000 yêu cầu/ngày, chưa đo); quá mức thì phòng mới bị từ chối đến 7 giờ sáng hôm sau (giờ Việt Nam).
 - Cùng wifi: game tự nối thẳng, người chơi không thấy gì khác. Mọi thứ của Chặng 3 (rớt mạng / vào lại 60 s, Đấu lại, đầu hàng, đồng hồ, biểu cảm) giữ nguyên qua máy trung chuyển.
 - Chặng 4 (trang tình trạng máy chủ) làm sau khi người dùng chơi thử Chặng 2.
 - Giao diện (người dùng chọn qua ảnh `tools/_out/20261031-ma-phong/`, hướng B): mã phòng là BỐN Ô sáng, mỗi ô một chữ, ở cả màn chủ phòng ("Mã phòng của bạn", lúc đang xin mã thì bốn ô tối và dòng "Đang tạo phòng…", có mã rồi mới "Đang chờ bạn chơi…") lẫn màn người vào ("Gõ mã phòng": ô đã gõ sáng xanh, ô kế tiếp viền hồng có con trỏ, mã sai thì cả bốn viền đỏ và báo lỗi ngay dưới). Hướng A (một ô chữ như ô gõ tên) bị bỏ.

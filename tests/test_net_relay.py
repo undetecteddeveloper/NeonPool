@@ -139,6 +139,21 @@ def test_ac18_no_relay_and_no_internet_are_told_apart():
     assert wait(lambda: lost.state == relay.FAILED) and lost.error == relay.ERR_OFFLINE
 
 
+@local_only
+def test_ac22_requests_carry_the_games_own_name_because_cloudflare_turns_the_default_away(local):
+    """Found on the real relay (2026-10-31): `Python-urllib` gets error 1010 and was read as
+    "the server is busy". The local relay turns that name away too."""
+    import urllib.error
+    import urllib.request
+
+    plain = urllib.request.Request(f"http://127.0.0.1:{local.port}/v1/look?code=ZZZZ")
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(plain, timeout=5)
+    assert caught.value.code == 403
+    assert relay.look(local.url, "ZZZZ") == {"ok": False, "why": relay.ERR_NO_ROOM}
+    assert relay.USER_AGENT.startswith("NeonPool/")
+
+
 def test_ac18_an_old_relay_reads_as_another_version(url):
     with pytest.raises(Exception) as caught:
         ws_connect(f"{url}/v0/host", open_timeout=5).close()
