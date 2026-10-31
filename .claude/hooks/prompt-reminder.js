@@ -11,7 +11,7 @@ const REMINDER = [
   "1b) Giao diện: cùng chức năng = cùng một thành phần dùng chung, cùng thiết kế ở mọi màn (workflow/ui.md 4d, bảng ở ARCHITECTURE.md); muốn khác thì hỏi. Yêu cầu làm lệch quyết định đã chốt → rà mọi tài liệu cùng commit (CLAUDE.md §3b). Ảnh chụp vào tools\\_out\\<yyyymmdd>-<slug>\\, xoá thư mục đó khi người dùng duyệt hoặc giao việc mới (ops-env.md).",
   '2) Công cụ thiếu/lỗi: thử lại 1 lần → báo ngay → ghi CHƯA LÀM → không nói "xong". Chỉ dùng .venv\\Scripts\\python.exe.',
   "3) Bất biến: physics/rules không import pygame · mọi cú đánh = Shot · bước cố định, mét–giây · hằng số trong config · chữ qua i18n vi+en · xác định theo seed.",
-  '4) Xong việc: tools\\gate.py → commit trên nhánh → DỪNG. Không GitHub/push thật. Người dùng nói push/gộp/merge/đưa lên main = gộp vào main cục bộ rồi xoá nhánh bằng `git branch -d` (CLAUDE.md §6b). Việc mới: tách từ main; còn nhánh chưa gộp thì HỎI người dùng trước.',
+  '4) Xong việc: tools\\gate.py → commit trên nhánh → DỪNG. Push GitHub chỉ khi người dùng nói "push". Người dùng nói push/gộp/merge/đưa lên main = gộp vào main cục bộ rồi xoá nhánh bằng `git branch -d` (CLAUDE.md §6b). Việc mới: tách từ main; còn nhánh chưa gộp thì HỎI người dùng trước.',
   '5) Cảm giác bi/giao diện: không tự tuyên bố "ổn" — chụp ảnh/đưa bộ thông số có tên cho người dùng chọn.',
   '6) Báo cáo cuối: dòng đầu "ĐỦ BƯỚC" hoặc "THIẾU n BƯỚC: <bước> — <lý do> — <người dùng cần làm gì>".',
 ].join("\n");

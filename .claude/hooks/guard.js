@@ -1,5 +1,5 @@
 // PreToolUse hook — chặn CỨNG những thứ máy kiểm được (luật bằng chữ dễ bị quên):
-//   - `git push`, `git remote add`: dự án chỉ dùng git cục bộ, không GitHub;
+//   - `git push`: chỉ khi lượt nhắn gần nhất của người dùng có từ "push" (cờ do prompt-reminder.js ghi); `--force` luôn bị chặn;
 //   - đang đứng trên main/master: chặn commit/rebase/cherry-pick/reset; `merge` chỉ khi lượt nhắn gần
 //     nhất của người dùng có ý gộp (cờ do prompt-reminder.js ghi);
 //   - lệnh git xoá thay đổi chưa commit (reset --hard, clean -f, checkout --, restore, stash drop/clear);
@@ -58,12 +58,14 @@ process.stdin.on("end", () => {
         const sub = g[1].toLowerCase();
         const rest = (g[2] || "").toLowerCase();
         if (sub === "push") {
-          deny("Dự án này chỉ dùng git cục bộ, không có GitHub/remote (CLAUDE.md §6). Không push. Khi người dùng nói push/gộp = gộp nhánh vào main cục bộ rồi xoá nhánh bằng `git branch -d` (CLAUDE.md §6b).");
-          return finish();
-        }
-        if (sub === "remote" && /^(add|set-url)\b/.test(rest)) {
-          deny("Dự án này không dùng remote/GitHub (CLAUDE.md §6). Không thêm remote.");
-          return finish();
+          if (/(^|\s)(-f|--force\S*)(\s|$)/.test(rest)) {
+            deny("`git push --force` ghi đè lịch sử trên GitHub, không khôi phục dễ (CLAUDE.md §5). Không dùng; hỏi người dùng nếu thật sự cần.");
+            return finish();
+          }
+          if (!mergeIntent()) {
+            deny("Chỉ push lên GitHub khi người dùng nói \"push\" ở lượt nhắn gần nhất (CLAUDE.md §6). Hỏi người dùng trước.");
+            return finish();
+          }
         }
         const raw = g[2] || ""; // giữ nguyên hoa/thường: `-D` khác `-d`
         const forceDelete =

@@ -59,7 +59,7 @@ Theo luật chung (thử lại 1 lần → báo ngay → CHƯA LÀM). Riêng d�
    - Việc vặt: `gate.py --quick` (ruff check + format + pytest).
    - Bug / tính năng / giao diện / vật lý / refactor chạm code: `gate.py` đầy đủ (thêm smoke headless: bật game 300 khung hình, báo ms/khung). Chỉ sửa tài liệu hoặc luật: bỏ cổng.
 2. Commit trên nhánh làm việc (không bao giờ commit thẳng `main`/`master`), message tiếng Việt `type(scope): ...`, rồi DỪNG. Mỗi commit một việc.
-3. Dự án này CHỈ dùng git cục bộ: không GitHub, không remote, không push (hook chặn `git push` và `git remote add`). "Đưa lên main" = gộp nhánh làm việc vào `main` cục bộ, chỉ khi người dùng nói "push"/"gộp"/"merge"/"đưa lên main" (hook chặn mọi `commit`/`merge` đang đứng trên main nếu lượt nhắn gần nhất không có từ nào trong số đó). Quy trình gộp và dọn nhánh: §6b.
+3. Có repo GitHub công khai (người dùng chốt 2026-10-31, bỏ luật "chỉ git cục bộ"; remote `origin`). `git push` chỉ khi người dùng nói "push" ở lượt nhắn gần nhất (hook chặn nếu không); Claude không tự push. "Đưa lên main" = gộp nhánh làm việc vào `main` cục bộ, chỉ khi người dùng nói "push"/"gộp"/"merge"/"đưa lên main" (hook chặn mọi `commit`/`merge` đang đứng trên main nếu lượt nhắn gần nhất không có từ nào trong số đó). Không bao giờ push `--force`, không đẩy file ngoài git (`tools/_out/`, bí mật). Quy trình gộp và dọn nhánh: §6b.
 4. Cập nhật PROGRESS.md: số đo và LÝ DO, không chỉ liệt kê việc.
 5. Đối chiếu §4–§5 một lượt (việc lệch quyết định cũ: cả §3b.3), rồi viết dòng đầu `ĐỦ BƯỚC` / `THIẾU …`.
 6. Ảnh chụp của việc này: để nguyên cho người dùng mở xem (ghi đường dẫn trong báo cáo); xoá thư mục của việc khi người dùng duyệt hoặc giao việc mới (`ops-env.md`).

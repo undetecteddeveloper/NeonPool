@@ -10,8 +10,8 @@
 ## Shell
 - PowerShell 5.1: không có `&&`/`||`; nối bằng `;` hoặc dùng Bash tool. Đường dẫn có dấu cách phải bọc nháy (`E:\pygame projects\NeonPool`).
 
-## Git (chỉ cục bộ, không GitHub)
-- Nhánh làm việc `chore/...`, `feat/...`, `fix/...`; `main` chỉ nhận khi người dùng nói push/gộp/merge/đưa lên main; sau khi gộp nhánh bị xoá bằng `git branch -d` (quy trình đầy đủ: CLAUDE.md §6b). Không có remote nên không push, không CI; cổng kiểm tra = `tools\gate.py` chạy tay.
+## Git (cục bộ + repo GitHub công khai `origin`, từ 2026-10-31)
+- Nhánh làm việc `chore/...`, `feat/...`, `fix/...`; `main` chỉ nhận khi người dùng nói push/gộp/merge/đưa lên main; sau khi gộp nhánh bị xoá bằng `git branch -d` (quy trình đầy đủ: CLAUDE.md §6b). Push lên `origin` chỉ khi người dùng nói "push" (hook chặn nếu không); không CI, cổng kiểm tra = `tools\gate.py` chạy tay. Bản exe: `tools\build_exe.py` (xem README).
 - Trước mọi lệnh có thể xoá thay đổi chưa commit: `git status`. Hook chặn `reset --hard`, `clean -f`, `checkout -- `, `restore` (không `--staged`), `stash drop/clear`.
 - Ảnh chụp, profile: `tools/_out/` (git bỏ qua). Trong `_out/` còn có file công cụ cần giữ (vd `tool-settings.json` của `shot.py`).
 - Ảnh tạm của một việc (người dùng chốt 2026-10-30): luôn chụp vào thư mục con `tools/_out/<yyyymmdd>-<slug>/` (`shot.py --out` tự tạo thư mục cha), không để ảnh ở gốc `_out`. Giữ nguyên cho người dùng mở xem sau báo cáo. Xoá ĐÚNG thư mục đó (và chỉ nó) khi người dùng duyệt/gộp, hoặc giao việc MỚI (sửa tiếp chính việc đang làm thì giữ thư mục và ghi đè ảnh). Việc này được phép không hỏi (ngoại lệ ở CLAUDE.md §5). Ảnh của phiên cũ và file công cụ trong `_out/`: KHÔNG đụng, chỉ xoá khi người dùng nói xoá (hết hoặc một phần).
