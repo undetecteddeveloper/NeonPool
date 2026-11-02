@@ -86,13 +86,14 @@ def test_solo_endings_come_out_as_they_are_named(dev):
 def test_practice_endings_come_out_as_they_are_named(dev):
     app, _ = dev
     go(dev, "Luyện tập: ván mới")
-    assert app.practice.rules.target == 1 and app.practice.rules.streak == 0
+    assert app.practice.rules.target in range(1, 16) and app.practice.rules.streak == 0
     go(dev, "Giữa chuỗi (đã qua 5 bi)")
     assert (app.practice.rules.streak, app.practice.rules.target) == (5, 6)
+    assert app.practice.rules.lives == 2
     go(dev, "Thắng (chạy hết 15 bi")
     assert until(dev, lambda: app.practice.rules.phase != "playing", 20)
     assert app.practice.rules.phase == WON and app.practice.rules.streak == 15
-    go(dev, "Thua (chạm nhầm")
+    go(dev, "Thua (hết mạng")
     assert until(dev, lambda: app.practice.rules.phase != "playing", 20)
     assert app.practice.rules.phase == LOST
 

@@ -19,6 +19,7 @@ from game.config import (
     NET_PING_BAD_MS,
     NET_PING_GOOD_MS,
     NET_ROOM_LEN,
+    PRACTICE_LIVES,
     SPIN_DIAL_TRAVEL,
 )
 from game.i18n import t
@@ -638,6 +639,7 @@ def draw_practice_panel(
     v: View,
     *,
     streak: int,
+    lives: int,
     best: int,
     target: int | None,
     target_shown: bool,
@@ -715,6 +717,7 @@ def draw_practice_panel(
     label(canvas, v, t("hud.moving") if moving else t("hud.ready"), (x0 + 16, y), state_col, 12)
     y += 20
     label(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), (x0 + 16, y), size=10.5)
+    _lives_row(canvas, v, lives, x0 + 16, y + 20)
     spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
 
     ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
@@ -723,6 +726,23 @@ def draw_practice_panel(
         row = ky + i * KEY_STEP
         keycap(canvas, v, t(cap), (x0, row), 34)
         text(canvas, v, t(what), 12, C.TEXT_DIM, (x0 + 44, row + 4))
+
+
+LIFE_STEP = 18.0  # distance between the lights of the lives row (logical px)
+
+
+def _lives_row(canvas: pg.Surface, v: View, lives: int, x: float, y: float) -> None:
+    """The word "Lives" and one light for each life of a run (lit while it is left, an empty ring
+    once lost), under the status lines of the panel, starting at `x`."""
+    word = t("practice.lives").upper()
+    word_w = text_width(v, word, 10.5, True) + 1.6 * len(word)
+    label(canvas, v, word, (x, y + 1), size=10.5)
+    for i in range(PRACTICE_LIVES):
+        c = (x + word_w + 12.0 + i * LIFE_STEP, y + 5)
+        if i < lives:
+            blit_dot(canvas, v, c, 4.0, C.MAGENTA, 0.9)
+        else:
+            draw_ring(canvas, v, c, 4.0, (*C.PANEL_EDGE, 255), 1.3)
 
 
 def keycap(canvas: pg.Surface, v: View, s: str, pos: tuple[float, float], w: float) -> None:

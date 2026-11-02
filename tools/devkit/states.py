@@ -207,7 +207,7 @@ def _practice_streak(h: Harness) -> None:
     h.practice_streak(5)
 
 
-@state(PRACTICE, "Thua (chạm nhầm/không chạm bi)")
+@state(PRACTICE, "Thua (hết mạng)")
 def _practice_lost(h: Harness) -> None:
     h.practice_lost()
 

@@ -77,7 +77,9 @@ def test_ac15_the_ball_to_hit_is_shown_only_after_the_wait(app, monkeypatch):
     assert not during["target_shown"] and during["counting_down"]
     assert during["count"] == math.ceil(config.PRACTICE_READY_S)  # the counter shows the wait
     assert after["target_shown"] and not after["counting_down"]
-    assert after["target"] == 1 and after["count"] == config.PRACTICE_SHOT_S  # ... then the clock
+    assert (
+        after["target"] == app.practice.rules.target and after["count"] == config.PRACTICE_SHOT_S
+    )  # ... then the clock
 
 
 def test_ac15_no_ring_is_drawn_round_the_ball_to_hit(app):
@@ -122,7 +124,8 @@ def test_ac17_a_restart_and_a_new_run_from_the_menu_wait_again(app):
 
 def test_ac17_a_run_that_has_ended_is_not_shown_again_when_practice_is_chosen_again(app):
     app.go_practice()
-    app.practice.rules.timeout()  # the run is lost
+    app.practice.rules.lives = 1
+    app.practice.rules.timeout()  # the last life: the run is lost
     assert app.practice.rules.phase == "lost"
     app.go_menu()
     app.go_practice()
@@ -186,3 +189,65 @@ def test_ac20_no_description_of_a_play_button_reaches_the_arrow(lang):
     assert len(names) >= 5
     for name in names:
         assert hud.text_width(V, i18n.t(name), 13) <= room, (lang, name)
+
+
+# --- AC21: three lives (round 4, GAME_DESIGN lần 33) ------------------------------------------
+def start(app):
+    app.go_practice()
+    run(app, config.PRACTICE_READY_S + 0.5)
+    return app.practice
+
+
+def whiff(app, scene):
+    """A soft shot away from the balls: it touches nothing and pots nothing."""
+    from game.physics import Shot
+
+    scene.fire(Shot(math.pi, 0.1, 0.0))
+    for _ in range(60 * 30):
+        if not scene._live:
+            return
+        app.update(RUN_DT)
+    raise AssertionError("the balls never stopped")
+
+
+def test_ac21_a_miss_costs_a_life_shows_it_and_the_run_goes_on(app, monkeypatch):
+    seen = record_panel(monkeypatch)
+    scene = start(app)
+    whiff(app, scene)
+    assert scene.rules.lives == config.PRACTICE_LIVES - 1 and scene.rules.phase == "playing"
+    assert scene._notice == ("foul", "practice.miss")
+    scene.draw(pg.display.get_surface())
+    assert seen[-1]["lives"] == config.PRACTICE_LIVES - 1
+    assert scene._can_aim()  # nothing is in hand after a plain miss
+
+
+def test_ac21_the_cue_ball_in_a_pocket_costs_a_life_and_is_put_back_in_hand(app):
+    scene = start(app)
+    scene.world.balls[0].in_play = False  # as if it had gone into a pocket this shot
+    scene.rules.on_shot()
+    scene._live = True
+    scene.rules.on_events(
+        [__import__("game.physics", fromlist=["BallPocketed"]).BallPocketed(0, 0)]
+    )
+    scene._end_shot()
+    assert scene.rules.lives == config.PRACTICE_LIVES - 1 and scene.rules.cue_in_hand
+    assert scene.world.balls[0].in_play  # back on the table, to be placed
+    assert not scene._can_aim() and scene._holding()
+
+
+def test_ac21_three_misses_lose_the_run_and_the_card_says_why(app):
+    scene = start(app)
+    for _ in range(config.PRACTICE_LIVES):
+        assert scene.rules.phase == "playing"
+        whiff(app, scene)
+    assert scene.rules.phase == "lost" and scene._lost_words() == i18n.t(
+        "practice.out_of_lives", why=i18n.t("practice.miss")
+    )
+
+
+def test_ac21_the_clock_running_out_costs_a_life_and_starts_a_fresh_clock(app):
+    scene = start(app)
+    run(app, config.PRACTICE_SHOT_S + 0.5)
+    assert scene.rules.lives == config.PRACTICE_LIVES - 1 and scene.rules.phase == "playing"
+    assert scene._shot_left > config.PRACTICE_SHOT_S - 1.0
+    assert scene._notice == ("foul", "practice.lost_timeout")

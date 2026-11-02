@@ -1,10 +1,11 @@
-"""The table in Practice "the Ghost": pot the 15 balls strictly in order, under a clock.
+"""The table in Practice "the Ghost": pot the random target ball, under a clock.
 
 Over the solo Free play table this changes: a run begins with a countdown in which nothing may
-be touched (the ball to hit is only shown once it is over), a counter in the side panel counts
-down each shot (reaching zero loses the run, exactly like a foul), there is no ball in hand (any
-foul ends the run at once, no rerack), and the result card shows the streak you reached and the
-best one ever instead of shots and fouls. See docs/plans/20261102-luyen-tap.md.
+be touched (the ball to hit is only shown once it is over), the rules are `rules/practice.py`'s
+(a random ball is the target, three lives, no foul for what the cue ball touches), a counter in the
+side panel counts down each shot (reaching zero costs a life), and the result card shows the
+streak you reached and the best one ever instead of shots and fouls. See
+docs/plans/20261102-luyen-tap.md.
 """
 
 from __future__ import annotations
@@ -13,10 +14,11 @@ import math
 
 import pygame as pg
 
-from game.config import PRACTICE_READY_S, PRACTICE_SHOT_S, PRACTICE_WARN_S
+from game.config import NOTICE_S, PRACTICE_READY_S, PRACTICE_SHOT_S, PRACTICE_WARN_S
 from game.i18n import t
 from game.physics import Shot
 from game.render import hud
+from game.render import palette as C
 from game.render.view import View
 from game.rules.eight_ball import LOST, PLAYING, WON
 from game.rules.practice import GhostRun, ShotResult
@@ -29,7 +31,7 @@ BLINK_HZ = 2.0  # the shot clock blinks this often in its last seconds (same fee
 class PracticeScene(PlayScene):
     def __init__(self, app) -> None:
         super().__init__(app)
-        self.rules = GhostRun()
+        self.rules = GhostRun(self.world.rng)
         self._shot_left = PRACTICE_SHOT_S
         self._ready_left = PRACTICE_READY_S  # the wait before a run: nothing may be touched
         self._warned = -1  # the last second of the shot's clock that was beeped
@@ -63,6 +65,7 @@ class PracticeScene(PlayScene):
             and self.rules.phase == PLAYING
             and self.world.balls[0].in_play
             and self.world.at_rest()
+            and not self.rules.cue_in_hand
         )
 
     def _dial_ok(self) -> bool:
@@ -71,13 +74,6 @@ class PracticeScene(PlayScene):
     def _hint_words(self) -> str | None:
         """While the run waits to begin the line under the table says so (then: the aim hint)."""
         return t("practice.counting") if self.counting_down else super()._hint_words()
-
-    def _holding(self) -> bool:
-        return False  # no ball in hand here: any foul ends the run outright
-
-    def _hand_event(self, e: pg.event.Event) -> bool:
-        self.placing = False
-        return False
 
     def fire(self, shot: Shot) -> None:
         self._shot_visuals(shot, self.drag.bar_length)
@@ -90,9 +86,13 @@ class PracticeScene(PlayScene):
 
     def _end_shot(self) -> None:
         self._live = False
+        if not self.world.balls[0].in_play:
+            self.world.respawn_cue()  # back on the table, ready to be placed
         res = self.rules.finish_shot()
         if res.outcome in (WON, LOST):
             self._finish_run(res)
+        elif res.lost_life:
+            self._notify("foul", res.lost_life)
 
     def _finish_run(self, res: ShotResult) -> None:
         self._ended_at = self._clock
@@ -104,7 +104,7 @@ class PracticeScene(PlayScene):
         self._tally = Tally({"score": self.rules.streak, "shots": self.rules.shots, "fouls": best})
         self._ticks, self._tinged = dict.fromkeys(self._tally.targets, 0), set()
 
-    # --- time: the wait before the run, then the clock of each shot (it ends the run like a foul)
+    # --- time: the wait before the run, then the clock of each shot (it costs a life)
     def update(self, dt: float) -> None:
         super().update(dt)
         if self.counting_down:
@@ -137,8 +137,16 @@ class PracticeScene(PlayScene):
             self.app.audio.play_count()  # one sound for every second of the count
 
     def _timeout(self) -> None:
+        """The clock of the shot ran out: a life lost, a fresh clock."""
         self.drag.cancel()
-        self._finish_run(self.rules.timeout())
+        self._shot_left = PRACTICE_SHOT_S
+        res = self.rules.timeout()
+        if res.outcome in (WON, LOST):
+            self._finish_run(res)
+            return
+        self._notice, self._notice_left = ("foul", res.lost_life), NOTICE_S
+        self._callout = (t("callout.timeout"), C.AMBER, self._clock)
+        self.app.audio.play_foul()
 
     # --- drawing ------------------------------------------------------------------------------
     def _draw_panel(self, canvas: pg.Surface, v: View) -> None:
@@ -148,6 +156,7 @@ class PracticeScene(PlayScene):
             canvas,
             v,
             streak=self.rules.streak,
+            lives=self.rules.lives,
             best=self.app.settings.practice_best,
             target=self.rules.target,
             target_shown=not counting,
@@ -180,25 +189,30 @@ class PracticeScene(PlayScene):
         shown = {name: tally.value(name, age) for name in tally.targets}
         return shown, tuple(tally.flash(name, age) for name in tally.targets)
 
-    def _draw_result_frame(self, canvas: pg.Surface, v: View) -> None:
+    def _lost_words(self) -> str | None:
+        """Why the run was lost (the last life), or nothing for a win."""
         res = self.rules.last
+        if self.rules.phase == WON or res is None or res.lost_life is None:
+            return None
+        return t("practice.out_of_lives", why=t(res.lost_life))
+
+    def _draw_result_frame(self, canvas: pg.Surface, v: View) -> None:
         hud.draw_result_frame(
             canvas,
             v,
             won=self.rules.phase == WON,
-            reason=t(res.reason) if res and res.reason else None,
+            reason=self._lost_words(),
             row_names=[t("hud.shots"), t("practice.best")],
             score_label=t("practice.streak"),
         )
 
     def _draw_result(self, canvas: pg.Surface, v: View) -> None:
-        res = self.rules.last
         shown, flashes = self._shown_numbers()
         hud.draw_result(
             canvas,
             v,
             won=self.rules.phase == WON,
-            reason=t(res.reason) if res and res.reason else None,
+            reason=self._lost_words(),
             score=shown["score"],
             rows=[(t("hud.shots"), shown["shots"]), (t("practice.best"), shown["fouls"])],
             score_label=t("practice.streak"),

@@ -378,11 +378,14 @@ class Harness:
             if 1 <= b.number <= n:
                 b.in_play, b.vx, b.vy = False, 0.0, 0.0
         scene.rules.pocketed = set(range(1, n + 1))
-        scene.rules.shots = n
+        scene.rules.streak = scene.rules.shots = n
+        scene.rules.lives = 2
+        scene.rules.target = n + 1
 
     def practice_lost(self) -> None:
-        """A shot that touches nothing: any foul ends the run at once here (no ball in hand)."""
+        """A shot that misses with the last life left: the run is lost."""
         self.practice_new()
+        self.app.practice.rules.lives = 1
         self.app.practice.fire(Shot(math.pi, 0.1, 0.0))
 
     def practice_won(self) -> None:
@@ -391,6 +394,7 @@ class Harness:
         scene = self.app.practice
         scene.world.place(0, 0.6, 0.6)  # same geometry as solo_finish: a straight shot into
         scene.world.place(15, 0.2, 0.2)  # the corner pocket at (0, 0)
+        scene.rules.target = 15
         self.app.skip_transition()
         scene.fire(EIGHT_EARLY_SHOT)
 
