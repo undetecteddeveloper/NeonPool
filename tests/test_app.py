@@ -30,7 +30,9 @@ def test_app_opens_on_the_menu_and_play_enters_the_table(app):
     assert app.scene is app.menu
     app.handle_event(key(pg.K_RETURN))  # first item = Play: the panel with Solo / Two players
     assert app.scene is app.menu and app.menu.play_panel.is_open
-    app.handle_event(key(pg.K_RETURN))  # its first choice = Solo
+    app.handle_event(key(pg.K_RETURN))  # its first choice = Solo: no game yet, so Free / Practice
+    assert app.scene is app.menu and app.menu.play_panel.is_open
+    app.handle_event(key(pg.K_RETURN))  # its first choice = Free play
     assert app.scene is app.play and not app.menu.play_panel.is_open
 
 
@@ -57,6 +59,8 @@ def test_menu_buttons_work_with_the_mouse(app):
     app.handle_event(click(rects[0].center))
     assert app.menu.play_panel.is_open
     app.handle_event(click(app.menu.play_panel._rects()["solo"].center))
+    assert app.menu.play_panel.is_open  # no game yet: the mode step, not the table
+    app.handle_event(click(app.menu.play_panel._rects()["free"].center))
     assert app.scene is app.play
 
 

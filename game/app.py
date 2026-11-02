@@ -31,6 +31,7 @@ from game.scenes.loading import LoadingScene
 from game.scenes.menu import MenuScene
 from game.scenes.net_play import NetPlayScene
 from game.scenes.play import PlayScene
+from game.scenes.practice import PracticeScene
 from game.scenes.splash import SplashScene
 
 log = logging.getLogger("neonpool")
@@ -58,6 +59,8 @@ class App:
         self.audio.volume = self.settings.volume
         self.audio.music_volume = self.settings.music
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
+        self.practice = PracticeScene(self)  # Practice "the Ghost": kept alive the same way
+        self._last_solo = self.play  # which of the two "Resume" means right now
         self.menu = MenuScene(self)
         self.splash = SplashScene(self)  # the real game opens on it (start_splash); tools do not
         self.net: NetPlayScene | None = None  # a two-player game, while there is one
@@ -144,16 +147,26 @@ class App:
         self._switch(self.net)
 
     def go_play(self) -> None:
+        self._last_solo = self.play
         self._switch(self.play)
+
+    def go_practice(self) -> None:
+        self._last_solo = self.practice
+        self._switch(self.practice)
+
+    def resume_solo(self) -> None:
+        """ "Resume": back to whichever of Free play / Practice was in progress."""
+        self._switch(self._last_solo)
 
     def open_help(self) -> None:
         """Open the how-to-play card over the current scene (menu or table); Esc closes it."""
-        self.play.drag.cancel()
-        self.play.placing = False
+        self._last_solo.drag.cancel()
+        self._last_solo.placing = False
         self.help.open()
 
     def go_menu(self) -> None:
         self.play.drag.cancel()
+        self.practice.drag.cancel()
         if self.net is not None and self.scene is self.net:
             self.net.leave()  # (a game that is already over just closes the link)
             self.net = None
@@ -162,7 +175,8 @@ class App:
         self._switch(self.menu)
 
     def game_in_progress(self) -> bool:
-        return self.play.rules.shots > 0 and self.play.rules.phase == PLAYING
+        scene = self._last_solo
+        return scene.rules.shots > 0 and scene.rules.phase == PLAYING
 
     # --- settings ----------------------------------------------------------------------------
     def change_settings(self, **changes) -> None:
@@ -230,6 +244,7 @@ class App:
             self.canvas = pg.Surface(target.canvas)
             self._old_frame = None
             self.play.set_view(target)
+            self.practice.set_view(target)
             if self.net is not None:
                 self.net.set_view(target)
             self.menu.set_view(target)

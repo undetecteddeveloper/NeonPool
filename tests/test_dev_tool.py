@@ -83,6 +83,20 @@ def test_solo_endings_come_out_as_they_are_named(dev):
     assert until(dev, lambda: app.play.rules.cue_in_hand, 20)
 
 
+def test_practice_endings_come_out_as_they_are_named(dev):
+    app, _ = dev
+    go(dev, "Luyện tập: ván mới")
+    assert app.practice.rules.target == 1 and app.practice.rules.streak == 0
+    go(dev, "Giữa chuỗi (đã qua 5 bi)")
+    assert (app.practice.rules.streak, app.practice.rules.target) == (5, 6)
+    go(dev, "Thắng (chạy hết 15 bi")
+    assert until(dev, lambda: app.practice.rules.phase != "playing", 20)
+    assert app.practice.rules.phase == WON and app.practice.rules.streak == 15
+    go(dev, "Thua (chạm nhầm")
+    assert until(dev, lambda: app.practice.rules.phase != "playing", 20)
+    assert app.practice.rules.phase == LOST
+
+
 @pytest.mark.parametrize(
     ("name", "phase"),
     [

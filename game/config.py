@@ -209,6 +209,12 @@ NET_DIAL_LINGER_S = 0.75  # the line 'setting the spin' stays this long after it
 NET_EMOTES = 3  # ready-made reactions: Nice!, Too bad, GG (codes 0..2)
 NET_EMOTE_GAP_S = 1.5  # a player can send one reaction per this long
 
+# --- Solo: Practice "the Ghost" (docs/plans/20261102-luyen-tap.md) ---
+PRACTICE_SHOT_S = 30.0  # each shot (the break included) gets this long while every ball rests;
+# reaching zero loses the run, exactly like a foul. Half of NET_TURN_S: nobody is waiting on you
+# the way an opponent is, but a solo pressure drill should feel tighter. Self-chosen; playtest.
+PRACTICE_WARN_S = 10.0  # the clock blinks / beeps from here (same feel as NET_TURN_WARN_S)
+
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---
 RACK_ORDER = (1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 6, 13, 14, 7, 15)

@@ -178,6 +178,40 @@ def _solo_lose(h: Harness) -> None:
     h.solo_finish(False)
 
 
+@state(MENU, "Bảng Chơi: chọn Tự do / Luyện tập")
+def _play_mode(h: Harness) -> None:
+    _panel(h, pp.MODE)
+
+
+# ---------------------------------------------------------------------------- solo: practice
+PRACTICE = "Luyện tập (Thử Ma)"
+
+
+@state(PRACTICE, "Luyện tập: ván mới")
+def _practice_new(h: Harness) -> None:
+    h.practice_new()
+
+
+@state(PRACTICE, "Luyện tập: cú phá đang chạy")
+def _practice_break(h: Harness) -> None:
+    h.practice_break()
+
+
+@state(PRACTICE, "Giữa chuỗi (đã qua 5 bi)")
+def _practice_streak(h: Harness) -> None:
+    h.practice_streak(5)
+
+
+@state(PRACTICE, "Thua (chạm nhầm/không chạm bi)")
+def _practice_lost(h: Harness) -> None:
+    h.practice_lost()
+
+
+@state(PRACTICE, "Thắng (chạy hết 15 bi, đếm số)")
+def _practice_won(h: Harness) -> None:
+    h.practice_won()
+
+
 # ---------------------------------------------------------------------------- two players: start
 NET = "Chơi đôi: vào ván"
 

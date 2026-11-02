@@ -31,6 +31,7 @@ class Settings:
     shake: bool = True  # the screen shakes on the break and on very hard hits
     show_fps: bool = False  # frames per second in the top-left corner
     player_name: str = ""  # shown to the other player; empty: the game uses a default word
+    practice_best: int = 0  # best streak ever reached in Practice "the Ghost" (0..15), never drops
 
 
 def settings_path() -> Path:
@@ -59,6 +60,9 @@ def _clean(raw: dict) -> Settings:
         s.player_name = "".join(c for c in raw["player_name"] if c.isprintable()).strip()[
             :NET_NAME_MAX
         ]
+    best = raw.get("practice_best")
+    if isinstance(best, int) and not isinstance(best, bool):
+        s.practice_best = max(0, min(15, best))
     return s
 
 

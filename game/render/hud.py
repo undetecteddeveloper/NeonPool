@@ -497,6 +497,40 @@ def _rule(canvas: pg.Surface, v: View, x0: float, x1: float, y: float) -> None:
     layer.done()
 
 
+def _balls_grid(
+    canvas: pg.Surface,
+    v: View,
+    sprites: BallSprites,
+    pocketed: set[int],
+    pocket_times: dict[int, float],
+    clock: float,
+    x0: float,
+    y: float,
+    w: float,
+) -> float:
+    """The 15 balls, 5 to a row, struck off as they go in (shared: `draw_panel`, Free play, and
+    `draw_practice_panel`, Practice). Returns the y just below the grid."""
+    label(canvas, v, t("hud.balls"), (x0, y))
+    y += 16
+    step_x, step_y = (w - MINI) / 4, MINI + 7
+    for i, number in enumerate(range(1, 16)):  # 5 per row
+        bx, by = x0 + (i % 5) * step_x, y + (i // 5) * step_y
+        gone = number in pocketed
+        age = clock - pocket_times.get(number, -99.0)
+        if gone and 0 <= age < SHRINK_S:  # just went in: it shrinks first, still lit
+            k = 1 - 0.4 * (1 - (1 - age / SHRINK_S) ** 2)
+            spr = _mini_ball(sprites, v, number, False)
+            size = max(2, round(spr.get_width() * k))
+            small = pg.transform.smoothscale(spr, (size, size))
+            c = v.pt((bx + MINI / 2, by + MINI / 2))
+            blit_pm(canvas, small, (c[0] - size / 2, c[1] - size / 2))
+            continue
+        blit_pm(canvas, _mini_ball(sprites, v, number, gone), v.pt((bx, by)))
+        if gone:
+            _strike(canvas, v, (bx + MINI / 2, by + MINI / 2), age - SHRINK_S)
+    return y + 3 * step_y + 22
+
+
 def draw_panel(
     canvas: pg.Surface,
     v: View,
@@ -558,25 +592,89 @@ def draw_panel(
     text(canvas, v, value, 17, colour, (x0, y), bold=True)
     y += 38
 
-    label(canvas, v, t("hud.balls"), (x0, y))
+    y = _balls_grid(canvas, v, sprites, pocketed, pocket_times, clock, x0, y, x1 - x0)
+
+    pulse = 0.5 + 0.5 * math.sin(clock * (9.0 if moving else 3.0))
+    state_col = C.AMBER if moving else C.OK
+    blit_dot(canvas, v, (x0 + 4, y + 4), 3.5, C.lerp(state_col, C.WHITE, 0.3 * pulse), 0.6 + pulse)
+    label(canvas, v, t("hud.moving") if moving else t("hud.ready"), (x0 + 16, y), state_col, 12)
+    y += 20
+    label(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), (x0 + 16, y), size=10.5)
+    spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
+
+    ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
+    pg.draw.line(canvas, C.PANEL_EDGE, v.ipt((x0, ky - 12)), v.ipt((x1, ky - 12)), max(1, v.i(1)))
+    for i, (cap, what) in enumerate(keys):
+        row = ky + i * KEY_STEP
+        keycap(canvas, v, t(cap), (x0, row), 34)
+        text(canvas, v, t(what), 12, C.TEXT_DIM, (x0 + 44, row + 4))
+
+
+def draw_practice_panel(
+    canvas: pg.Surface,
+    v: View,
+    *,
+    streak: int,
+    best: int,
+    target: int | None,
+    pocketed: set[int],
+    muted: bool,
+    moving: bool,
+    sprites: BallSprites,
+    clock: float = 0.0,
+    board: Scoreboard | None = None,
+    pocket_times: dict[int, float] | None = None,
+    spin: float = 0.0,
+    spin_lit: float = 0.0,
+    spin_on: bool = True,
+    shot_frac: float = 1.0,
+    warn: bool = False,
+    blink_on: bool = False,
+    keys: tuple = PANEL_KEYS,
+) -> None:
+    """The side panel for Practice "the Ghost": the logo, the streak this run and the best ever,
+    which ball must be hit next, the clock of the shot, the balls still on the table, what the
+    table is doing, the spin dial, and the keys. Shares its chrome with `draw_panel` (Free play)."""
+    board = board or Scoreboard()
+    pocket_times = pocket_times or {}
+    blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
+    x0, x1 = PANEL_X + 18, PANEL_X + PANEL_W - 18
+    y = PANEL_Y + 30
+
+    glow_text(
+        canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (x0, y), face="display", align="left"
+    )
+    y += 26
+    _rule(canvas, v, x0, x1, y)
+
+    y += 18  # the run's score: the streak now, and the best ever, both arcade counters
+    col2 = x0 + 84
+    label(canvas, v, t("practice.streak"), (x0, y))
+    label(canvas, v, t("practice.best"), (col2, y))
+    y += 14
+    f_streak = board.flash("streak", streak, clock)
+    f_best = board.flash("best", best, clock)
+    rolling_number(canvas, v, board, "streak", streak, 2, (x0, y), 32,
+                   C.lerp(C.CYAN, C.WHITE, f_streak), 0.6 + 0.8 * f_streak, clock)  # fmt: skip
+    rolling_number(canvas, v, board, "best", best, 2, (col2, y), 32,
+                   C.lerp(C.SUN_TOP, C.WHITE, f_best), 0.6 + 0.8 * f_best, clock)  # fmt: skip
+    y += 32 + 20
+
+    label(canvas, v, t("practice.target"), (x0, y))
     y += 16
-    step_x, step_y = (x1 - x0 - MINI) / 4, MINI + 7
-    for i, number in enumerate(range(1, 16)):  # 5 per row
-        bx, by = x0 + (i % 5) * step_x, y + (i // 5) * step_y
-        gone = number in pocketed
-        age = clock - pocket_times.get(number, -99.0)
-        if gone and 0 <= age < SHRINK_S:  # just went in: it shrinks first, still lit
-            k = 1 - 0.4 * (1 - (1 - age / SHRINK_S) ** 2)
-            spr = _mini_ball(sprites, v, number, False)
-            size = max(2, round(spr.get_width() * k))
-            small = pg.transform.smoothscale(spr, (size, size))
-            c = v.pt((bx + MINI / 2, by + MINI / 2))
-            blit_pm(canvas, small, (c[0] - size / 2, c[1] - size / 2))
-            continue
-        blit_pm(canvas, _mini_ball(sprites, v, number, gone), v.pt((bx, by)))
-        if gone:
-            _strike(canvas, v, (bx + MINI / 2, by + MINI / 2), age - SHRINK_S)
-    y += 3 * step_y + 22
+    if target is None:
+        text(canvas, v, t("practice.cleared"), 17, C.OK, (x0, y + 11), bold=True)
+    else:
+        side = MINI * 1.3
+        blit_pm(canvas, _mini_ball(sprites, v, target, False, side), v.pt((x0, y)))
+        text(canvas, v, str(target), 19, C.MAGENTA, (x0 + side + 10, y + side * 0.5), bold=True)
+    y += 30
+
+    bar_rect = pg.Rect(round(x0 - 6), round(y - 4), round(x1 - x0 + 12), 0)
+    turn_bar(canvas, v, bar_rect, shot_frac, warn=warn, blink_on=blink_on)
+    y += 16
+
+    y = _balls_grid(canvas, v, sprites, pocketed, pocket_times, clock, x0, y, x1 - x0)
 
     pulse = 0.5 + 0.5 * math.sin(clock * (9.0 if moving else 3.0))
     state_col = C.AMBER if moving else C.OK
@@ -754,9 +852,16 @@ RESULT_DIM_ALPHA = 185  # how dark the table behind the card goes
 
 
 def draw_result_frame(
-    canvas: pg.Surface, v: View, *, won: bool, reason: str | None, row_names: list[str]
+    canvas: pg.Surface,
+    v: View,
+    *,
+    won: bool,
+    reason: str | None,
+    row_names: list[str],
+    score_label: str | None = None,
 ) -> None:
-    """The card's parts that never move: frame, title, why, the labels and the hairline."""
+    """The card's parts that never move: frame, title, why, the labels and the hairline.
+    `score_label` names the big number (defaults to the usual "Score"; Practice passes "Streak")."""
     c = RESULT_CARD
     mood = C.OK if won else C.ERROR
     blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, mood, 1.0)
@@ -768,7 +873,8 @@ def draw_result_frame(
         for i, line in enumerate(wrap(v, reason, 14, c.w - 60)[:2]):
             text(canvas, v, line, 14, C.TEXT_DIM, (c.centerx, c.y + 98 + i * 19), center=True)
     top = c.y + RESULT_SCORE_Y
-    label(canvas, v, t("result.score"), (c.x + 44, top + RESULT_SCORE_H / 2 - 5), C.TEXT, 14)
+    label(canvas, v, score_label or t("result.score"), (c.x + 44, top + RESULT_SCORE_H / 2 - 5),
+         C.TEXT, 14)  # fmt: skip
     blit_rrect(canvas, v, c.x + 44, top + RESULT_SCORE_H + 18, c.w - 88, 1.5, 0.75, C.PANEL_EDGE, 0)
     for i, name in enumerate(row_names):
         label(canvas, v, name, (c.x + 44, c.y + RESULT_ROWS_Y + i * RESULT_ROW_STEP + 12), size=12)
@@ -826,6 +932,7 @@ def draw_result(
     reason: str | None,
     score: int,
     rows: list[tuple[str, int]],
+    score_label: str | None = None,
     age: float = 1.0,
     fx: ButtonFx | None = None,
     clock: float = 0.0,
@@ -840,7 +947,8 @@ def draw_result(
     if k < 1.0:  # growing in: just the lit frame, getting bigger
         _grow_frame(canvas, v, c, won, k)
         return
-    draw_result_frame(canvas, v, won=won, reason=reason, row_names=[n for n, _ in rows])
+    draw_result_frame(canvas, v, won=won, reason=reason, row_names=[n for n, _ in rows],
+                      score_label=score_label)  # fmt: skip
     draw_result_live(canvas, v, score=score, values=[x for _, x in rows], fx=fx, clock=clock,
                      flashes=flashes)  # fmt: skip
 

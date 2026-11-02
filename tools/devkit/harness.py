@@ -173,6 +173,7 @@ class Harness:
             self.app.go_menu()
         self.drop_fake()
         self.app.play.new_game()
+        self.app.practice.new_game()
         self.app.go_menu()
         self.app.skip_transition()
 
@@ -352,6 +353,40 @@ class Harness:
         self.app.play.new_game()
         self.app.skip_transition()
         self.app.play.fire(Shot(math.pi, 0.1, 0.0))
+
+    # ------------------------------------------------------------------ practice ("the Ghost")
+    def practice_new(self) -> None:
+        self.reset()
+        self.app.go_practice()
+        self.app.skip_transition()
+
+    def practice_break(self) -> None:
+        self.practice_new()
+        self.app.practice.fire(Shot(0.0, 0.95, 0.0))
+
+    def practice_streak(self, n: int) -> None:
+        """A run that has already potted balls 1..n in order; ball n+1 is the next target."""
+        self.practice_new()
+        scene = self.app.practice
+        for b in scene.world.balls:
+            if 1 <= b.number <= n:
+                b.in_play, b.vx, b.vy = False, 0.0, 0.0
+        scene.rules.pocketed = set(range(1, n + 1))
+        scene.rules.shots = n
+
+    def practice_lost(self) -> None:
+        """A shot that touches nothing: any foul ends the run at once here (no ball in hand)."""
+        self.practice_new()
+        self.app.practice.fire(Shot(math.pi, 0.1, 0.0))
+
+    def practice_won(self) -> None:
+        """One shot from clearing the whole rack: only the 15 (and the cue ball) are left."""
+        self.practice_streak(14)
+        scene = self.app.practice
+        scene.world.place(0, 0.6, 0.6)  # same geometry as solo_finish: a straight shot into
+        scene.world.place(15, 0.2, 0.2)  # the corner pocket at (0, 0)
+        self.app.skip_transition()
+        scene.fire(EIGHT_EARLY_SHOT)
 
     # ------------------------------------------------------------------ what the tool shows
     def status(self) -> str:

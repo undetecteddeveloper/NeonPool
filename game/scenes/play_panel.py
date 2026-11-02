@@ -27,9 +27,12 @@ from game.render.view import View
 
 log = logging.getLogger("neonpool")
 
-CHOOSE, SETUP, HOSTING, JOINING, CONNECTING = "choose", "setup", "hosting", "joining", "connecting"
+CHOOSE, MODE, SETUP, HOSTING, JOINING, CONNECTING = (
+    "choose", "mode", "setup", "hosting", "joining", "connecting",
+)  # fmt: skip
 ITEMS = {
     CHOOSE: ("solo", "duo", "back"),
+    MODE: ("free", "practice", "back"),  # Solo, no game in progress: Free play / Practice
     SETUP: ("name", "create", "join", "back"),
     HOSTING: ("cancel",),
     JOINING: ("code", "go", "back"),
@@ -38,7 +41,7 @@ ITEMS = {
 PANEL = pg.Rect(400, 150, 480, 440)  # the column and the centre; the height is the step's
 X, W = PANEL.x + 44, PANEL.w - 88  # the column everything sits in
 # each step is only as tall as what it holds; the frame sits centred and glides between heights
-HEIGHT = {CHOOSE: 344, SETUP: 412, HOSTING: 404, JOINING: 342, CONNECTING: 230}
+HEIGHT = {CHOOSE: 344, MODE: 344, SETUP: 412, HOSTING: 404, JOINING: 342, CONNECTING: 230}
 TOP = {step: PANEL.centery - h // 2 for step, h in HEIGHT.items()}  # where each step's frame starts
 
 
@@ -52,6 +55,7 @@ def _back(step: str) -> pg.Rect:
 
 RECTS = {
     CHOOSE: {"solo": _at(CHOOSE, 92, 76), "duo": _at(CHOOSE, 180, 76), "back": _back(CHOOSE)},
+    MODE: {"free": _at(MODE, 92, 76), "practice": _at(MODE, 180, 76), "back": _back(MODE)},
     SETUP: {
         "name": _at(SETUP, 122, 46),
         "create": _at(SETUP, 192, 50),
@@ -119,7 +123,7 @@ class PlayPanel(FloatPanel):
         self._clock = 0.0
 
     def title(self) -> str:
-        return t("play.title") if self.step == CHOOSE else t("net.title")
+        return t("play.title") if self.step in (CHOOSE, MODE) else t("net.title")
 
     # --- what the rest of the game asks ---
     @property
@@ -205,14 +209,26 @@ class PlayPanel(FloatPanel):
         audio.play_click()
         self.fx.press(item, self._clock)
         if item == "solo":
+            if self.app.game_in_progress():
+                self.dismiss()
+                self.app.resume_solo()
+            else:
+                self.error = None
+                self._goto(MODE)
+        elif item == "free":
             self.dismiss()
             self.app.go_play()
+        elif item == "practice":
+            self.dismiss()
+            self.app.go_practice()
         elif item == "duo":
             self.error = None
             self._goto(SETUP)
         elif item == "back":
             if self.step == CHOOSE:
                 self.close()
+            elif self.step == MODE:
+                self._goto(CHOOSE)
             else:
                 self.error = None
                 self._goto(CHOOSE if self.step == SETUP else SETUP)
@@ -372,6 +388,10 @@ class PlayPanel(FloatPanel):
             button("solo", t("play.resume" if resume else "play.solo"),
                    t("play.resume_sub" if resume else "play.solo_sub"))  # fmt: skip
             button("duo", t("play.duo"), t("play.duo_sub"))
+            button("back", t("play.back"))
+        elif step == MODE:
+            button("free", t("play.free"), t("play.free_sub"))
+            button("practice", t("play.practice"), t("play.practice_sub"))
             button("back", t("play.back"))
         elif step == SETUP:
             hud.label(canvas, pv, t("net.name"), (X, top + 104), C.TEXT_DIM, 13)

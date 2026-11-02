@@ -63,6 +63,18 @@ def test_a_missing_or_broken_file_gives_the_defaults(tmp_path):
     assert s.music == 0.0  # clamped, like the volume
 
 
+def test_the_practice_best_streak_survives_a_restart_and_is_clamped(tmp_path):
+    path = tmp_path / "s.json"
+    settings.save(settings.Settings(practice_best=9), path)
+    assert settings.load(path).practice_best == 9
+    out_of_range = tmp_path / "odd.json"
+    out_of_range.write_text(json.dumps({"practice_best": 99}), encoding="utf-8")
+    assert settings.load(out_of_range).practice_best == 15  # clamped to the most balls on a table
+    bad_type = tmp_path / "bad.json"
+    bad_type.write_text(json.dumps({"practice_best": True}), encoding="utf-8")
+    assert settings.load(bad_type).practice_best == 0  # a bool is not an int here
+
+
 def test_changing_a_setting_applies_it_and_saves_it_at_once(app, tmp_path):
     app.change_settings(lang="en", volume=0.4, music=0.6, show_fps=True)
     assert i18n.get_lang() == "en" and app.audio.volume == pytest.approx(0.4)
