@@ -14,7 +14,13 @@ import math
 
 import pygame as pg
 
-from game.config import NOTICE_S, PRACTICE_READY_S, PRACTICE_SHOT_S, PRACTICE_WARN_S
+from game.config import (
+    NOTICE_S,
+    PRACTICE_DIM_FADE_S,
+    PRACTICE_READY_S,
+    PRACTICE_SHOT_S,
+    PRACTICE_WARN_S,
+)
 from game.i18n import t
 from game.physics import Shot
 from game.render import hud
@@ -22,7 +28,7 @@ from game.render import palette as C
 from game.render.view import View
 from game.rules.eight_ball import LOST, PLAYING, WON
 from game.rules.practice import GhostRun, ShotResult
-from game.scenes.play import PlayScene
+from game.scenes.play import CALLOUT_AT, PlayScene
 from game.tally import Tally
 
 BLINK_HZ = 2.0  # the shot clock blinks this often in its last seconds (same feel as the net game)
@@ -35,6 +41,7 @@ class PracticeScene(PlayScene):
         self._shot_left = PRACTICE_SHOT_S
         self._ready_left = PRACTICE_READY_S  # the wait before a run: nothing may be touched
         self._warned = -1  # the last second of the shot's clock that was beeped
+        self._dim_k = 1.0  # how dark the screen is: all dark for the wait, then it clears
 
     def set_view(self, v: View) -> None:
         """The Free play table already made the sprites and the table picture for this size: share
@@ -53,6 +60,7 @@ class PracticeScene(PlayScene):
         self._shot_left = PRACTICE_SHOT_S
         self._ready_left = PRACTICE_READY_S
         self._warned = -1
+        self._dim_k = 1.0
 
     @property
     def counting_down(self) -> bool:
@@ -72,8 +80,7 @@ class PracticeScene(PlayScene):
         return self._can_aim()
 
     def _hint_words(self) -> str | None:
-        """While the run waits to begin the line under the table says so (then: the aim hint)."""
-        return t("practice.counting") if self.counting_down else super()._hint_words()
+        return None if self.counting_down else super()._hint_words()  # (the wait has its own)
 
     def fire(self, shot: Shot) -> None:
         self._shot_visuals(shot, self.drag.bar_length)
@@ -107,6 +114,11 @@ class PracticeScene(PlayScene):
     # --- time: the wait before the run, then the clock of each shot (it costs a life)
     def update(self, dt: float) -> None:
         super().update(dt)
+        if self._leave_open:
+            return
+        self._dim_k = (
+            1.0 if self.counting_down else max(0.0, self._dim_k - dt / PRACTICE_DIM_FADE_S)
+        )
         if self.counting_down:
             self._count_down_to_start(dt)
             return
@@ -149,6 +161,24 @@ class PracticeScene(PlayScene):
         self.app.audio.play_foul()
 
     # --- drawing ------------------------------------------------------------------------------
+    def _draw_overlays(self, canvas: pg.Surface, v: View, over: bool) -> None:
+        """While the run waits to begin the whole screen is dark, only the counter is lit and the
+        middle of the table says so; when the wait is over the screen clears."""
+        if self._dim_k > 0.0 and not over:
+            hud.dim_screen(canvas, self._dim_k)
+            counting = self.counting_down
+            hud.draw_practice_count(
+                canvas,
+                v,
+                math.ceil(self._ready_left if counting else self._shot_left),
+                counting,
+                False,
+                False,
+            )
+            if counting:
+                hud.glow_text(canvas, v, t("practice.counting"), 30, C.WHITE, C.CYAN, CALLOUT_AT)
+        super()._draw_overlays(canvas, v, over)
+
     def _draw_panel(self, canvas: pg.Surface, v: View) -> None:
         blink_on = int(self._clock * BLINK_HZ * 2) % 2 == 0
         counting = self.counting_down

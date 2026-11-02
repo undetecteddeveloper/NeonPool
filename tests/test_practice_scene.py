@@ -99,13 +99,13 @@ def test_ac16_every_second_of_the_count_sounds_and_the_start_rings(app, monkeypa
     assert len(counts) == config.PRACTICE_READY_S and rings == [1] and warns == []
 
 
-def test_ac16_the_line_under_the_table_says_it_is_counting_down_then_gives_the_aim_hint(app):
+def test_ac16_no_aim_hint_under_the_table_while_counting_then_the_hint(app):
     app.go_practice()
-    assert app.practice._hint_words() == i18n.t("practice.counting")
+    assert app.practice._hint_words() is None
     run(app, config.PRACTICE_READY_S + 0.5)
     assert app.practice._hint_words() == i18n.t("hud.hint")
     app.handle_event(key(pg.K_r))
-    assert app.practice._hint_words() == i18n.t("practice.counting")
+    assert app.practice._hint_words() is None
 
 
 # --- AC17: every new run starts with the wait --------------------------------------------------
@@ -186,7 +186,7 @@ def test_ac20_no_description_of_a_play_button_reaches_the_arrow(lang):
     arrow_right, gap = 24, 16  # the arrow of a lit button sits at x + 18, 6 wide
     room = rect.w - 2 * (arrow_right + gap)  # the line is centred: the same room on both sides
     names = [n for n in i18n.table(lang) if n.startswith("play.") and n.endswith("_sub")]
-    assert len(names) >= 5
+    assert len(names) >= 4
     for name in names:
         assert hud.text_width(V, i18n.t(name), 13) <= room, (lang, name)
 
@@ -251,3 +251,51 @@ def test_ac21_the_clock_running_out_costs_a_life_and_starts_a_fresh_clock(app):
     assert scene.rules.lives == config.PRACTICE_LIVES - 1 and scene.rules.phase == "playing"
     assert scene._shot_left > config.PRACTICE_SHOT_S - 1.0
     assert scene._notice == ("foul", "practice.lost_timeout")
+
+
+# --- AC22: the dark screen of the wait, the lives above the panel (round 5, lần 34) -----------
+def test_ac22_the_whole_screen_is_dark_during_the_wait_with_the_words_in_the_middle(
+    app, monkeypatch
+):
+    dims, words = [], []
+    monkeypatch.setattr(hud, "dim_screen", lambda canvas, k: dims.append(k))
+    monkeypatch.setattr(hud, "glow_text", lambda c, v, s, *a, **kw: words.append(s))
+    app.go_practice()
+    canvas = pg.display.get_surface()
+    app.practice.draw(canvas)
+    assert dims == [1.0] and words[-1] == i18n.t("practice.counting")
+    run(app, config.PRACTICE_READY_S + config.PRACTICE_DIM_FADE_S + 0.5)
+    dims.clear()
+    words.clear()
+    app.practice.draw(canvas)
+    assert dims == [] and i18n.t("practice.counting") not in words  # back to normal
+
+
+def test_ac22_the_dark_clears_gradually_when_the_wait_is_over(app):
+    app.go_practice()
+    run(app, config.PRACTICE_READY_S + config.PRACTICE_DIM_FADE_S / 2)
+    assert 0.0 < app.practice._dim_k < 1.0
+
+
+def test_ac22_the_lives_are_drawn_above_the_side_panel_not_inside_it():
+    canvas = pg.Surface(config.LOGICAL_SIZE)
+    hud.draw_lives(canvas, V, 2)
+    lit = pg.mask.from_threshold(canvas, (0, 0, 0), (1, 1, 1))
+    lit.invert()
+    box = lit.get_bounding_rects()
+    assert box
+    top = min(r.top for r in box)
+    bottom = max(r.bottom for r in box)
+    left, right = min(r.left for r in box), max(r.right for r in box)
+    from game.render.layout import PANEL_W, PANEL_X, PANEL_Y
+
+    assert 0 <= top and bottom < PANEL_Y  # above the panel's frame
+    assert left >= PANEL_X and right <= PANEL_X + PANEL_W  # over its width
+    assert abs((left + right) / 2 - hud.PANEL_CX) <= 2  # centred on it
+
+
+def test_ac22_the_leave_card_has_its_words_in_both_languages():
+    for lang in ("vi", "en"):
+        i18n.set_lang(lang)
+        words = [i18n.t(k) for k in ("leave.title", "leave.line", "leave.stay", "leave.leave")]
+        assert all(w and not w.startswith("leave.") for w in words), lang

@@ -174,7 +174,6 @@ def test_the_result_card_buttons_work_with_the_mouse(app):
     assert app.play._hover == "menu"
     app.handle_event(click_at(menu))
     assert app.scene is app.menu
-    assert not app.game_in_progress()  # a finished game is not "resumed" from the menu
     app.go_play()
     app.handle_event(click_at(new))
     assert app.play.rules.phase == PLAYING

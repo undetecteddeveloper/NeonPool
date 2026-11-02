@@ -60,7 +60,6 @@ class App:
         self.audio.music_volume = self.settings.music
         self.play = PlayScene(self)  # kept alive so Esc -> menu -> Resume continues the game
         self.practice = PracticeScene(self)  # Practice "the Ghost": kept alive the same way
-        self._last_solo = self.play  # which of the two "Resume" means right now
         self.menu = MenuScene(self)
         self.splash = SplashScene(self)  # the real game opens on it (start_splash); tools do not
         self.net: NetPlayScene | None = None  # a two-player game, while there is one
@@ -147,23 +146,20 @@ class App:
         self._switch(self.net)
 
     def go_play(self) -> None:
-        self._last_solo = self.play
+        """A new Free play game (a game left half way is thrown away, never kept)."""
+        self.play.new_game()
         self._switch(self.play)
 
     def go_practice(self) -> None:
-        """A new run (the mode step is only asked when there is none in progress)."""
+        """A new Practice run."""
         self.practice.new_game()
-        self._last_solo = self.practice
         self._switch(self.practice)
-
-    def resume_solo(self) -> None:
-        """ "Resume": back to whichever of Free play / Practice was in progress."""
-        self._switch(self._last_solo)
 
     def open_help(self) -> None:
         """Open the how-to-play card over the current scene (menu or table); Esc closes it."""
-        self._last_solo.drag.cancel()
-        self._last_solo.placing = False
+        if isinstance(self.scene, PlayScene):
+            self.scene.drag.cancel()
+            self.scene.placing = False
         self.help.open()
 
     def go_menu(self) -> None:
@@ -175,10 +171,6 @@ class App:
         if self.scene is not self.menu:
             self.menu.enter()
         self._switch(self.menu)
-
-    def game_in_progress(self) -> bool:
-        scene = self._last_solo
-        return scene.rules.shots > 0 and scene.rules.phase == PLAYING
 
     # --- settings ----------------------------------------------------------------------------
     def change_settings(self, **changes) -> None:

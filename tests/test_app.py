@@ -64,8 +64,7 @@ def test_menu_buttons_work_with_the_mouse(app):
     assert app.scene is app.play
 
 
-def test_esc_returns_to_menu_and_play_resumes_the_same_game(app):
-    app.go_play()
+def shoot_once(app):
     cue = app.play.world.balls[0]
     cx, cy = (round(v) for v in to_px(cue.x, cue.y))
     app.handle_event(click((cx, cy)))
@@ -73,12 +72,58 @@ def test_esc_returns_to_menu_and_play_resumes_the_same_game(app):
         pg.event.Event(pg.MOUSEMOTION, pos=(cx - 150, cy), rel=(0, 0), buttons=(1, 0, 0))
     )
     app.handle_event(pg.event.Event(pg.MOUSEBUTTONUP, pos=(cx - 150, cy), button=1))
-    assert app.play.rules.shots == 1 and app.game_in_progress()
+
+
+def test_esc_in_a_game_asks_first_and_staying_changes_nothing(app):
+    app.go_play()
+    shoot_once(app)
+    assert app.play.rules.shots == 1
     app.handle_event(key(pg.K_ESCAPE))
-    assert app.scene is app.menu
+    assert app.scene is app.play and app.play._leave_open  # the card, not the menu
+    app.handle_event(key(pg.K_ESCAPE))  # Esc again = stay
+    assert app.scene is app.play and not app.play._leave_open and app.play.rules.shots == 1
+
+
+def test_leaving_throws_the_game_away_and_the_menu_has_nothing_to_resume(app):
+    app.go_play()
+    shoot_once(app)
+    app.handle_event(key(pg.K_ESCAPE))
+    app.handle_event(key(pg.K_RIGHT))  # the second button: Leave
+    app.handle_event(key(pg.K_RETURN))
+    assert app.scene is app.menu and app.play.rules.shots == 0
+    assert not hasattr(app, "game_in_progress")
     app.handle_event(key(pg.K_RETURN))  # Play opens the panel ...
-    app.handle_event(key(pg.K_RETURN))  # ... whose first choice is now "Resume"
-    assert app.scene is app.play and app.play.rules.shots == 1
+    app.handle_event(key(pg.K_RETURN))  # ... Solo: always the mode step, never a resume
+    assert app.menu.play_panel.step == "mode"
+
+
+def test_the_leave_card_buttons_work_with_the_mouse_and_the_game_waits_behind_it(app):
+    from game.render import hud
+
+    app.go_play()
+    shoot_once(app)
+    app.handle_event(key(pg.K_ESCAPE))
+    clock, balls = app.play._clock, [(b.x, b.y) for b in app.play.world.balls]
+    for _ in range(30):
+        app.update(1 / 60)
+    assert [(b.x, b.y) for b in app.play.world.balls] == balls  # paused behind the card
+    app.handle_event(click(hud.notice_buttons(2)[0].center))  # Stay
+    assert app.scene is app.play and not app.play._leave_open
+    app.handle_event(key(pg.K_ESCAPE))
+    app.handle_event(click(hud.notice_buttons(2)[1].center))  # Leave
+    assert app.scene is app.menu and app.play.rules.shots == 0
+    assert clock >= 0
+
+
+def test_practice_asks_before_leaving_too_and_a_new_run_follows(app):
+    app.go_practice()
+    app.handle_event(key(pg.K_ESCAPE))
+    assert app.scene is app.practice and app.practice._leave_open
+    app.handle_event(key(pg.K_TAB))
+    app.handle_event(key(pg.K_RETURN))
+    assert app.scene is app.menu
+    app.go_practice()
+    assert app.practice.counting_down  # a fresh run
 
 
 def test_esc_while_dragging_cancels_the_drag_instead_of_leaving(app):

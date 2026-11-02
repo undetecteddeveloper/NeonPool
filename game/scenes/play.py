@@ -48,6 +48,7 @@ from game.rules.eight_ball import LOST, PLAYING, RERACK, WON, EightBall
 from game.tally import Tally
 
 # notices hang under the table, in the free strip below it (on the cloth they hid rolling balls)
+LEAVE_KEYS = ("stay", "leave")  # the buttons of the card that asks before a game is thrown away
 RESULT_FREEZE_S = 1.7  # the card has been up this long: the waves on the table have died out
 BANNER_AT = (OUTER_X + OUTER_W / 2, OUTER_Y + OUTER_H + 12)
 CALLOUT_AT = (FIELD_X + FIELD_W / 2, FIELD_Y + FIELD_H / 2)  # the big arcade word pops here
@@ -106,6 +107,10 @@ class PlayScene:
         self.knob = Knob(0.0)  # the cue as a dial round the cue ball: where the shot goes
         self._hover: str | None = None  # hovered button of the result card
         self.result_fx = hud.ButtonFx()  # how the result card's buttons move
+        self._leave_open = False  # the "leave this game?" card is up (the game waits behind it)
+        self._leave_at = -99.0
+        self._leave_sel = 0  # which of its two buttons is chosen
+        self._leave_fx = hud.ButtonFx()
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
@@ -130,6 +135,7 @@ class PlayScene:
         self.pocket_times.clear()
         self._break_pending = True
         self._tally = None
+        self._leave_open = False
         self._frozen.clear()
 
     def _can_aim(self) -> bool:
@@ -200,6 +206,9 @@ class PlayScene:
 
     # --- events ----------------------------------------------------------------------
     def handle_event(self, e: pg.event.Event) -> None:
+        if self._leave_open:
+            self._leave_event(e)
+            return
         if self.rules.phase != PLAYING:
             self._result_event(e)
             return
@@ -335,11 +344,53 @@ class PlayScene:
             if self.drag.active:
                 self.drag.cancel()
             else:
-                self.app.go_menu()
+                self._open_leave()
+
+    # --- the card that asks before a game in progress is thrown away -------------------------
+    def _open_leave(self) -> None:
+        self.drag.cancel()
+        self.placing = False
+        self._leave_open, self._leave_at, self._leave_sel = True, self._clock, 0
+        self._leave_fx = hud.ButtonFx()
+
+    def _leave_rects(self) -> dict[str, pg.Rect]:
+        return dict(zip(LEAVE_KEYS, hud.notice_buttons(2), strict=True))
+
+    def _leave_event(self, e: pg.event.Event) -> None:
+        rects = self._leave_rects()
+        if e.type == pg.MOUSEMOTION:
+            for i, key in enumerate(LEAVE_KEYS):
+                if rects[key].collidepoint(e.pos) and i != self._leave_sel:
+                    self._leave_sel = i
+                    self.app.audio.play_hover()
+        elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
+            for key, rect in rects.items():
+                if rect.collidepoint(e.pos):
+                    self._leave_do(key)
+                    return
+        elif e.type == pg.KEYDOWN:
+            if e.key == pg.K_ESCAPE:
+                self._leave_open = False  # Esc again: stay
+            elif e.key in (pg.K_LEFT, pg.K_UP, pg.K_RIGHT, pg.K_DOWN, pg.K_TAB):
+                self._leave_sel = 1 - self._leave_sel
+                self.app.audio.play_hover()
+            elif e.key in (pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
+                self._leave_do(LEAVE_KEYS[self._leave_sel])
+
+    def _leave_do(self, key: str) -> None:
+        self.app.audio.play_click()
+        self._leave_fx.press(key, self._clock)
+        self._leave_open = False
+        if key == "leave":  # the game is thrown away: nothing of it is kept
+            self.new_game()
+            self.app.go_menu()
 
     # --- update / draw ------------------------------------------------------------------
     def update(self, dt: float) -> None:
         self._clock += dt
+        if self._leave_open:  # the game waits behind the card
+            self._leave_fx.update(dt, LEAVE_KEYS[self._leave_sel], self._leave_rects(), self._clock)
+            return
         self._notice_left = max(0.0, self._notice_left - dt)
         frame_events = self._step_world(dt)
         if frame_events:
@@ -537,6 +588,19 @@ class PlayScene:
             if self._clock - self._ended_at >= RESULT_FREEZE_S:
                 self._frozen.under(canvas)  # the table as it is now: its waves have died out
             self._draw_result(canvas, v)
+        elif self._leave_open:
+            buttons = (("stay", t("leave.stay"), True), ("leave", t("leave.leave"), False))
+            hud.draw_notice(
+                canvas,
+                v,
+                t("leave.title"),
+                t("leave.line"),
+                self._clock - self._leave_at,
+                self._leave_fx,
+                self._clock,
+                mood=C.ERROR,
+                buttons=buttons,
+            )
 
     def _hint_words(self) -> str | None:
         """The line under the table before the first shot: how to aim."""

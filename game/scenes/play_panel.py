@@ -209,12 +209,8 @@ class PlayPanel(FloatPanel):
         audio.play_click()
         self.fx.press(item, self._clock)
         if item == "solo":
-            if self.app.game_in_progress():
-                self.dismiss()
-                self.app.resume_solo()
-            else:
-                self.error = None
-                self._goto(MODE)
+            self.error = None
+            self._goto(MODE)
         elif item == "free":
             self.dismiss()
             self.app.go_play()
@@ -384,9 +380,7 @@ class PlayPanel(FloatPanel):
             hud.live_button(canvas, pv, rects[key], label, self.fx, key, self._clock, sub=sub)
 
         if step == CHOOSE:
-            resume = self.app.game_in_progress()
-            button("solo", t("play.resume" if resume else "play.solo"),
-                   t("play.resume_sub" if resume else "play.solo_sub"))  # fmt: skip
+            button("solo", t("play.solo"), t("play.solo_sub"))
             button("duo", t("play.duo"), t("play.duo_sub"))
             button("back", t("play.back"))
         elif step == MODE:

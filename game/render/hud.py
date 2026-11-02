@@ -689,7 +689,6 @@ def draw_practice_panel(
     y += 32 + 20
 
     label_centered(canvas, v, t("practice.target"), (left, y))
-    label_centered(canvas, v, t("practice.count"), (right, y))
     y += 14
     side = MINI * 1.3
     if target is None:
@@ -700,13 +699,7 @@ def draw_practice_panel(
                            (left, y + 16))  # fmt: skip
     else:  # an empty slot until the wait is over, like the unlit segments of a digit
         draw_ring(canvas, v, (left, y + 16), side / 2, (*C.PANEL_EDGE, 255), 1.5)
-    if counting_down:
-        colour = C.AMBER
-    elif warn:
-        colour = C.ERROR if blink_on else C.scale(C.ERROR, 0.5)
-    else:
-        colour = C.CYAN
-    seg_number(canvas, v, count, 2, (right - digits_x, y), 32, colour, glow_k=0.8)
+    draw_practice_count(canvas, v, count, counting_down, warn, blink_on)
     y += 32 + 14
 
     y = _balls_grid(canvas, v, sprites, pocketed, pocket_times, clock, x0, y, x1 - x0)
@@ -717,7 +710,7 @@ def draw_practice_panel(
     label(canvas, v, t("hud.moving") if moving else t("hud.ready"), (x0 + 16, y), state_col, 12)
     y += 20
     label(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), (x0 + 16, y), size=10.5)
-    _lives_row(canvas, v, lives, x0 + 16, y + 20)
+    draw_lives(canvas, v, lives)
     spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
 
     ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
@@ -728,21 +721,46 @@ def draw_practice_panel(
         text(canvas, v, t(what), 12, C.TEXT_DIM, (x0 + 44, row + 4))
 
 
+COUNT_Y = PANEL_Y + 140  # the top of the counter cell's label (the second row of cells)
+
+
+def draw_practice_count(canvas: pg.Surface, v: View, count: int, counting_down: bool, warn: bool,
+                        blink_on: bool) -> None:  # fmt: skip
+    """The counter cell of the Practice panel: its word and two digits, amber for the wait before a
+    run, cyan for the seconds of a shot, red and blinking in the last ones. Drawn on its own too:
+    it is the one thing left lit while the screen is dark for the wait."""
+    right = CELL_AXES[1]
+    label_centered(canvas, v, t("practice.count"), (right, COUNT_Y))
+    if counting_down:
+        colour = C.AMBER
+    elif warn:
+        colour = C.ERROR if blink_on else C.scale(C.ERROR, 0.5)
+    else:
+        colour = C.CYAN
+    seg_number(canvas, v, count, 2, (right - digits_width(2, 32) / 2, COUNT_Y + 14), 32, colour,
+               glow_k=0.8)  # fmt: skip
+
+
 LIFE_STEP = 18.0  # distance between the lights of the lives row (logical px)
 
 
-def _lives_row(canvas: pg.Surface, v: View, lives: int, x: float, y: float) -> None:
-    """The word "Lives" and one light for each life of a run (lit while it is left, an empty ring
-    once lost), under the status lines of the panel, starting at `x`."""
+def draw_lives(canvas: pg.Surface, v: View, lives: int) -> None:
+    """The lives of a Practice run above the side panel (the room there is empty in a solo game):
+    the word, then one light for each life (lit while it is left, an empty ring once lost), the
+    whole row centred on the panel."""
     word = t("practice.lives").upper()
-    word_w = text_width(v, word, 10.5, True) + 1.6 * len(word)
-    label(canvas, v, word, (x, y + 1), size=10.5)
+    word_w = text_width(v, word, 11, True) + 1.6 * len(word)
+    lights_w = LIFE_STEP * (PRACTICE_LIVES - 1)
+    gap = 14.0
+    x = PANEL_CX - (word_w - 1.6 + gap + lights_w + 5.0) / 2  # (ink to ink: no tracking, radius)
+    y = PANEL_Y - 34
+    label(canvas, v, word, (x, y))
     for i in range(PRACTICE_LIVES):
-        c = (x + word_w + 12.0 + i * LIFE_STEP, y + 5)
+        c = (x + word_w + gap + i * LIFE_STEP, y + 4)
         if i < lives:
-            blit_dot(canvas, v, c, 4.0, C.MAGENTA, 0.9)
+            blit_dot(canvas, v, c, 5.0, C.MAGENTA, 1.0)
         else:
-            draw_ring(canvas, v, c, 4.0, (*C.PANEL_EDGE, 255), 1.3)
+            draw_ring(canvas, v, c, 5.0, (*C.PANEL_EDGE, 255), 1.5)
 
 
 def keycap(canvas: pg.Surface, v: View, s: str, pos: tuple[float, float], w: float) -> None:
@@ -1264,10 +1282,18 @@ _dim_sheets: dict[tuple[int, int], pg.Surface] = {}
 def dim_rect(canvas: pg.Surface, v: View, rect: pg.Rect, k: float) -> None:
     """Darken `rect` of the canvas as it is darkened behind a card, `k` 0 (not at all) .. 1.
     One dark sheet per size, only its opacity changes: nothing new is made while it fades."""
+    _dim(canvas, v.rect(rect.x, rect.y, rect.w, rect.h), k)
+
+
+def dim_screen(canvas: pg.Surface, k: float) -> None:
+    """Darken the WHOLE canvas (the window, margins included) like `dim_rect`, `k` 0 .. 1."""
+    _dim(canvas, canvas.get_rect(), k)
+
+
+def _dim(canvas: pg.Surface, r: pg.Rect, k: float) -> None:
     k = round(max(0.0, min(1.0, k)) * 16) / 16
     if k <= 0:
         return
-    r = v.rect(rect.x, rect.y, rect.w, rect.h)
     sheet = _dim_sheets.get(r.size)
     if sheet is None:
         if len(_dim_sheets) >= 4:
