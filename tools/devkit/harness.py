@@ -356,9 +356,15 @@ class Harness:
 
     # ------------------------------------------------------------------ practice ("the Ghost")
     def practice_new(self) -> None:
+        """A new run, in the middle of its countdown (nothing may be touched yet)."""
         self.reset()
         self.app.go_practice()
         self.app.skip_transition()
+
+    def practice_ready(self) -> None:
+        """A new run whose countdown is over: the ball to hit is shown, the shot clock runs."""
+        self.practice_new()
+        self.app.practice._ready_left = 0.0
 
     def practice_break(self) -> None:
         self.practice_new()
@@ -366,7 +372,7 @@ class Harness:
 
     def practice_streak(self, n: int) -> None:
         """A run that has already potted balls 1..n in order; ball n+1 is the next target."""
-        self.practice_new()
+        self.practice_ready()
         scene = self.app.practice
         for b in scene.world.balls:
             if 1 <= b.number <= n:

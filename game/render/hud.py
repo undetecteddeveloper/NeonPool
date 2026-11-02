@@ -31,6 +31,7 @@ from game.render.draw import (
     blit_dot,
     blit_pm,
     blit_rrect,
+    draw_ring,
     rrect_sprite,
     veil,
 )
@@ -52,6 +53,12 @@ NET_PANEL_KEYS = (  # the same list for a two-player game: no restart, no how-to
     ("keycap.esc", "net.key_menu"),
 )
 KEY_STEP = 21
+PANEL_X0, PANEL_X1 = PANEL_X + 18, PANEL_X + PANEL_W - 18  # the column the panel's text sits in
+PANEL_CX = PANEL_X + PANEL_W / 2  # the title is centred on this
+CELL_INSET = 34.0  # a score cell's axis lies this far inside that column, on each side: its
+# label and its number are centred on the axis (every label must fit in 2 * CELL_INSET)
+CELL_AXES = (PANEL_X0 + CELL_INSET, PANEL_X1 - CELL_INSET)  # left and right: the two cells of a row
+CELL_WORD_SIZE = 14  # a word standing in a cell (the target cell, once all balls are down)
 KEYS_Y = PANEL_Y + PANEL_H - 18 - len(PANEL_KEYS) * KEY_STEP  # top of the first key row
 SPIN_R = 20.0  # radius of the spin dial: the cue ball seen face-on (logical px)
 SPIN_C = (PANEL_X + PANEL_W - 18 - 26, PANEL_Y + 345)  # its centre: right of the status lines
@@ -164,6 +171,13 @@ def wrap(v: View, s: str, size: float, max_w: float, bold: bool = False) -> list
 def label(canvas: pg.Surface, v: View, s: str, pos, color=C.TEXT_DIM, size: float = 11, **kw):
     """A small spaced-out capital label (arcade style) above a value."""
     return text(canvas, v, s.upper(), size, color, pos, bold=True, track=1.6, **kw)
+
+
+def label_centered(canvas: pg.Surface, v: View, s: str, pos, color=C.TEXT_DIM, size: float = 11):
+    """`label` with the ink centred on `pos` x (`pos` y is still the top of the capitals)."""
+    cap = _cap(max(6, v.i(size)), "bold") / v.s
+    return text(canvas, v, s.upper(), size, color, (pos[0], pos[1] + cap / 2), bold=True,
+                track=1.6, center=True)  # fmt: skip
 
 
 @cache
@@ -395,6 +409,17 @@ def _mini_ball(
     return _mini_cache[key]
 
 
+def _blit_ball_centred(canvas: pg.Surface, v: View, ball: pg.Surface, centre) -> None:
+    """Paste a ball picture so that its DISC is centred on `centre` (logical): a picture scaled up
+    has its disc half a pixel past the middle of its own box (see `_dial_centre`)."""
+    cx, cy = v.pt(centre)
+    blit_pm(
+        canvas,
+        ball,
+        (round(cx - ball.get_width() / 2 - 0.5), round(cy - ball.get_height() / 2 - 0.5)),
+    )
+
+
 def spin_value(y: float) -> float:
     """The spin a press at logical height `y` on the dial means: -1 (low) .. +1 (high)."""
     return max(-1.0, min(1.0, (SPIN_C[1] - y) / (SPIN_R * SPIN_DIAL_TRAVEL)))
@@ -560,25 +585,23 @@ def draw_panel(
     x0, x1 = PANEL_X + 18, PANEL_X + PANEL_W - 18
     y = PANEL_Y + 30
 
-    glow_text(
-        canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (x0, y), face="display", align="left"
-    )
+    glow_text(canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (PANEL_CX, y), face="display")
     y += 26
     _rule(canvas, v, x0, x1, y)
 
-    y += 18  # the score: two arcade counters
-    col2 = x0 + 84
-    label(canvas, v, t("hud.shots"), (x0, y))
-    label(canvas, v, t("hud.fouls"), (col2, y))
+    y += 18  # the score: two arcade counters, one at each edge, centred on their labels
+    left, right = CELL_AXES
+    label_centered(canvas, v, t("hud.shots"), (left, y))
+    label_centered(canvas, v, t("hud.fouls"), (right, y))
     y += 14
     f_shots = board.flash("shots", shots, clock)
     f_fouls = board.flash("fouls", fouls, clock)
     shot_col = C.lerp(C.CYAN, C.WHITE, f_shots)
     foul_col = C.lerp(C.ERROR if fouls else C.CYAN, C.WHITE, f_fouls)
-    rolling_number(canvas, v, board, "shots", shots, 3, (x0, y), 32, shot_col,
-                   0.6 + 0.8 * f_shots, clock)  # fmt: skip
-    rolling_number(canvas, v, board, "fouls", fouls, 2, (col2, y), 32, foul_col,
-                   0.6 + 0.8 * f_fouls, clock)  # fmt: skip
+    rolling_number(canvas, v, board, "shots", shots, 3, (left - digits_width(3, 32) / 2, y), 32,
+                   shot_col, 0.6 + 0.8 * f_shots, clock)  # fmt: skip
+    rolling_number(canvas, v, board, "fouls", fouls, 2, (right - digits_width(2, 32) / 2, y), 32,
+                   foul_col, 0.6 + 0.8 * f_fouls, clock)  # fmt: skip
     y += 32 + 24
 
     label(canvas, v, t("hud.group"), (x0, y))
@@ -617,6 +640,7 @@ def draw_practice_panel(
     streak: int,
     best: int,
     target: int | None,
+    target_shown: bool,
     pocketed: set[int],
     muted: bool,
     moving: bool,
@@ -627,52 +651,61 @@ def draw_practice_panel(
     spin: float = 0.0,
     spin_lit: float = 0.0,
     spin_on: bool = True,
-    shot_frac: float = 1.0,
+    count: int = 0,
+    counting_down: bool = False,
     warn: bool = False,
     blink_on: bool = False,
     keys: tuple = PANEL_KEYS,
 ) -> None:
-    """The side panel for Practice "the Ghost": the logo, the streak this run and the best ever,
-    which ball must be hit next, the clock of the shot, the balls still on the table, what the
-    table is doing, the spin dial, and the keys. Shares its chrome with `draw_panel` (Free play)."""
+    """The side panel for Practice "the Ghost": the logo, two rows of cells (the streak this run
+    and the best ever; the ball to hit and the counter), the balls still on the table, what the
+    table is doing, the spin dial, and the keys. The counter shows the wait before the run
+    (amber, the ball to hit not yet shown) and then the seconds left for the shot (cyan, red and
+    blinking in the last ones). Same chrome as `draw_panel` (Free play)."""
     board = board or Scoreboard()
     pocket_times = pocket_times or {}
     blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
-    x0, x1 = PANEL_X + 18, PANEL_X + PANEL_W - 18
+    x0, x1 = PANEL_X0, PANEL_X1
     y = PANEL_Y + 30
 
-    glow_text(
-        canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (x0, y), face="display", align="left"
-    )
+    glow_text(canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (PANEL_CX, y), face="display")
     y += 26
     _rule(canvas, v, x0, x1, y)
 
-    y += 18  # the run's score: the streak now, and the best ever, both arcade counters
-    col2 = x0 + 84
-    label(canvas, v, t("practice.streak"), (x0, y))
-    label(canvas, v, t("practice.best"), (col2, y))
+    y += 18  # the run's score: the streak now and the best ever, one cell at each edge
+    left, right = CELL_AXES
+    label_centered(canvas, v, t("practice.streak"), (left, y))
+    label_centered(canvas, v, t("practice.best"), (right, y))
     y += 14
     f_streak = board.flash("streak", streak, clock)
     f_best = board.flash("best", best, clock)
-    rolling_number(canvas, v, board, "streak", streak, 2, (x0, y), 32,
+    digits_x = digits_width(2, 32) / 2
+    rolling_number(canvas, v, board, "streak", streak, 2, (left - digits_x, y), 32,
                    C.lerp(C.CYAN, C.WHITE, f_streak), 0.6 + 0.8 * f_streak, clock)  # fmt: skip
-    rolling_number(canvas, v, board, "best", best, 2, (col2, y), 32,
+    rolling_number(canvas, v, board, "best", best, 2, (right - digits_x, y), 32,
                    C.lerp(C.SUN_TOP, C.WHITE, f_best), 0.6 + 0.8 * f_best, clock)  # fmt: skip
     y += 32 + 20
 
-    label(canvas, v, t("practice.target"), (x0, y))
-    y += 16
+    label_centered(canvas, v, t("practice.target"), (left, y))
+    label_centered(canvas, v, t("practice.count"), (right, y))
+    y += 14
+    side = MINI * 1.3
     if target is None:
-        text(canvas, v, t("practice.cleared"), 17, C.OK, (x0, y + 11), bold=True)
+        text(canvas, v, t("practice.cleared"), CELL_WORD_SIZE, C.OK, (left, y + 16), bold=True,
+             center=True)  # fmt: skip
+    elif target_shown:
+        _blit_ball_centred(canvas, v, _mini_ball(sprites, v, target, False, side),
+                           (left, y + 16))  # fmt: skip
+    else:  # an empty slot until the wait is over, like the unlit segments of a digit
+        draw_ring(canvas, v, (left, y + 16), side / 2, (*C.PANEL_EDGE, 255), 1.5)
+    if counting_down:
+        colour = C.AMBER
+    elif warn:
+        colour = C.ERROR if blink_on else C.scale(C.ERROR, 0.5)
     else:
-        side = MINI * 1.3
-        blit_pm(canvas, _mini_ball(sprites, v, target, False, side), v.pt((x0, y)))
-        text(canvas, v, str(target), 19, C.MAGENTA, (x0 + side + 10, y + side * 0.5), bold=True)
-    y += 30
-
-    bar_rect = pg.Rect(round(x0 - 6), round(y - 4), round(x1 - x0 + 12), 0)
-    turn_bar(canvas, v, bar_rect, shot_frac, warn=warn, blink_on=blink_on)
-    y += 16
+        colour = C.CYAN
+    seg_number(canvas, v, count, 2, (right - digits_x, y), 32, colour, glow_k=0.8)
+    y += 32 + 14
 
     y = _balls_grid(canvas, v, sprites, pocketed, pocket_times, clock, x0, y, x1 - x0)
 

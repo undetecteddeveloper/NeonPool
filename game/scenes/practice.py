@@ -1,10 +1,10 @@
 """The table in Practice "the Ghost": pot the 15 balls strictly in order, under a clock.
 
-Over the solo Free play table this changes: a ring of light marks the one ball you must hit next,
-a clock under it counts down each shot (reaching zero loses the run, exactly like a foul), there
-is no ball in hand (any foul ends the run at once, no rerack), and the result card shows the
-streak you reached and the best one ever instead of shots and fouls. See
-docs/plans/20261102-luyen-tap.md.
+Over the solo Free play table this changes: a run begins with a countdown in which nothing may
+be touched (the ball to hit is only shown once it is over), a counter in the side panel counts
+down each shot (reaching zero loses the run, exactly like a foul), there is no ball in hand (any
+foul ends the run at once, no rerack), and the result card shows the streak you reached and the
+best one ever instead of shots and fouls. See docs/plans/20261102-luyen-tap.md.
 """
 
 from __future__ import annotations
@@ -13,12 +13,15 @@ import math
 
 import pygame as pg
 
-from game.config import PRACTICE_SHOT_S, PRACTICE_WARN_S
+from game.config import (
+    PRACTICE_READY_BEEP_S,
+    PRACTICE_READY_S,
+    PRACTICE_SHOT_S,
+    PRACTICE_WARN_S,
+)
 from game.i18n import t
 from game.physics import Shot
-from game.render import draw, hud
-from game.render import palette as C
-from game.render.layout import to_px
+from game.render import hud
 from game.render.view import View
 from game.rules.eight_ball import LOST, PLAYING, WON
 from game.rules.practice import GhostRun, ShotResult
@@ -26,7 +29,6 @@ from game.scenes.play import PlayScene
 from game.tally import Tally
 
 BLINK_HZ = 2.0  # the shot clock blinks this often in its last seconds (same feel as the net game)
-RING_HZ = 5.0  # the ring round the ball to hit pulses this many times a second
 
 
 class PracticeScene(PlayScene):
@@ -34,6 +36,7 @@ class PracticeScene(PlayScene):
         super().__init__(app)
         self.rules = GhostRun()
         self._shot_left = PRACTICE_SHOT_S
+        self._ready_left = PRACTICE_READY_S  # the wait before a run: nothing may be touched
         self._warned = -1  # the last second of the shot's clock that was beeped
 
     def set_view(self, v: View) -> None:
@@ -51,10 +54,24 @@ class PracticeScene(PlayScene):
     def new_game(self) -> None:
         super().new_game()
         self._shot_left = PRACTICE_SHOT_S
+        self._ready_left = PRACTICE_READY_S
         self._warned = -1
 
+    @property
+    def counting_down(self) -> bool:
+        """The run has not begun: nothing may be touched and the ball to hit is not shown."""
+        return self.rules.phase == PLAYING and self._ready_left > 0.0
+
     def _can_aim(self) -> bool:
-        return self.rules.phase == PLAYING and self.world.balls[0].in_play and self.world.at_rest()
+        return (
+            not self.counting_down
+            and self.rules.phase == PLAYING
+            and self.world.balls[0].in_play
+            and self.world.at_rest()
+        )
+
+    def _dial_ok(self) -> bool:
+        return self._can_aim()
 
     def _holding(self) -> bool:
         return False  # no ball in hand here: any foul ends the run outright
@@ -70,6 +87,7 @@ class PracticeScene(PlayScene):
         self._live = True
         self._break_pending = self.rules.shots == 1
         self._shot_left = PRACTICE_SHOT_S
+        self._ready_left = 0.0  # (a shot was taken: the wait is over, whoever fired it)
 
     def _end_shot(self) -> None:
         self._live = False
@@ -87,9 +105,12 @@ class PracticeScene(PlayScene):
         self._tally = Tally({"score": self.rules.streak, "shots": self.rules.shots, "fouls": best})
         self._ticks, self._tinged = dict.fromkeys(self._tally.targets, 0), set()
 
-    # --- time: the clock of the shot (not a foul, but ends the run the same way) -------------
+    # --- time: the wait before the run, then the clock of each shot (it ends the run like a foul)
     def update(self, dt: float) -> None:
         super().update(dt)
+        if self.counting_down:
+            self._count_down_to_start(dt)
+            return
         if not self._can_aim():
             self._warned = -1
             return
@@ -104,33 +125,32 @@ class PracticeScene(PlayScene):
             self._warned = left
             self.app.audio.play_clock_warn(left)
 
+    def _count_down_to_start(self, dt: float) -> None:
+        before = math.ceil(self._ready_left)
+        self._ready_left = max(0.0, self._ready_left - dt)
+        if self._ready_left <= 0.0:
+            self.app.audio.play_notice()  # the table is yours
+            self._warned = -1
+            return
+        left = math.ceil(self._ready_left)
+        if left != before and left <= PRACTICE_READY_BEEP_S:
+            self.app.audio.play_clock_warn(left)
+
     def _timeout(self) -> None:
         self.drag.cancel()
         self._finish_run(self.rules.timeout())
 
     # --- drawing ------------------------------------------------------------------------------
-    def _draw_cues(self, canvas: pg.Surface, v: View, over: bool) -> None:
-        super()._draw_cues(canvas, v, over)
-        if over:
-            return
-        target = self.rules.target
-        if target is None:
-            return
-        ball = self.world.balls[target]
-        if not ball.in_play:
-            return
-        pulse = 0.5 + 0.5 * math.sin(self._clock * RING_HZ)
-        colour = (*C.MAGENTA, round(140 + 90 * pulse))
-        draw.draw_ring(canvas, v, to_px(ball.x, ball.y), draw.RIM + 5, colour)
-
     def _draw_panel(self, canvas: pg.Surface, v: View) -> None:
         blink_on = int(self._clock * BLINK_HZ * 2) % 2 == 0
+        counting = self.counting_down
         hud.draw_practice_panel(
             canvas,
             v,
             streak=self.rules.streak,
             best=self.app.settings.practice_best,
             target=self.rules.target,
+            target_shown=not counting,
             pocketed=self.rules.pocketed,
             muted=self.app.audio.muted,
             moving=not self.world.at_rest(),
@@ -141,8 +161,9 @@ class PracticeScene(PlayScene):
             spin=self.spin,
             spin_lit=self._dial_lit,
             spin_on=self._dial_ok(),
-            shot_frac=self._shot_left / PRACTICE_SHOT_S,
-            warn=self._shot_left <= PRACTICE_WARN_S,
+            count=math.ceil(self._ready_left if counting else self._shot_left),
+            counting_down=counting,
+            warn=not counting and self._shot_left <= PRACTICE_WARN_S,
             blink_on=blink_on,
             keys=self.PANEL_KEYS,
         )

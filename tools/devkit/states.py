@@ -187,9 +187,14 @@ def _play_mode(h: Harness) -> None:
 PRACTICE = "Luyện tập (Thử Ma)"
 
 
-@state(PRACTICE, "Luyện tập: ván mới")
+@state(PRACTICE, "Luyện tập: ván mới (đang đếm ngược 7 s)")
 def _practice_new(h: Harness) -> None:
     h.practice_new()
+
+
+@state(PRACTICE, "Luyện tập: hết đếm ngược, tới lượt đánh")
+def _practice_ready(h: Harness) -> None:
+    h.practice_ready()
 
 
 @state(PRACTICE, "Luyện tập: cú phá đang chạy")

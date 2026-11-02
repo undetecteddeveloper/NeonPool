@@ -151,6 +151,8 @@ class App:
         self._switch(self.play)
 
     def go_practice(self) -> None:
+        """A new run (the mode step is only asked when there is none in progress)."""
+        self.practice.new_game()
         self._last_solo = self.practice
         self._switch(self.practice)
 
@@ -227,7 +229,8 @@ class App:
             "menu" if self.scene is self.menu else None if self.scene is self.splash else "play",
             duck=isinstance(self.scene, PlayScene) and self.scene.rules.phase != PLAYING,
         )
-        if not (self.help.is_open and self.scene is self.play):  # the game waits behind the card
+        if not (self.help.is_open and self.scene in (self.play, self.practice)):
+            # (the game waits behind the card)
             self.scene.update(dt)
 
     def sync_view(self, force: bool = False) -> None:
