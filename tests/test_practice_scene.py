@@ -86,14 +86,24 @@ def test_ac15_no_ring_is_drawn_round_the_ball_to_hit(app):
     assert "_draw_cues" not in vars(PracticeScene)  # the panel shows the ball; the table does not
 
 
-# --- AC16: the last seconds of the wait tick, the start rings ---------------------------------
-def test_ac16_the_last_seconds_of_the_wait_tick_and_the_start_rings(app, monkeypatch):
-    beeps, rings = [], []
-    monkeypatch.setattr(app.audio, "play_clock_warn", lambda left: beeps.append(left))
+# --- AC16: every second of the count has its own sound, the start rings -----------------------
+def test_ac16_every_second_of_the_count_sounds_and_the_start_rings(app, monkeypatch):
+    counts, rings, warns = [], [], []
+    monkeypatch.setattr(app.audio, "play_count", lambda: counts.append(1))
     monkeypatch.setattr(app.audio, "play_notice", lambda: rings.append(1))
+    monkeypatch.setattr(app.audio, "play_clock_warn", lambda left: warns.append(left))
     app.go_practice()
     run(app, config.PRACTICE_READY_S + 0.5)
-    assert beeps == [3, 2, 1] and rings == [1]
+    assert len(counts) == config.PRACTICE_READY_S and rings == [1] and warns == []
+
+
+def test_ac16_the_line_under_the_table_says_it_is_counting_down_then_gives_the_aim_hint(app):
+    app.go_practice()
+    assert app.practice._hint_words() == i18n.t("practice.counting")
+    run(app, config.PRACTICE_READY_S + 0.5)
+    assert app.practice._hint_words() == i18n.t("hud.hint")
+    app.handle_event(key(pg.K_r))
+    assert app.practice._hint_words() == i18n.t("practice.counting")
 
 
 # --- AC17: every new run starts with the wait --------------------------------------------------

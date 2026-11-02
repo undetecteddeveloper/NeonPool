@@ -215,7 +215,6 @@ PRACTICE_SHOT_S = 30.0  # each shot (the break included) gets this long while ev
 # the way an opponent is, but a solo pressure drill should feel tighter. Self-chosen; playtest.
 PRACTICE_WARN_S = 10.0  # the clock blinks / beeps from here (same feel as NET_TURN_WARN_S)
 PRACTICE_READY_S = 7.0  # a new run waits this long before anything may be touched (self-chosen)
-PRACTICE_READY_BEEP_S = 3  # the last seconds of that wait tick, one beep each
 
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---

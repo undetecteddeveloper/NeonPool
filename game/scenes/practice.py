@@ -13,12 +13,7 @@ import math
 
 import pygame as pg
 
-from game.config import (
-    PRACTICE_READY_BEEP_S,
-    PRACTICE_READY_S,
-    PRACTICE_SHOT_S,
-    PRACTICE_WARN_S,
-)
+from game.config import PRACTICE_READY_S, PRACTICE_SHOT_S, PRACTICE_WARN_S
 from game.i18n import t
 from game.physics import Shot
 from game.render import hud
@@ -72,6 +67,10 @@ class PracticeScene(PlayScene):
 
     def _dial_ok(self) -> bool:
         return self._can_aim()
+
+    def _hint_words(self) -> str | None:
+        """While the run waits to begin the line under the table says so (then: the aim hint)."""
+        return t("practice.counting") if self.counting_down else super()._hint_words()
 
     def _holding(self) -> bool:
         return False  # no ball in hand here: any foul ends the run outright
@@ -127,14 +126,15 @@ class PracticeScene(PlayScene):
 
     def _count_down_to_start(self, dt: float) -> None:
         before = math.ceil(self._ready_left)
+        if self._ready_left == PRACTICE_READY_S:
+            self.app.audio.play_count()  # the first second of the count
         self._ready_left = max(0.0, self._ready_left - dt)
         if self._ready_left <= 0.0:
             self.app.audio.play_notice()  # the table is yours
             self._warned = -1
             return
-        left = math.ceil(self._ready_left)
-        if left != before and left <= PRACTICE_READY_BEEP_S:
-            self.app.audio.play_clock_warn(left)
+        if math.ceil(self._ready_left) != before:
+            self.app.audio.play_count()  # one sound for every second of the count
 
     def _timeout(self) -> None:
         self.drag.cancel()

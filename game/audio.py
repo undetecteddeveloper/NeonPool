@@ -164,6 +164,11 @@ def synth_warn() -> np.ndarray:
     return _to_int16(_square(880, 0.07, 0.02), gain=0.55)
 
 
+# --- the count before a Practice run: a soft low arcade beep, lower than the shot clock's ---
+def synth_count() -> np.ndarray:
+    return _to_int16(_square(660, 0.09, 0.03), gain=0.5)
+
+
 def synth_warn_last() -> np.ndarray:
     return _to_int16(_notes([1175, 1175], 0.09, 0.02, tail=0.03), gain=0.6)
 
@@ -352,6 +357,7 @@ class Audio:
                 ("foul", synth_foul),
                 ("notice", synth_notice),
                 ("warn", synth_warn),
+                ("count", synth_count),
                 ("warn_last", synth_warn_last),
                 ("coin_up", synth_coin_up),
                 ("coin_land", synth_coin_land),
@@ -463,6 +469,10 @@ class Audio:
 
     def play_notice(self) -> None:
         self._play("notice", 0.45)
+
+    def play_count(self) -> None:
+        """One second of the count before a Practice run."""
+        self._play("count", 0.5)
 
     def play_clock_warn(self, seconds_left: int) -> None:
         """A second of the last ten of your clock; the last three are quicker and higher."""

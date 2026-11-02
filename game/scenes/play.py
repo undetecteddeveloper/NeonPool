@@ -522,11 +522,12 @@ class PlayScene:
                 word, colour, at = self._callout
                 home = (BANNER_AT[0], BANNER_AT[1] + 20)
                 hud.draw_callout(canvas, v, word, colour, self._clock - at, CALLOUT_AT, home)
-        if self.rules.shots == 0 and self._can_aim() and not self.drag.active:
+        words = self._hint_words()
+        if words is not None:
             hud.text(
                 canvas,
                 v,
-                t("hud.hint"),
+                words,
                 16,
                 C.TEXT_DIM,
                 (OUTER_X + OUTER_W // 2, OUTER_Y + OUTER_H + 30),
@@ -536,6 +537,12 @@ class PlayScene:
             if self._clock - self._ended_at >= RESULT_FREEZE_S:
                 self._frozen.under(canvas)  # the table as it is now: its waves have died out
             self._draw_result(canvas, v)
+
+    def _hint_words(self) -> str | None:
+        """The line under the table before the first shot: how to aim."""
+        if self.rules.shots == 0 and self._can_aim() and not self.drag.active:
+            return t("hud.hint")
+        return None
 
     def _draw_lunge(self, canvas: pg.Surface, v: View) -> None:
         """After a shot the cue darts to where the ball was, then goes out."""
