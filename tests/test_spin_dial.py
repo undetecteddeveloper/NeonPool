@@ -270,3 +270,27 @@ def test_the_ring_and_line_of_the_dial_are_centred_on_the_ball_at_every_size(siz
         hud._mini_ball(sprites, v, 0, False, hud.DIAL_BALL), hud._dial_ball_at(v)
     )
     assert abs(ring[0] - ball[0]) <= 0.1 and abs(ring[1] - ball[1]) <= 0.1, (size, ring, ball)
+
+
+@pytest.mark.parametrize("size", [(1280, 720), (1366, 768), (1536, 864), (1920, 1080), (1333, 750)])
+def test_a_dot_is_centred_where_it_is_asked_to_be_at_every_window_size(size):
+    """`blit_dot` pasted its picture on whole pixels: the dot of the spin dial stood up to 0.6 px
+    to one side of the line it slides on, and which side changed with the window size (the
+    user's HD laptop showed it left)."""
+    from game.render import draw
+
+    pg.init()
+    pg.display.set_mode((400, 300))
+    v = View.for_window(size)
+    worst = 0.0
+    for i in range(24):  # a spread of logical places: every fraction of a pixel turns up
+        centre = (300.0 + i * 0.37, 200.0 + i * 0.61)
+        canvas = pg.Surface(v.canvas, pg.SRCALPHA)
+        draw.blit_dot(canvas, v, centre, 4.2, (255, 255, 255), 0.0)
+        alpha = pg.surfarray.array_alpha(canvas).astype(float)
+        total = alpha.sum()
+        x = (alpha.sum(axis=1) * (np.arange(alpha.shape[0]) + 0.5)).sum() / total
+        y = (alpha.sum(axis=0) * (np.arange(alpha.shape[1]) + 0.5)).sum() / total
+        want = v.pt(centre)
+        worst = max(worst, abs(x - want[0]), abs(y - want[1]))
+    assert worst <= 0.08, (size, worst)

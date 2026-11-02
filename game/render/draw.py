@@ -203,24 +203,40 @@ def blit_rrect_stretch(
     canvas.blit(spr, (px, py + full - end), pg.Rect(0, hs - end, wd, end), special_flags=pm)
 
 
+DOT_PHASES = 8  # a dot is made for this many places in each direction within a pixel
+DOT_SS = 16  # ... on a layer this many times bigger than the screen, then shrunk
+
+
 def blit_dot(
     canvas: pg.Surface, v: View, centre: tuple[float, float], r: float, color, glow: float = 0.0
 ) -> None:
-    """A small lit disc (page dots, switches) with its halo, centred on a logical point."""
+    """A small lit disc (page dots, switches) with its halo, centred on a logical point.
+
+    The picture is pasted on whole pixels, which put the dot up to half a pixel away from where
+    it was asked to be (a dot on a thin line leaned to one side, and the side changed with the
+    window size). So the disc is drawn in the picture where the fraction of the pixel says, one
+    picture for each of `DOT_PHASES` places in each direction: its middle is then within
+    1/(2 * DOT_PHASES) of a pixel of `centre` at every window size."""
     glow = round(glow * GLOW_STEPS) / GLOW_STEPS
-    key = (round(v.s, 4), r, color, glow)
+    cx, cy = v.pt(centre)
+    pad = _halo_px(glow) + 1
+    size = v.i(2 * (r + pad))
+    left, top = round(cx - size / 2), round(cy - size / 2)  # where the picture is pasted
+    fx = round((cx - (left + size / 2)) * DOT_PHASES)  # the disc's place in it: whole phases
+    fy = round((cy - (top + size / 2)) * DOT_PHASES)
+    key = (round(v.s, 4), r, color, glow, fx, fy)
     if key not in _dot_cache:
-        _trim(_dot_cache, 96)
-        pad = _halo_px(glow) + 1
-        bv = v.framed().scaled(v.ss())
-        size = 2 * (r + pad)
-        disc = pg.Surface((bv.i(size), bv.i(size)), pg.SRCALPHA)
-        pg.draw.circle(disc, color, (disc.get_width() / 2, disc.get_height() / 2), bv.n(r))
+        _trim(_dot_cache, 320)
+        bv = v.framed().scaled(DOT_SS)
+        big = size * DOT_SS
+        disc = pg.Surface((big, big), pg.SRCALPHA)
+        mid = (big / 2 + fx * DOT_SS / DOT_PHASES, big / 2 + fy * DOT_SS / DOT_PHASES)
+        pg.draw.circle(disc, color, (round(mid[0]), round(mid[1])), bv.n(r))
         disc = disc.premul_alpha()
         out = lit(disc, bv.n(pad) * 0.6, 1.4 * glow * C.LOOK.glow) if glow > 0 else disc
-        _dot_cache[key] = (pg.transform.smoothscale(out, (v.i(size), v.i(size))), pad)
-    spr, pad = _dot_cache[key]
-    blit_pm(canvas, spr, v.pt((centre[0] - r - pad, centre[1] - r - pad)))
+        _dot_cache[key] = (pg.transform.smoothscale(out, (size, size)), pad)
+    spr, _ = _dot_cache[key]
+    canvas.blit(spr, (left, top), special_flags=pg.BLEND_PREMULTIPLIED)
 
 
 # --- balls -----------------------------------------------------------------------------
