@@ -448,8 +448,11 @@ def _dial_centre(sprites: BallSprites, v: View) -> tuple[float, float]:
         if len(_dial_centres) >= 32:
             _dial_centres.clear()
         ball = _mini_ball(sprites, v, 0, False, DIAL_BALL)
-        alpha = pg.surfarray.array_alpha(ball).astype(np.float64)  # [x][y]; the edge's partial
-        total = alpha.sum()  # cover counts, so the middle is true to a tenth of a pixel
+        # what the eye takes for the ball is its WHITE part: weigh each pixel by how white it is
+        # (the dimmest colour channel; the dark rim and the edge count for nothing), not by its
+        # opacity, whose middle sits a fraction of a pixel away from the white one
+        alpha = pg.surfarray.array3d(ball).astype(np.float64).min(axis=2)  # [x][y]
+        total = alpha.sum()
         mx = (alpha.sum(axis=1) * (np.arange(alpha.shape[0]) + 0.5)).sum() / total
         my = (alpha.sum(axis=0) * (np.arange(alpha.shape[1]) + 0.5)).sum() / total
         bx, by = _dial_ball_at(v)
@@ -457,33 +460,72 @@ def _dial_centre(sprites: BallSprites, v: View) -> tuple[float, float]:
     return _dial_centres[key]
 
 
+DIAL_SS = 6  # the dial face is drawn on a layer this many times bigger, then shrunk
+
+
 def _dial_face(
     canvas: pg.Surface, v: View, lit: float, enabled: bool, centre: tuple[float, float] = SPIN_C
 ):
     """The dial's ring and the dark line and ticks the dot slides on, made once per size and
     brightness (eighths) and then only pasted: (premultiplied surface, top-left) or None.
-    `centre` (logical) is a function of the size, so it needs no place in the key."""
+    `centre` (logical) is a function of the size, so it needs no place in the key.
+
+    `pg.draw` puts a circle or line on whole pixels of the big layer, which pulls the whole face
+    up to a third of a pixel toward the top left; the face is therefore measured once and drawn
+    again, moved by exactly what it was off by, so that its middle is the ball's middle."""
     key = (round(v.s, 4), v.pt((0, 0)), canvas.get_size(), round(lit * 8), enabled)
     if key not in _dial_cache:
         if len(_dial_cache) >= 32:
             _dial_cache.clear()
-        cx, cy = centre
-        reach = SPIN_R * SPIN_DIAL_TRAVEL
-        pad = SPIN_R + 8
-        layer = Aa(canvas, v, v.rect(cx - pad, cy - pad, 2 * pad, 2 * pad), 3)
-        ring = C.lerp(C.PANEL_EDGE, C.CYAN, 0.35 + 0.65 * key[3] / 8) if enabled else C.PANEL_EDGE
-        pg.draw.circle(
-            layer.surf, ring, layer.pt((cx, cy)), layer.n(SPIN_R + 3), max(1, round(layer.n(1.3)))
-        )
-        track = (*C.PANEL_HOT, 255)  # drawn dark on the lit ball
-        width = max(1, round(layer.n(1.0)))
-        segments = [((cx, cy - reach), (cx, cy + reach))]
-        for y, half in ((-reach, 4.0), (0.0, 3.0), (reach, 4.0)):  # ticks: high / middle / low
-            segments.append(((cx - half, cy + y), (cx + half, cy + y)))
-        for a, b in segments:
-            pg.draw.line(layer.surf, track, layer.pt(a), layer.pt(b), width)
-        _dial_cache[key] = layer.result()
+        want = v.pt(centre)
+        res = _draw_dial_face(canvas, v, lit, enabled, centre)
+        if res is not None:
+            at = _alpha_centre(*res)
+            err = (at[0] - want[0], at[1] - want[1])
+            # whole steps of the big layer: moving by anything finer changes nothing
+            step = (-round(err[0] * DIAL_SS), -round(err[1] * DIAL_SS))
+            if step != (0, 0):
+                moved = (
+                    centre[0] + step[0] / (DIAL_SS * v.s),
+                    centre[1] + step[1] / (DIAL_SS * v.s),
+                )
+                again = _draw_dial_face(canvas, v, lit, enabled, moved)
+                if again is not None:
+                    at2 = _alpha_centre(*again)
+                    if max(abs(at2[0] - want[0]), abs(at2[1] - want[1])) < max(map(abs, err)):
+                        res = again
+        _dial_cache[key] = res
     return _dial_cache[key]
+
+
+def _alpha_centre(surf: pg.Surface, top_left: tuple[int, int]) -> tuple[float, float]:
+    """Where the weight of a picture's opacity lies, in canvas pixels."""
+    alpha = pg.surfarray.array_alpha(surf).astype(np.float64)
+    total = alpha.sum()
+    x = (alpha.sum(axis=1) * (np.arange(alpha.shape[0]) + 0.5)).sum() / total
+    y = (alpha.sum(axis=0) * (np.arange(alpha.shape[1]) + 0.5)).sum() / total
+    return top_left[0] + x, top_left[1] + y
+
+
+def _draw_dial_face(canvas, v, lit, enabled, centre):
+    cx, cy = centre
+    reach = SPIN_R * SPIN_DIAL_TRAVEL
+    pad = SPIN_R + 8
+    layer = Aa(canvas, v, v.rect(cx - pad, cy - pad, 2 * pad, 2 * pad), DIAL_SS)
+    ring = (
+        C.lerp(C.PANEL_EDGE, C.CYAN, 0.35 + 0.65 * round(lit * 8) / 8) if enabled else C.PANEL_EDGE
+    )
+    pg.draw.circle(
+        layer.surf, ring, layer.pt((cx, cy)), layer.n(SPIN_R + 3), max(1, round(layer.n(1.3)))
+    )
+    track = (*C.PANEL_HOT, 255)  # drawn dark on the lit ball
+    width = max(1, round(layer.n(1.0)))
+    segments = [((cx, cy - reach), (cx, cy + reach))]
+    for y, half in ((-reach, 4.0), (0.0, 3.0), (reach, 4.0)):  # ticks: high / middle / low
+        segments.append(((cx - half, cy + y), (cx + half, cy + y)))
+    for a, b in segments:
+        pg.draw.line(layer.surf, track, layer.pt(a), layer.pt(b), width)
+    return layer.result()
 
 
 def spin_dial(

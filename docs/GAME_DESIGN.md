@@ -86,6 +86,9 @@ Người dùng đã chọn (bằng câu hỏi, rồi chọn mức sáng bằng �
 Riêng tư: nối thẳng làm bạn kia thấy địa chỉ mạng của mình; chấp nhận giữa bạn bè nhưng từ chặng 2 giao diện KHÔNG hiện địa chỉ mạng (chỉ mã phòng). Người cùng wifi mà không có mã thì không vào được cửa nối thẳng.
 Cửa sổ Windows Firewall hỏi lần đầu người tạo phòng mở cổng: cho phép (mạng riêng) thì cùng wifi nối thẳng được; không cho phép thì vẫn chơi được qua máy trung chuyển.
 
+## Phản hồi lần 35 (2026-11-04, người dùng gửi ảnh: hình tròn của nút chỉnh xoáy "lệch nhẹ sang trái" khi ở mặc định)
+- Tái hiện và đo: vòng ngoài và vạch của nút xoáy (`hud._dial_face`) bị `pg.draw` kéo lệch tới 1/3 điểm ảnh về phía trên bên trái so với hình bi trắng (đo tâm: lệch 0,13–0,28 điểm ảnh ở 1280×720, 1536×864, 1600×900…; lần 19 chỉ đo ≤ 0,25 ở 5 cỡ). Nay lớp vẽ vòng dựng ở độ phân giải gấp 6 (trước: 3), đo tâm rồi vẽ lại dịch đúng phần lệch: vòng/vạch lệch ≤ 0,04 điểm ảnh so với bi ở mọi cỡ đã thử (7 cỡ trong test, 12 cỡ khi đo tay); mỗi lần dựng ≤ 2,7 ms ở 2560×1440 (có đệm). Tâm bi, chữ XOÁY và chấm vẫn dùng chung một tâm như cũ. Ảnh trước/sau: `tools/_out/20261104-dial/xoay_truoc_sau.png`. Không đổi gì người chơi làm.
+
 ## Phản hồi lần 34 (2026-11-04, người dùng chơi thử vòng bốn và đề nghị thêm ba chỉnh sửa nhỏ; chọn qua câu hỏi, ảnh `tools/_out/20261104-luyen-tap-3/`)
 - THANH MẠNG ra ngoài bảng bên: dòng "Mạng" + ba chấm hồng nằm PHÍA TRÊN khung bảng bên, căn giữa theo bảng (chỗ trống ở ván chơi một mình), thay cho vị trí góc trái dưới của lần 33. Người dùng chọn "trên bảng bên" (không phải trên bàn).
 - ĐẾM NGƯỢC TỐI MÀN HÌNH: 7 s đầu mỗi ván Luyện tập cả màn hình (cả cửa sổ, kể cả bảng bên và mép) bị phủ tối như sau một thẻ kết quả, CHỈ ô số ĐẾM còn sáng, dòng "Đang đếm ngược" / "Counting down" cỡ chữ lớn, có quầng, nằm GIỮA bàn (hết đứng dưới bàn như lần 32; dòng hướng dẫn ngắm dưới bàn chỉ hiện sau đếm). Hết đếm màn sáng lại trong 0,4 s (`PRACTICE_DIM_FADE_S`), không bật tắt gắt.

@@ -246,3 +246,27 @@ def test_the_spin_is_kept_through_a_whole_shot_and_into_the_next(app):
     assert not play._live and play.spin == -0.5
     play.handle_event(wheel(1))  # settable again once the balls stop
     assert play.spin == -0.25
+
+
+@pytest.mark.parametrize(
+    "size",
+    [(1280, 720), (1050, 590), (1366, 768), (1440, 900), (1536, 864), (1920, 1080), (2560, 1440)],
+)
+def test_the_ring_and_line_of_the_dial_are_centred_on_the_ball_at_every_size(size):
+    """The ring was drawn up to a third of a pixel toward the top left of the ball's middle
+    (`pg.draw` works on whole pixels of the big layer): the user saw the ring lean left."""
+    from game.render import draw
+
+    pg.init()
+    pg.display.set_mode((400, 300))
+    v = View.for_window(size)
+    sprites = draw.BallSprites(v)
+    hud._dial_cache.clear()
+    hud._dial_centres.clear()
+    centre = hud._dial_centre(sprites, v)
+    face, top = hud._dial_face(pg.Surface(v.canvas), v, 0.0, True, centre)
+    ring = hud._alpha_centre(face, top)
+    ball = hud._alpha_centre(
+        hud._mini_ball(sprites, v, 0, False, hud.DIAL_BALL), hud._dial_ball_at(v)
+    )
+    assert abs(ring[0] - ball[0]) <= 0.1 and abs(ring[1] - ball[1]) <= 0.1, (size, ring, ball)
