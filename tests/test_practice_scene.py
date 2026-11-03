@@ -253,6 +253,26 @@ def test_ac21_the_clock_running_out_costs_a_life_and_starts_a_fresh_clock(app):
     assert scene._notice == ("foul", "practice.lost_timeout")
 
 
+# --- AC24 (lần 37): a blocked target is swapped, and the table says so for a few seconds -------
+def test_ac24_a_target_blocked_by_a_moved_ball_is_swapped_with_a_hint_line(app):
+    scene = start(app)
+    scene.rules.pocketed = set(range(1, 16)) - {6, 7, 8}
+    scene.rules.target = 6
+    balls = scene.world.balls
+    balls[0].x, balls[0].y, balls[0].in_play = 0.3, 0.3, True  # the cue ball
+    balls[8].x, balls[8].y, balls[8].in_play = 0.6, 0.3, True  # sits between the cue and the 6
+    balls[6].x, balls[6].y, balls[6].in_play = 0.9, 0.3, True  # directly behind the 8
+    balls[7].x, balls[7].y, balls[7].in_play = 0.3, 0.9, True  # a clear line
+    scene.rules.on_shot()
+    scene._live = True
+    scene._end_shot()  # a miss: the 6 stayed down, now blocked by the 8
+    assert scene.rules.target_swapped and scene.rules.target in (7, 8)
+    assert scene._swap_left == config.NOTICE_S
+    assert scene._hint_words() == i18n.t("practice.target_swapped")
+    run(app, config.NOTICE_S + 0.5)
+    assert scene._swap_left == 0.0 and scene._hint_words() != i18n.t("practice.target_swapped")
+
+
 # --- AC22: the dark screen of the wait, the lives above the panel (round 5, lần 34) -----------
 def test_ac22_the_whole_screen_is_dark_during_the_wait_with_the_words_in_the_middle(
     app, monkeypatch

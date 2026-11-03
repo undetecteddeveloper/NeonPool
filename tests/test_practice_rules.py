@@ -4,7 +4,7 @@ GAME_DESIGN lần 33). Events are scripted."""
 import random
 
 from game.config import PRACTICE_LIVES
-from game.physics.world import BallHitBall, BallPocketed
+from game.physics.world import CUE, Ball, BallHitBall, BallPocketed
 from game.rules.eight_ball import FOUL_SCRATCH, LOST, PLAYING, WON
 from game.rules.practice import LOST_TIMEOUT, MISS, GhostRun
 
@@ -180,3 +180,85 @@ def test_ac6_finish_shot_without_on_shot_does_nothing():
     res = run.finish_shot()
     assert not res.hit and res.lost_life is None and res.outcome is None
     assert run.lives == PRACTICE_LIVES
+
+
+# --- AC24 (lần 37): the target is only ever a ball the cue ball can draw a straight line to ----
+# Table is 2.54 x 1.27 m (config.TABLE_L / TABLE_W); every position below stays well inside it.
+CUE_XY = (0.3, 0.3)
+NEAR_XY = (0.6, 0.3)  # straight ahead of the cue: open, and blocks whatever sits behind it
+FAR_XY = (0.9, 0.3)  # directly behind NEAR_XY, same line: blocked
+SIDE_XY = (0.3, 0.9)  # a different line, nothing in the way: open
+
+
+def test_ac24_the_next_target_after_a_pot_skips_a_ball_the_cue_cannot_see():
+    cue = Ball(CUE, *CUE_XY, in_play=True)
+    b5 = Ball(5, 1.5, 1.0, in_play=False)  # just potted, off the blocking line
+    b8 = Ball(8, *NEAR_XY, in_play=True)  # sits between the cue and the 6
+    b6 = Ball(6, *FAR_XY, in_play=True)  # directly behind the 8: not reachable
+    b7 = Ball(7, *SIDE_XY, in_play=True)  # a clear line: reachable
+    balls = [cue, b5, b6, b7, b8]
+    seen = set()
+    for seed in range(40):
+        run = GhostRun(random.Random(seed))
+        run.pocketed = set(range(1, 16)) - {5, 6, 7, 8}
+        run.target = 5
+        run.on_shot()
+        run.on_events([down(5)])
+        run.finish_shot(balls)
+        seen.add(run.target)
+    assert 6 not in seen and seen == {7, 8}  # the 6 is never picked: the 8 blocks it
+
+
+def test_ac24_a_miss_that_leaves_the_target_blocked_swaps_it_for_an_open_one():
+    cue = Ball(CUE, *CUE_XY, in_play=True)
+    b8 = Ball(8, *NEAR_XY, in_play=True)  # ended up between the cue and the 6 after the miss
+    b6 = Ball(6, *FAR_XY, in_play=True)  # the target: now blocked by the 8
+    b7 = Ball(7, *SIDE_XY, in_play=True)  # open
+    balls = [cue, b6, b7, b8]
+    run = GhostRun(random.Random(0))
+    run.pocketed = set(range(1, 16)) - {6, 7, 8}
+    run.target = 6
+    run.on_shot()
+    res = run.finish_shot(balls)  # missed: the 6 stayed on the table, now blocked
+    assert res.lost_life == MISS and run.lives == PRACTICE_LIVES - 1
+    assert run.target_swapped and run.target in {7, 8}  # swapped away from the blocked 6
+
+
+def test_ac24_a_miss_that_leaves_the_target_open_does_not_swap_it():
+    cue = Ball(CUE, *CUE_XY, in_play=True)
+    b7 = Ball(7, *SIDE_XY, in_play=True)
+    balls = [cue, b7]
+    run = GhostRun(random.Random(0))
+    run.pocketed = set(range(1, 16)) - {7}
+    run.target = 7
+    run.target_swapped = True  # a swap from an earlier shot must not leak into this one
+    run.on_shot()
+    run.finish_shot(balls)  # a miss, but the 7 is still open: no swap needed
+    assert not run.target_swapped and run.target == 7
+
+
+def test_ac24_with_no_cue_ball_in_the_list_the_pick_still_falls_back_to_any_ball():
+    b6 = Ball(6, *FAR_XY, in_play=True)
+    b9 = Ball(9, *SIDE_XY, in_play=True)
+    balls = [b6, b9]  # no cue ball: every "open" check fails, nothing to fall back from
+    run = GhostRun(random.Random(0))
+    run.pocketed = set(range(1, 16)) - {6, 9}
+    run.target = 6
+    run.on_shot()
+    res = run.finish_shot(balls)
+    assert res.lost_life == MISS
+    assert run.target in {6, 9}  # still a valid target, not None and not crashed
+
+
+def test_ac24_a_timeout_also_swaps_a_target_the_balls_now_block():
+    cue = Ball(CUE, *CUE_XY, in_play=True)
+    b8 = Ball(8, *NEAR_XY, in_play=True)
+    b6 = Ball(6, *FAR_XY, in_play=True)
+    b7 = Ball(7, *SIDE_XY, in_play=True)
+    balls = [cue, b6, b7, b8]
+    run = GhostRun(random.Random(0))
+    run.pocketed = set(range(1, 16)) - {6, 7, 8}
+    run.target = 6
+    res = run.timeout(balls)
+    assert res.lost_life == LOST_TIMEOUT
+    assert run.target_swapped and run.target in {7, 8}

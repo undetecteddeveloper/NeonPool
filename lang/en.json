@@ -124,6 +124,7 @@
   "practice.count": "Count",
   "practice.cleared": "CLEARED!",
   "practice.lost_timeout": "Out of time for this shot",
+  "practice.target_swapped": "Target ball swapped: the old one was blocked",
   "net.title": "Two players",
   "net.name": "Your name",
   "net.name_hint": "Type your name",

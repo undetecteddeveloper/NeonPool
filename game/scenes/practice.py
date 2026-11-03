@@ -42,6 +42,7 @@ class PracticeScene(PlayScene):
         self._ready_left = PRACTICE_READY_S  # the wait before a run: nothing may be touched
         self._warned = -1  # the last second of the shot's clock that was beeped
         self._dim_k = 1.0  # how dark the screen is: all dark for the wait, then it clears
+        self._swap_left = 0.0  # how long the "target swapped" hint under the table still shows
 
     def set_view(self, v: View) -> None:
         """The Free play table already made the sprites and the table picture for this size: share
@@ -61,6 +62,7 @@ class PracticeScene(PlayScene):
         self._ready_left = PRACTICE_READY_S
         self._warned = -1
         self._dim_k = 1.0
+        self._swap_left = 0.0
 
     @property
     def counting_down(self) -> bool:
@@ -80,7 +82,11 @@ class PracticeScene(PlayScene):
         return self._can_aim()
 
     def _hint_words(self) -> str | None:
-        return None if self.counting_down else super()._hint_words()  # (the wait has its own)
+        if self.counting_down:
+            return None  # (the wait has its own)
+        if self._swap_left > 0.0:
+            return t("practice.target_swapped")
+        return super()._hint_words()
 
     def fire(self, shot: Shot) -> None:
         self._shot_visuals(shot, self.drag.bar_length)
@@ -95,11 +101,13 @@ class PracticeScene(PlayScene):
         self._live = False
         if not self.world.balls[0].in_play:
             self.world.respawn_cue()  # back on the table, ready to be placed
-        res = self.rules.finish_shot()
+        res = self.rules.finish_shot(self.world.balls)
         if res.outcome in (WON, LOST):
             self._finish_run(res)
         elif res.lost_life:
             self._notify("foul", res.lost_life)
+        if self.rules.target_swapped:
+            self._swap_left = NOTICE_S
 
     def _finish_run(self, res: ShotResult) -> None:
         self._ended_at = self._clock
@@ -116,6 +124,7 @@ class PracticeScene(PlayScene):
         super().update(dt)
         if self._leave_open:
             return
+        self._swap_left = max(0.0, self._swap_left - dt)
         self._dim_k = (
             1.0 if self.counting_down else max(0.0, self._dim_k - dt / PRACTICE_DIM_FADE_S)
         )
@@ -152,13 +161,15 @@ class PracticeScene(PlayScene):
         """The clock of the shot ran out: a life lost, a fresh clock."""
         self.drag.cancel()
         self._shot_left = PRACTICE_SHOT_S
-        res = self.rules.timeout()
+        res = self.rules.timeout(self.world.balls)
         if res.outcome in (WON, LOST):
             self._finish_run(res)
             return
         self._notice, self._notice_left = ("foul", res.lost_life), NOTICE_S
         self._callout = (t("callout.timeout"), C.AMBER, self._clock)
         self.app.audio.play_foul()
+        if self.rules.target_swapped:
+            self._swap_left = NOTICE_S
 
     # --- drawing ------------------------------------------------------------------------------
     def _draw_overlays(self, canvas: pg.Surface, v: View, over: bool) -> None:
