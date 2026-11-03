@@ -10,6 +10,11 @@ a pocket (it is then in hand), or the shot's clock running out each cost one of 
 none left the run is lost; with no ball left on the table it is won. A target that survives a miss
 is kept for the next shot unless the balls that moved now block it, in which case it is swapped for
 an open one at no extra cost.
+
+The opening break is the exception (docs/GAME_DESIGN.md round 38): nothing is called while the
+balls still sit racked, so there is nothing to miss — the first real target is picked only once the
+break has scattered them. A scratch on the break still costs a life as normal; stalling past the
+shot's clock before it is even fired also does, but leaves the table untouched and still waiting.
 """
 
 from __future__ import annotations
@@ -50,7 +55,7 @@ class GhostRun:
         self.cue_in_hand = False  # after the cue ball went into a pocket
         self.last: ShotResult | None = None
         self.target_swapped = False  # the last target change was a swap away from a blocked ball
-        self.target: int | None = self._pick()
+        self.target: int | None = None  # nothing is called while the break still sits racked
         self._begin_record()
 
     # --- state the screen shows ------------------------------------------------------------
@@ -113,6 +118,8 @@ class GhostRun:
         if self._cue_down:
             lost = FOUL_SCRATCH
             self.cue_in_hand = True
+        elif self.target is None:
+            pass  # the opening break: nothing was called, so there is nothing to miss
         elif self.target in down:
             hit = True
             self.streak += 1
@@ -123,14 +130,24 @@ class GhostRun:
         )
 
     def timeout(self, balls: Sequence[Ball] | None = None) -> ShotResult:
-        """The shot's clock reached zero with no shot taken: a life is lost, like a miss."""
-        return self._settle(ShotResult(lost_life=LOST_TIMEOUT), target_gone=False, balls=balls)
+        """The shot's clock reached zero with no shot taken: a life is lost, like a miss. Before
+        the break is even fired this still costs a life (stalling is still on the player), but the
+        table has not moved, so no target is picked yet."""
+        return self._settle(
+            ShotResult(lost_life=LOST_TIMEOUT), target_gone=False, balls=balls, shot_fired=False
+        )
 
     def _settle(
-        self, res: ShotResult, *, target_gone: bool, balls: Sequence[Ball] | None = None
+        self,
+        res: ShotResult,
+        *,
+        target_gone: bool,
+        balls: Sequence[Ball] | None = None,
+        shot_fired: bool = True,
     ) -> ShotResult:
-        """Take the life, decide the run's end, pick the next target (swap it for an open one if
-        the balls that just moved now block it)."""
+        """Take the life, decide the run's end, pick the next target (the first one once the break
+        has actually been fired, or swap it for an open one if the balls that just moved now block
+        it)."""
         if res.lost_life:
             self.lives -= 1
         outcome = None
@@ -143,7 +160,7 @@ class GhostRun:
             self.phase = outcome
             self.cue_in_hand = False
             self.target = None if outcome == WON else self.target
-        elif target_gone:
+        elif target_gone or (self.target is None and shot_fired):
             self.target = self._pick(balls)
         elif balls is not None and self.target is not None and not self._open(balls, self.target):
             self.target = self._pick(balls)

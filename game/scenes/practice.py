@@ -84,6 +84,8 @@ class PracticeScene(PlayScene):
     def _hint_words(self) -> str | None:
         if self.counting_down:
             return None  # (the wait has its own)
+        if self.rules.target is None and self.rules.phase == PLAYING:
+            return t("practice.breaking")
         if self._swap_left > 0.0:
             return t("practice.target_swapped")
         return super()._hint_words()
@@ -201,6 +203,7 @@ class PracticeScene(PlayScene):
             best=self.app.settings.practice_best,
             target=self.rules.target,
             target_shown=not counting,
+            cleared=self.rules.phase == WON,
             pocketed=self.rules.pocketed,
             muted=self.app.audio.muted,
             moving=not self.world.at_rest(),

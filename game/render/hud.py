@@ -699,13 +699,16 @@ def draw_practice_panel(
     counting_down: bool = False,
     warn: bool = False,
     blink_on: bool = False,
+    cleared: bool = False,
     keys: tuple = PANEL_KEYS,
 ) -> None:
     """The side panel for Practice "the Ghost": the logo, two rows of cells (the streak this run
     and the best ever; the ball to hit and the counter), the balls still on the table, what the
     table is doing, the spin dial, and the keys. The counter shows the wait before the run
     (amber, the ball to hit not yet shown) and then the seconds left for the shot (cyan, red and
-    blinking in the last ones). Same chrome as `draw_panel` (Free play)."""
+    blinking in the last ones). Same chrome as `draw_panel` (Free play). `target` is also `None`
+    during the opening break, before the first real one is picked (round 38): `cleared` is what
+    tells the two states apart, since only the run actually being won shows the cleared message."""
     board = board or Scoreboard()
     pocket_times = pocket_times or {}
     blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
@@ -733,13 +736,13 @@ def draw_practice_panel(
     label_centered(canvas, v, t("practice.target"), (left, y))
     y += 14
     side = MINI * 1.3
-    if target is None:
+    if target is None and cleared:
         text(canvas, v, t("practice.cleared"), CELL_WORD_SIZE, C.OK, (left, y + 16), bold=True,
              center=True)  # fmt: skip
-    elif target_shown:
+    elif target_shown and target is not None:
         _blit_ball_centred(canvas, v, _mini_ball(sprites, v, target, False, side),
                            (left, y + 16))  # fmt: skip
-    else:  # an empty slot until the wait is over, like the unlit segments of a digit
+    else:  # an empty slot: the wait is not over, or (round 38) the break has not settled yet
         draw_ring(canvas, v, (left, y + 16), side / 2, (*C.PANEL_EDGE, 255), 1.5)
     draw_practice_count(canvas, v, count, counting_down, warn, blink_on)
     y += 32 + 14

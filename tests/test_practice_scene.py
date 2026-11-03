@@ -99,11 +99,12 @@ def test_ac16_every_second_of_the_count_sounds_and_the_start_rings(app, monkeypa
     assert len(counts) == config.PRACTICE_READY_S and rings == [1] and warns == []
 
 
-def test_ac16_no_aim_hint_under_the_table_while_counting_then_the_hint(app):
+def test_ac16_no_hint_under_the_table_while_counting_then_the_breaking_hint(app):
     app.go_practice()
     assert app.practice._hint_words() is None
     run(app, config.PRACTICE_READY_S + 0.5)
-    assert app.practice._hint_words() == i18n.t("hud.hint")
+    # round 38: no target yet (the break has not settled), so this slot explains why instead
+    assert app.practice._hint_words() == i18n.t("practice.breaking")
     app.handle_event(key(pg.K_r))
     assert app.practice._hint_words() is None
 
@@ -213,7 +214,8 @@ def whiff(app, scene):
 def test_ac21_a_miss_costs_a_life_shows_it_and_the_run_goes_on(app, monkeypatch):
     seen = record_panel(monkeypatch)
     scene = start(app)
-    whiff(app, scene)
+    whiff(app, scene)  # the break: free, no target yet (round 38)
+    whiff(app, scene)  # a real miss now that a target is assigned
     assert scene.rules.lives == config.PRACTICE_LIVES - 1 and scene.rules.phase == "playing"
     assert scene._notice == ("foul", "practice.miss")
     scene.draw(pg.display.get_surface())
@@ -237,6 +239,7 @@ def test_ac21_the_cue_ball_in_a_pocket_costs_a_life_and_is_put_back_in_hand(app)
 
 def test_ac21_three_misses_lose_the_run_and_the_card_says_why(app):
     scene = start(app)
+    whiff(app, scene)  # the break: free, no target yet (round 38)
     for _ in range(config.PRACTICE_LIVES):
         assert scene.rules.phase == "playing"
         whiff(app, scene)

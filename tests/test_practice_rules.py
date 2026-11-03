@@ -29,15 +29,22 @@ def run_with_target(target: int, seed: int = 1) -> GhostRun:
     return run
 
 
+def break_shot(run: GhostRun) -> GhostRun:
+    """Resolve the opening break (no target yet, round 38) so a real one gets picked."""
+    run.on_shot()
+    run.finish_shot()
+    return run
+
+
 # --- AC1: the target is random and always a ball still on the table ----------------------------
 def test_ac1_the_target_is_a_random_ball_still_on_the_table():
-    firsts = {GhostRun(random.Random(seed)).target for seed in range(60)}
+    firsts = {break_shot(GhostRun(random.Random(seed))).target for seed in range(60)}
     assert len(firsts) > 8 and firsts <= set(range(1, 16))  # not always the 1
 
 
 def test_ac1_the_same_seed_gives_the_same_targets():
     def targets(seed):
-        run, seen = GhostRun(random.Random(seed)), []
+        run, seen = break_shot(GhostRun(random.Random(seed))), []
         for _ in range(6):
             seen.append(run.target)
             shoot(run, down(run.target))
@@ -47,7 +54,7 @@ def test_ac1_the_same_seed_gives_the_same_targets():
 
 
 def test_ac1_after_a_pot_the_next_target_is_never_a_ball_already_down():
-    run = GhostRun(random.Random(3))
+    run = break_shot(GhostRun(random.Random(3)))
     while run.phase == PLAYING:
         shoot(run, down(run.target))
         assert run.target is None or run.target not in run.pocketed
@@ -148,7 +155,7 @@ def test_ac5_a_timeout_costs_a_life_too():
 
 
 def test_ac5_clearing_the_table_wins_whatever_the_order():
-    run = GhostRun(random.Random(2))
+    run = break_shot(GhostRun(random.Random(2)))
     shots = 0
     while run.phase == PLAYING:
         shoot(run, down(run.target))
@@ -172,7 +179,7 @@ def test_ac6_reset_gives_a_fresh_run():
     run.reset()
     assert (run.shots, run.streak, run.balls_left, run.phase) == (0, 0, 15, PLAYING)
     assert run.lives == PRACTICE_LIVES and not run.cue_in_hand and run.last is None
-    assert run.target in range(1, 16)
+    assert run.target is None  # no target until the break settles (AC25)
 
 
 def test_ac6_finish_shot_without_on_shot_does_nothing():
@@ -262,3 +269,55 @@ def test_ac24_a_timeout_also_swaps_a_target_the_balls_now_block():
     res = run.timeout(balls)
     assert res.lost_life == LOST_TIMEOUT
     assert run.target_swapped and run.target in {7, 8}
+
+
+# --- AC25 (lần 38): the opening break calls no target, so there is nothing to miss on it -------
+def test_ac25_a_fresh_run_has_no_target_until_the_break_settles():
+    run = GhostRun(random.Random(0))
+    assert run.target is None and run.phase == PLAYING
+
+
+def test_ac25_the_break_costs_no_life_and_picks_the_first_real_target():
+    run = GhostRun(random.Random(0))
+    run.on_shot()
+    res = run.finish_shot()  # the break: nothing was called, so nothing was missed
+    assert res.lost_life is None and res.outcome is None and run.lives == PRACTICE_LIVES
+    assert run.target in range(1, 16)
+
+
+def test_ac25_the_break_picks_among_balls_the_cue_can_see_when_given_positions():
+    cue = Ball(CUE, *CUE_XY, in_play=True)
+    b8 = Ball(8, *NEAR_XY, in_play=True)
+    b6 = Ball(6, *FAR_XY, in_play=True)  # directly behind the 8: not reachable
+    b7 = Ball(7, *SIDE_XY, in_play=True)
+    balls = [cue, b6, b7, b8]
+    seen = set()
+    for seed in range(40):
+        run = GhostRun(random.Random(seed))
+        run.pocketed = set(range(1, 16)) - {6, 7, 8}
+        run.on_shot()
+        run.finish_shot(balls)
+        seen.add(run.target)
+    assert 6 not in seen and seen == {7, 8}
+
+
+def test_ac25_a_scratch_on_the_break_still_costs_a_life_and_still_picks_a_target():
+    run = GhostRun(random.Random(0))
+    res = shoot(run, down(0))  # the cue ball scratches on the break itself
+    assert res.lost_life == FOUL_SCRATCH and run.lives == PRACTICE_LIVES - 1
+    assert run.cue_in_hand and run.target in range(1, 16)
+
+
+def test_ac25_a_timeout_before_the_break_costs_a_life_but_assigns_no_target():
+    run = GhostRun(random.Random(0))
+    res = run.timeout()  # the clock ran out before the break was even fired
+    assert res.lost_life == LOST_TIMEOUT and run.lives == PRACTICE_LIVES - 1
+    assert run.target is None and run.phase == PLAYING
+
+
+def test_ac25_stalling_out_every_life_before_the_break_still_loses_the_run():
+    run = GhostRun(random.Random(0))
+    for _ in range(PRACTICE_LIVES - 1):
+        assert run.timeout().outcome is None
+    res = run.timeout()
+    assert res.outcome == LOST and run.phase == LOST and run.target is None

@@ -384,7 +384,8 @@ class Harness:
 
     def practice_lost(self) -> None:
         """A shot that misses with the last life left: the run is lost."""
-        self.practice_new()
+        self.practice_ready()
+        self.app.practice.rules.target = 1  # as if the break had already picked one
         self.app.practice.rules.lives = 1
         self.app.practice.fire(Shot(math.pi, 0.1, 0.0))
 

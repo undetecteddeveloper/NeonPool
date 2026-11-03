@@ -86,7 +86,7 @@ def test_solo_endings_come_out_as_they_are_named(dev):
 def test_practice_endings_come_out_as_they_are_named(dev):
     app, _ = dev
     go(dev, "Luyện tập: ván mới")
-    assert app.practice.rules.target in range(1, 16) and app.practice.rules.streak == 0
+    assert app.practice.rules.target is None and app.practice.rules.streak == 0
     go(dev, "Giữa chuỗi (đã qua 5 bi)")
     assert (app.practice.rules.streak, app.practice.rules.target) == (5, 6)
     assert app.practice.rules.lives == 2
