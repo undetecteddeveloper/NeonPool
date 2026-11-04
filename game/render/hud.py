@@ -225,28 +225,8 @@ def _halo_of(
 
 
 @cache
-def _white_face(s: str, dev: int, name: str) -> pg.Surface:
-    return fonts.face(dev, name).render(s, True, (255, 255, 255))
-
-
-FACE_MAX = 96  # tinted faces kept; past this the OLDEST third goes (a title breathing through
-# a hundred colours must not keep a picture of every one for ever)
-_faces: dict[tuple, pg.Surface] = {}
-
-
 def _face_of(s: str, dev: int, name: str, color: tuple) -> pg.Surface:
-    """The letters of `s` in `color`: the white letters made once, then tinted. Rendering the
-    letters again for every new colour cost 2-4 ms for the 116 px title, and the title (breathing
-    and flickering) is a new colour almost every frame. Multiplying white by a colour gives that
-    colour exactly (255 * c / 255), and the clear pixels stay clear."""
-    key = (s, dev, name, color)
-    face = _faces.get(key)
-    if face is None:
-        _trim(_faces, FACE_MAX)
-        face = _white_face(s, dev, name).copy()
-        face.fill(color, special_flags=pg.BLEND_RGB_MULT)
-        _faces[key] = face
-    return face
+    return fonts.face(dev, name).render(s, True, color)
 
 
 def _lit_text(
