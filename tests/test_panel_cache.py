@@ -29,6 +29,7 @@ SHOW_THROUGH = 2  # levels (of 255) of the background that may show through the 
 @pytest.fixture(autouse=True)
 def _pygame():
     pg.init()
+    hud._chrome_cache.clear()  # what an earlier test pasted was made over another background
     yield
     i18n.set_lang("vi")
     pg.quit()
@@ -136,6 +137,8 @@ def test_a_change_of_language_repaints_the_words(draw):
     vi2 = picture(size, draw, behind, v=v, sprites=sprites, lang="vi")
     assert vi1 != en
     assert vi1 == vi2
+    hud._chrome_cache.clear()  # the English picture made from scratch must be the same one
+    assert picture(size, draw, behind, v=v, sprites=sprites, lang="en") == en
 
 
 @PANELS
@@ -147,6 +150,8 @@ def test_a_change_of_window_size_repaints_the_panel(draw):
     again = picture(big, draw, behind_big)
     assert len(other) != len(first)
     assert first == again
+    hud._chrome_cache.clear()
+    assert picture(small, draw, behind_small) == other
 
 
 @PANELS
@@ -160,3 +165,60 @@ def test_a_change_of_key_list_repaints_the_keys(draw):
     std2 = picture(size, draw, behind, v=v, sprites=sprites, keys=hud.PANEL_KEYS)
     assert std1 != net
     assert std1 == std2
+    hud._chrome_cache.clear()  # the net list made from scratch must be the same one
+    assert picture(size, draw, behind, v=v, sprites=sprites, keys=hud.NET_PANEL_KEYS) == net
+
+
+# --- the pasted part ---------------------------------------------------------------------
+ODD_SIZES = ((1280, 720), (1050, 591), (968, 544), (1400, 700), (1920, 1080), (900, 1100))
+
+
+@PANELS
+@pytest.mark.parametrize("size", ODD_SIZES)
+def test_pasted_is_the_same_picture_as_painted(draw, size):
+    """A 1-level difference at three pixels once showed up at 1050x591: the title's halo reaches
+    past the part that is kept as a picture. Odd window shapes are where such a thing hides."""
+    v = View.for_window(size)
+    sprites = BallSprites(v)
+    behind = noise(size, 6)
+    painted = picture(size, draw, behind, v=v, sprites=sprites)  # nothing kept yet: painted
+    pasted = picture(size, draw, behind, v=v, sprites=sprites)
+    assert len(hud._chrome_cache) == 1
+    assert painted == pasted
+
+
+@PANELS
+def test_the_still_part_is_painted_once_not_every_frame(draw, monkeypatch):
+    painted = []
+    real = hud._paint_chrome_now
+    monkeypatch.setattr(hud, "_paint_chrome_now", lambda *a: (painted.append(1), real(*a)))
+    size = SIZES[0]
+    v = View.for_window(size)
+    sprites = BallSprites(v)
+    behind = noise(size, 7)
+    for _ in range(5):
+        picture(size, draw, behind, v=v, sprites=sprites)
+    assert len(painted) == 1
+
+
+def test_the_kept_pictures_stay_few():
+    size = SIZES[0]
+    behind = noise(size, 8)
+    v = View.for_window(size)
+    sprites = BallSprites(v)
+    for words in range(hud.CHROME_MAX * 2):  # every key list is a new picture
+        keys = hud.PANEL_KEYS[: 1 + words % 5] + ((f"keycap.x{words}", "hud.key_menu"),)
+        picture(size, draw_free, behind, v=v, sprites=sprites, keys=keys)
+    assert len(hud._chrome_cache) <= hud.CHROME_MAX
+
+
+@PANELS
+def test_another_scale_on_the_same_canvas_repaints_the_panel(draw):
+    """The how-to card draws the panel into a picture of its own at another scale."""
+    size = SIZES[0]
+    behind = noise(size, 9)
+    full, small = View(1.0), View(0.8)
+    picture(size, draw, behind, v=full, sprites=BallSprites(full))
+    after = picture(size, draw, behind, v=small, sprites=BallSprites(small))
+    hud._chrome_cache.clear()
+    assert picture(size, draw, behind, v=small, sprites=BallSprites(small)) == after

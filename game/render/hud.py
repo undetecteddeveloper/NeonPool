@@ -22,12 +22,13 @@ from game.config import (
     PRACTICE_LIVES,
     SPIN_DIAL_TRAVEL,
 )
-from game.i18n import t
+from game.i18n import get_lang, t
 from game.render import fonts, glow
 from game.render import palette as C
 from game.render.draw import (
     Aa,
     BallSprites,
+    _trim,
     blit_add,
     blit_dot,
     blit_pm,
@@ -61,6 +62,33 @@ CELL_INSET = 34.0  # a score cell's axis lies this far inside that column, on ea
 CELL_AXES = (PANEL_X0 + CELL_INSET, PANEL_X1 - CELL_INSET)  # left and right: the two cells of a row
 CELL_WORD_SIZE = 14  # a word standing in a cell (the target cell, once all balls are down)
 KEYS_Y = PANEL_Y + PANEL_H - 18 - len(PANEL_KEYS) * KEY_STEP  # top of the first key row
+TITLE_Y = PANEL_Y + 30  # the title's capitals start here
+RULE_Y = TITLE_Y + 26  # the divider under it
+SCORE_LABEL_Y = RULE_Y + 18  # the words over the first row of cells
+SCORE_NUM_Y = SCORE_LABEL_Y + 14  # the numbers under them (32 px tall)
+TARGET_LABEL_Y = SCORE_NUM_Y + 32 + 20  # the word over the second row of cells (= COUNT_Y)
+FREE_WORDS = (  # (word, x, y): what Free play writes over its cells; it never changes
+    ("hud.shots", CELL_AXES[0], SCORE_LABEL_Y),
+    ("hud.fouls", CELL_AXES[1], SCORE_LABEL_Y),
+)
+
+
+def practice_words(score_word: str) -> tuple:
+    """What Practice writes over its cells (the first one is named by the drill: Sprint counts
+    balls, the others a streak)."""
+    return (
+        (score_word, CELL_AXES[0], SCORE_LABEL_Y),
+        ("practice.best", CELL_AXES[1], SCORE_LABEL_Y),
+        ("practice.target", CELL_AXES[0], TARGET_LABEL_Y),
+    )
+
+
+# The part of the panel kept as a picture lies this far inside it (logical px): clear of the
+# rounded corners and the edge glow, but still holding the title's halo (it reaches up close to the
+# top) and the keys (they start 16 px in from the sides). Measured over 58 window sizes.
+CHROME_INSET_X = 12  # from the left and right sides
+CHROME_INSET_Y = 8  # from the top and the bottom
+CHROME_MAX = 8  # pasted parts kept (a size, a language, a key list each); the oldest go first
 SPIN_R = 20.0  # radius of the spin dial: the cue ball seen face-on (logical px)
 SPIN_C = (PANEL_X + PANEL_W - 18 - 26, PANEL_Y + 345)  # its centre: right of the status lines
 SPIN_HIT_R = SPIN_R + 6  # a press this close to the centre grabs the dial
@@ -599,6 +627,75 @@ def _balls_grid(
     return y + 3 * step_y + 22
 
 
+_chrome_cache: dict[tuple, pg.Surface] = {}
+
+
+def _paint_keys(canvas: pg.Surface, v: View, keys: tuple) -> None:
+    """The key list at the foot of the panel: a line, then a lit cap and its words on each row."""
+    ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
+    pg.draw.line(
+        canvas, C.PANEL_EDGE, v.ipt((PANEL_X0, ky - 12)), v.ipt((PANEL_X1, ky - 12)), max(1, v.i(1))
+    )
+    for i, (cap, what) in enumerate(keys):
+        row = ky + i * KEY_STEP
+        keycap(canvas, v, t(cap), (PANEL_X0, row), 34)
+        text(canvas, v, t(what), 12, C.TEXT_DIM, (PANEL_X0 + 44, row + 4))
+
+
+def _paint_chrome_now(canvas: pg.Surface, v: View, words: tuple, keys: tuple) -> None:
+    """What the side panel is made of that never moves: the frame, the title, the divider, the
+    words over its cells and the key list. (Free play and Practice differ only in the words.)"""
+    blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
+    glow_text(
+        canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (PANEL_CX, TITLE_Y), face="display"
+    )
+    _rule(canvas, v, PANEL_X0, PANEL_X1, RULE_Y)
+    for word, x, y in words:
+        label_centered(canvas, v, t(word), (x, y))
+    _paint_keys(canvas, v, keys)
+
+
+def _paint_chrome(canvas: pg.Surface, v: View, words: tuple, keys: tuple) -> None:
+    """`_paint_chrome_now`, made once and then pasted: every frame the panel was rebuilt from some
+    forty sprites (0.4 ms at 1280x720, 1.4 ms at 2560x1440) for a picture that does not change.
+
+    The glass is solid inside `CHROME_INSET`, so the middle is kept as a picture and the thin ring
+    round it (corners and glow, which let the table show through) is pasted from the frame sprite.
+    The picture is made from the very pixels painted now, so it is the same as painting again as
+    long as nothing behind the panel changes (the table behind it stands still); the glass is
+    253/255 opaque, so a changing background would show through by up to 2 levels. A change of
+    window size, language, words or key list is a new key, so nothing stale is pasted."""
+    inner = v.rect(
+        PANEL_X + CHROME_INSET_X,
+        PANEL_Y + CHROME_INSET_Y,
+        PANEL_W - 2 * CHROME_INSET_X,
+        PANEL_H - 2 * CHROME_INSET_Y,
+    )
+    key = (v, get_lang(), words, keys, canvas.get_size(), canvas.get_bitsize())
+    layer = _chrome_cache.get(key)
+    if layer is None:
+        _paint_chrome_now(canvas, v, words, keys)
+        if canvas.get_rect().contains(inner):
+            _trim(_chrome_cache, CHROME_MAX)
+            _chrome_cache[key] = canvas.subsurface(inner).copy()
+        return
+    spr, pad = rrect_sprite(v, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
+    px, py = (round(c) for c in v.pt((PANEL_X - pad, PANEL_Y - pad)))
+    whole = pg.Rect(px, py, *spr.get_size())
+    if not whole.contains(inner):  # not a size the panel is ever drawn at; stay on the safe side
+        _paint_chrome_now(canvas, v, words, keys)
+        return
+    for ring in (
+        pg.Rect(whole.x, whole.y, whole.w, inner.y - whole.y),
+        pg.Rect(whole.x, inner.bottom, whole.w, whole.bottom - inner.bottom),
+        pg.Rect(whole.x, inner.y, inner.x - whole.x, inner.h),
+        pg.Rect(inner.right, inner.y, whole.right - inner.right, inner.h),
+    ):
+        if ring.w > 0 and ring.h > 0:
+            canvas.blit(spr, ring.topleft, ring.move(-whole.x, -whole.y), pg.BLEND_PREMULTIPLIED)
+    canvas.blit(layer, inner.topleft)
+
+
 def draw_panel(
     canvas: pg.Surface,
     v: View,
@@ -624,19 +721,10 @@ def draw_panel(
     the keys."""
     board = board or Scoreboard()
     pocket_times = pocket_times or {}
-    blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
-    x0, x1 = PANEL_X + 18, PANEL_X + PANEL_W - 18
-    y = PANEL_Y + 30
-
-    glow_text(canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (PANEL_CX, y), face="display")
-    y += 26
-    _rule(canvas, v, x0, x1, y)
-
-    y += 18  # the score: two arcade counters, one at each edge, centred on their labels
+    _paint_chrome(canvas, v, FREE_WORDS, keys)
+    x0, x1 = PANEL_X0, PANEL_X1
     left, right = CELL_AXES
-    label_centered(canvas, v, t("hud.shots"), (left, y))
-    label_centered(canvas, v, t("hud.fouls"), (right, y))
-    y += 14
+    y = SCORE_NUM_Y  # the score: two arcade counters, one at each edge, centred on their words
     f_shots = board.flash("shots", shots, clock)
     f_fouls = board.flash("fouls", fouls, clock)
     shot_col = C.lerp(C.CYAN, C.WHITE, f_shots)
@@ -667,13 +755,6 @@ def draw_panel(
     y += 20
     label(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), (x0 + 16, y), size=10.5)
     spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
-
-    ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
-    pg.draw.line(canvas, C.PANEL_EDGE, v.ipt((x0, ky - 12)), v.ipt((x1, ky - 12)), max(1, v.i(1)))
-    for i, (cap, what) in enumerate(keys):
-        row = ky + i * KEY_STEP
-        keycap(canvas, v, t(cap), (x0, row), 34)
-        text(canvas, v, t(what), 12, C.TEXT_DIM, (x0 + 44, row + 4))
 
 
 def draw_practice_panel(
@@ -716,19 +797,10 @@ def draw_practice_panel(
     and `lives` is None where there are none (Sprint draws no row of them)."""
     board = board or Scoreboard()
     pocket_times = pocket_times or {}
-    blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
+    _paint_chrome(canvas, v, practice_words(score_word), keys)
     x0, x1 = PANEL_X0, PANEL_X1
-    y = PANEL_Y + 30
-
-    glow_text(canvas, v, t("app.title"), 30, C.WHITE, C.MAGENTA, (PANEL_CX, y), face="display")
-    y += 26
-    _rule(canvas, v, x0, x1, y)
-
-    y += 18  # the run's score: the streak now and the best ever, one cell at each edge
     left, right = CELL_AXES
-    label_centered(canvas, v, t(score_word), (left, y))
-    label_centered(canvas, v, t("practice.best"), (right, y))
-    y += 14
+    y = SCORE_NUM_Y  # the run's score: the streak now and the best ever, one cell at each edge
     f_streak = board.flash("streak", streak, clock)
     f_best = board.flash("best", best, clock)
     digits_x = digits_width(2, 32) / 2
@@ -736,9 +808,8 @@ def draw_practice_panel(
                    C.lerp(C.CYAN, C.WHITE, f_streak), 0.6 + 0.8 * f_streak, clock)  # fmt: skip
     rolling_number(canvas, v, board, "best", best, 2, (right - digits_x, y), 32,
                    C.lerp(C.SUN_TOP, C.WHITE, f_best), 0.6 + 0.8 * f_best, clock)  # fmt: skip
-    y += 32 + 20
+    y += 32 + 20  # = TARGET_LABEL_Y, where its word is written (in the part that never moves)
 
-    label_centered(canvas, v, t("practice.target"), (left, y))
     y += 14
     side = MINI * 1.3
     if target is None and cleared:
@@ -763,13 +834,6 @@ def draw_practice_panel(
     if lives is not None:
         draw_lives(canvas, v, lives)
     spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
-
-    ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
-    pg.draw.line(canvas, C.PANEL_EDGE, v.ipt((x0, ky - 12)), v.ipt((x1, ky - 12)), max(1, v.i(1)))
-    for i, (cap, what) in enumerate(keys):
-        row = ky + i * KEY_STEP
-        keycap(canvas, v, t(cap), (x0, row), 34)
-        text(canvas, v, t(what), 12, C.TEXT_DIM, (x0 + 44, row + 4))
 
 
 COUNT_Y = PANEL_Y + 140  # the top of the counter cell's label (the second row of cells)
