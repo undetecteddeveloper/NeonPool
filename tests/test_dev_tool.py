@@ -99,6 +99,32 @@ def test_practice_endings_come_out_as_they_are_named(dev):
 
 
 @pytest.mark.parametrize(
+    ("mode", "name"),
+    [("call", "Gọi Lỗ"), ("sprint", "Nước Rút")],
+)
+def test_every_practice_run_has_its_states_and_they_end_as_named(dev, mode, name):
+    app, _ = dev
+    go(dev, f"{name}: ván mới")
+    assert app.scene is app.practice and app.practice.mode == mode
+    assert app.practice.rules.mode == mode and app.practice.rules.target is None
+    go(dev, f"{name}: giữa chuỗi")
+    assert (app.practice.rules.streak, app.practice.rules.target) == (5, 6)
+    go(dev, f"{name}: thắng")
+    assert until(dev, lambda: app.practice.rules.phase != "playing", 20)
+    assert app.practice.rules.phase == WON and app.practice.rules.streak == 15
+    go(dev, f"{name}: thua")
+    assert until(dev, lambda: app.practice.rules.phase != "playing", 20)
+    assert app.practice.rules.phase == LOST
+
+
+def test_the_practice_panel_step_has_a_state_of_its_own(dev):
+    app, _ = dev
+    go(dev, "Bảng Chơi: chọn Luyện tập")
+    panel = app.menu.play_panel
+    assert panel.is_open and panel.step == "practice"
+
+
+@pytest.mark.parametrize(
     ("name", "phase"),
     [
         ("Tôi THẮNG: bot bỏ bi 8 sớm", WON),

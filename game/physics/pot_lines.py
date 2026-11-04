@@ -42,30 +42,31 @@ def _near_segment(
     return False
 
 
-def pot_lines(
+def pot_pockets(
     balls: Sequence[Ball],
     target: int,
     *,
     cue_in_hand: bool = False,
     max_cut_deg: float = PRACTICE_MAX_CUT_DEG,
     margin: float = PRACTICE_LINE_MARGIN_M,
-) -> int:
-    """How many pockets `target` could be shot into straight (0..6), see the module docstring."""
+) -> list[int]:
+    """The pockets (indices into `POCKETS`, ascending) `target` could be shot into straight, see
+    the module docstring."""
     ball = next((b for b in balls if b.number == target and b.in_play), None)
     cue = next((b for b in balls if b.number == CUE), None)
     if ball is None or (cue is None and not cue_in_hand):
-        return 0
+        return []
     others = [b for b in balls if b.in_play and b.number not in (CUE, target)]
     reach = 2 * BALL_R + margin
     cos_limit = math.cos(math.radians(max_cut_deg))
-    lines = 0
-    for px, py, _radius in POCKETS:
+    pockets: list[int] = []
+    for index, (px, py, _radius) in enumerate(POCKETS):
         # a ball's centre cannot go past the cushions: aim at the nearest centre that can drop in
         aim = (min(max(px, BALL_R), TABLE_L - BALL_R), min(max(py, BALL_R), TABLE_W - BALL_R))
         vx, vy = aim[0] - ball.x, aim[1] - ball.y
         dist = math.hypot(vx, vy)
         if dist == 0.0:
-            lines += 1
+            pockets.append(index)
             continue
         dx, dy = vx / dist, vy / dist
         ghost = (ball.x - 2 * BALL_R * dx, ball.y - 2 * BALL_R * dy)
@@ -83,5 +84,19 @@ def pot_lines(
                 continue
             if _near_segment(others, (cue.x, cue.y), ghost, reach):
                 continue
-        lines += 1
-    return lines
+        pockets.append(index)
+    return pockets
+
+
+def pot_lines(
+    balls: Sequence[Ball],
+    target: int,
+    *,
+    cue_in_hand: bool = False,
+    max_cut_deg: float = PRACTICE_MAX_CUT_DEG,
+    margin: float = PRACTICE_LINE_MARGIN_M,
+) -> int:
+    """How many pockets `target` could be shot into straight (0..6): `len(pot_pockets(...))`."""
+    return len(
+        pot_pockets(balls, target, cue_in_hand=cue_in_hand, max_cut_deg=max_cut_deg, margin=margin)
+    )

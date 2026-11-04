@@ -12,7 +12,7 @@ import math
 
 import pygame as pg
 
-from game.config import BALL_R, CUE_SHOW_PULL
+from game.config import BALL_R, CUE_SHOW_PULL, POCKETS, PX_PER_M
 from game.render import fonts
 from game.render import palette as C
 from game.render.glow import blur_pm, halo, lit
@@ -393,6 +393,22 @@ def draw_ring(
         layer.surf, color, layer.pt(centre), layer.n(radius), max(1, round(layer.n(width)))
     )
     layer.done()
+
+
+CALL_HZ = 1.4  # the called pocket's light breathes this often
+CALL_GAP_PX = 5.0  # the ring stands this far out from the pocket's edge (past its lit lip)
+
+
+def draw_pocket_call(canvas: pg.Surface, v: View, pocket_index: int, clock: float) -> None:
+    """Mark the pocket a Practice shot must go into (Call the Pocket): an amber ring the size of its
+    mouth that breathes, with a fainter one swelling round it. Only thin lines, so a ball rolling
+    in is never hidden. `pocket_index` indexes `config.POCKETS`."""
+    px, py, pr = POCKETS[pocket_index]
+    centre = to_px(px, py)
+    pulse = 0.5 + 0.5 * math.sin(clock * math.tau * CALL_HZ)
+    r = pr * PX_PER_M + CALL_GAP_PX
+    draw_ring(canvas, v, centre, r, (*C.AMBER, round(150 + 105 * pulse)), 3)
+    draw_ring(canvas, v, centre, r + 5 + 5 * pulse, (*C.AMBER, round(50 + 110 * (1 - pulse))), 1.5)
 
 
 # --- aiming: light line, ghost ball, arrow, and the neon cue ------------------------------

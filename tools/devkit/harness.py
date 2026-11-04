@@ -21,6 +21,7 @@ from game.net import toss
 from game.net.session import Session
 from game.net.transport import SimRoom
 from game.physics import Shot
+from game.physics.pot_lines import pot_pockets
 from game.rules.eight_ball import SOLID
 
 log = logging.getLogger("neonpool.dev")
@@ -354,25 +355,32 @@ class Harness:
         self.app.skip_transition()
         self.app.play.fire(Shot(math.pi, 0.1, 0.0))
 
-    # ------------------------------------------------------------------ practice ("the Ghost")
-    def practice_new(self) -> None:
-        """A new run, in the middle of its countdown (nothing may be touched yet)."""
+    # ------------------------------------------------------------------ practice (three runs)
+    def practice_new(self, mode: str = "ghost") -> None:
+        """A new run of that kind, in the middle of its countdown (nothing may be touched yet)."""
         self.reset()
-        self.app.go_practice()
+        self.app.go_practice(mode)
         self.app.skip_transition()
 
-    def practice_ready(self) -> None:
+    def practice_ready(self, mode: str = "ghost") -> None:
         """A new run whose countdown is over: the ball to hit is shown, the shot clock runs."""
-        self.practice_new()
+        self.practice_new(mode)
         self.app.practice._ready_left = 0.0
 
-    def practice_break(self) -> None:
-        self.practice_new()
+    def practice_break(self, mode: str = "ghost") -> None:
+        self.practice_new(mode)
         self.app.practice.fire(Shot(0.0, 0.95, 0.0))
 
-    def practice_streak(self, n: int) -> None:
+    def _call_pocket(self, target: int) -> None:
+        """Call the Pocket: name a pocket that has a line to the target (as a real pick does)."""
+        scene = self.app.practice
+        if scene.rules.mode == "call":
+            pockets = pot_pockets(scene.world.balls, target, max_cut_deg=config.CALL_MAX_CUT_DEG)
+            scene.rules.pocket = pockets[0] if pockets else None
+
+    def practice_streak(self, n: int, mode: str = "ghost") -> None:
         """A run that has already potted balls 1..n in order; ball n+1 is the next target."""
-        self.practice_ready()
+        self.practice_ready(mode)
         scene = self.app.practice
         for b in scene.world.balls:
             if 1 <= b.number <= n:
@@ -381,21 +389,30 @@ class Harness:
         scene.rules.streak = scene.rules.shots = n
         scene.rules.lives = 2
         scene.rules.target = n + 1
+        self._call_pocket(n + 1)
 
-    def practice_lost(self) -> None:
-        """A shot that misses with the last life left: the run is lost."""
-        self.practice_ready()
-        self.app.practice.rules.target = 1  # as if the break had already picked one
-        self.app.practice.rules.lives = 1
+    def practice_lost(self, mode: str = "ghost") -> None:
+        """A shot that misses with the last chance left (last life; Sprint: 1 s on the clock)."""
+        self.practice_ready(mode)
+        rules = self.app.practice.rules
+        rules.target = 1  # as if the break had already picked one
+        self._call_pocket(1)
+        rules.lives = 1
+        if rules.mode == "sprint":
+            rules.time_left = 1.0
         self.app.practice.fire(Shot(math.pi, 0.1, 0.0))
 
-    def practice_won(self) -> None:
+    def practice_won(self, mode: str = "ghost") -> None:
         """One shot from clearing the whole rack: only the 15 (and the cue ball) are left."""
-        self.practice_streak(14)
+        self.practice_streak(14, mode)
         scene = self.app.practice
         scene.world.place(0, 0.6, 0.6)  # same geometry as solo_finish: a straight shot into
         scene.world.place(15, 0.2, 0.2)  # the corner pocket at (0, 0)
         scene.rules.target = 15
+        if scene.rules.mode == "call":  # the corner pocket the shot is aimed at
+            scene.rules.pocket = pot_pockets(
+                scene.world.balls, 15, max_cut_deg=config.CALL_MAX_CUT_DEG
+            )[0]
         self.app.skip_transition()
         scene.fire(EIGHT_EARLY_SHOT)
 

@@ -224,6 +224,22 @@ PRACTICE_MAX_CUT_DEG = 75.0  # thinnest cut that still counts: the angle between
 # path and the line the target must take (0 = dead straight, 90 = a graze nobody can pot)
 PRACTICE_LINE_MARGIN_M = 0.5 * BALL_R  # a ball closer than 2 balls + this to a path blocks it
 
+# --- Practice modes: "ghost" (Beat the Ghost), "call" (Call the Pocket), "sprint" (Sprint).
+# Every number below is self-chosen and unplayed: playtest, then retune. The cut limit and the
+# Sprint time numbers were tuned once against tools/practice_bot.py (a rough bot estimate, not a
+# feel): a perfect-aim bot potted only ~52% of 45-60 degree cuts (the physics bends the object
+# ball off the aimed line), and with +8 / -5 / -10 a player taking 7 s a shot needed to pot 92%
+# of them just to hold the clock.
+PRACTICE_MODES = ("ghost", "call", "sprint")
+CALL_MAX_CUT_DEG = 45.0  # Call the Pocket: the pocket named must be one whose line cuts no thinner
+# than this (tighter than PRACTICE_MAX_CUT_DEG: the player may not pick an easier pocket, so the
+# game never names one that is all but impossible)
+SPRINT_START_S = 60.0  # Sprint: the one clock of the run starts here
+SPRINT_CAP_S = 90.0  # ... and never holds more than this
+SPRINT_POT_BONUS_S = 12.0  # the target potted: this much time is added
+SPRINT_MISS_COST_S = 4.0  # the target not potted: this much is taken away
+SPRINT_SCRATCH_COST_S = 8.0  # the cue ball in a pocket: this much is taken away (and it is in hand)
+
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---
 RACK_ORDER = (1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 6, 13, 14, 7, 15)

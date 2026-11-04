@@ -183,8 +183,16 @@ def _play_mode(h: Harness) -> None:
     _panel(h, pp.MODE)
 
 
+@state(MENU, "Bảng Chơi: chọn Luyện tập (Đấu Ma / Gọi Lỗ / Nước Rút)")
+def _play_practice(h: Harness) -> None:
+    _panel(h, pp.PRACTICE)
+
+
 # ---------------------------------------------------------------------------- solo: practice
-PRACTICE = "Luyện tập (Thử Ma)"
+# One group of states per run. The first (Beat the Ghost) keeps its old names.
+PRACTICE = "Luyện tập: Đấu Ma"
+PRACTICE_CALL = "Luyện tập: Gọi Lỗ"
+PRACTICE_SPRINT = "Luyện tập: Nước Rút"
 
 
 @state(PRACTICE, "Luyện tập: ván mới (đang đếm ngược 7 s)")
@@ -215,6 +223,38 @@ def _practice_lost(h: Harness) -> None:
 @state(PRACTICE, "Thắng (chạy hết 15 bi, đếm số)")
 def _practice_won(h: Harness) -> None:
     h.practice_won()
+
+
+def _mode_states(group: str, mode: str, name: str, lost: str) -> None:
+    """The same six states for Call the Pocket and Sprint (`lost`: how a run of that kind ends)."""
+
+    @state(group, f"{name}: ván mới (đang đếm ngược 7 s)")
+    def _new(h: Harness) -> None:
+        h.practice_new(mode)
+
+    @state(group, f"{name}: hết đếm ngược, tới lượt đánh")
+    def _ready(h: Harness) -> None:
+        h.practice_ready(mode)
+
+    @state(group, f"{name}: cú phá đang chạy")
+    def _break(h: Harness) -> None:
+        h.practice_break(mode)
+
+    @state(group, f"{name}: giữa chuỗi (đã qua 5 bi)")
+    def _streak(h: Harness) -> None:
+        h.practice_streak(5, mode)
+
+    @state(group, f"{name}: thua ({lost})")
+    def _lost(h: Harness) -> None:
+        h.practice_lost(mode)
+
+    @state(group, f"{name}: thắng (chạy hết 15 bi, đếm số)")
+    def _won(h: Harness) -> None:
+        h.practice_won(mode)
+
+
+_mode_states(PRACTICE_CALL, "call", "Gọi Lỗ", "hết mạng")
+_mode_states(PRACTICE_SPRINT, "sprint", "Nước Rút", "hết giờ")
 
 
 # ---------------------------------------------------------------------------- two players: start

@@ -50,6 +50,16 @@ def test_every_step_is_only_as_tall_as_what_it_holds(app):
         # nothing empty below the lowest button: the same margin at every step
         assert frame.bottom - max(r.bottom for r in rects.values()) == 18, step
     assert pp.HEIGHT[pp.CHOOSE] < 400  # the first step held two buttons in a 440 px frame
+    assert pp.HEIGHT[pp.PRACTICE] <= pp.PANEL.h  # three big buttons and Back still fit the panel
+
+
+def test_the_practice_step_has_three_big_buttons_and_back_under_them(app):
+    rects = pp.RECTS[pp.PRACTICE]
+    big = [rects[m] for m in config.PRACTICE_MODES]
+    assert [r.h for r in big] == [76, 76, 76]
+    assert [b.top - a.bottom for a, b in zip(big, big[1:], strict=False)] == [12, 12]
+    assert rects["back"].top > big[-1].bottom and not rects["back"].colliderect(big[-1])
+    assert len({r.x for r in big}) == 1 and len({r.w for r in big}) == 1
 
 
 def test_the_frame_is_centred_whatever_its_height(app):

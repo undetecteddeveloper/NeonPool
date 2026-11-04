@@ -32,6 +32,23 @@ class Settings:
     show_fps: bool = False  # frames per second in the top-left corner
     player_name: str = ""  # shown to the other player; empty: the game uses a default word
     practice_best: int = 0  # best streak ever reached in Practice "the Ghost" (0..15), never drops
+    practice_best_call: int = 0  # the same for Practice "Call the Pocket"
+    practice_best_sprint: int = (
+        0  # the same for Practice "Sprint" (balls potted before time ran out)
+    )
+
+
+# Which setting holds the best of each practice mode (config.PRACTICE_MODES).
+PRACTICE_BEST_FIELD = {
+    "ghost": "practice_best",
+    "call": "practice_best_call",
+    "sprint": "practice_best_sprint",
+}
+
+
+def best_for(settings: Settings, mode: str) -> int:
+    """The best result kept for this practice mode."""
+    return getattr(settings, PRACTICE_BEST_FIELD[mode])
 
 
 def settings_path() -> Path:
@@ -60,9 +77,10 @@ def _clean(raw: dict) -> Settings:
         s.player_name = "".join(c for c in raw["player_name"] if c.isprintable()).strip()[
             :NET_NAME_MAX
         ]
-    best = raw.get("practice_best")
-    if isinstance(best, int) and not isinstance(best, bool):
-        s.practice_best = max(0, min(15, best))
+    for name in PRACTICE_BEST_FIELD.values():
+        best = raw.get(name)
+        if isinstance(best, int) and not isinstance(best, bool):
+            setattr(s, name, max(0, min(15, best)))
     return s
 
 

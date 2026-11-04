@@ -75,6 +75,43 @@ def test_the_practice_best_streak_survives_a_restart_and_is_clamped(tmp_path):
     assert settings.load(bad_type).practice_best == 0  # a bool is not an int here
 
 
+def test_ac33_the_two_new_practice_bests_survive_a_restart_and_are_clamped(tmp_path):
+    path = tmp_path / "s.json"
+    settings.save(
+        settings.Settings(practice_best=4, practice_best_call=7, practice_best_sprint=11), path
+    )
+    back = settings.load(path)
+    assert (back.practice_best, back.practice_best_call, back.practice_best_sprint) == (4, 7, 11)
+    odd = tmp_path / "odd.json"
+    odd.write_text(
+        json.dumps({"practice_best_call": 99, "practice_best_sprint": -4}), encoding="utf-8"
+    )
+    s = settings.load(odd)
+    assert (s.practice_best_call, s.practice_best_sprint) == (15, 0)  # clamped to a table's balls
+    bad = tmp_path / "bad.json"
+    bad.write_text(
+        json.dumps({"practice_best_call": True, "practice_best_sprint": "9"}), encoding="utf-8"
+    )
+    s = settings.load(bad)
+    assert (s.practice_best_call, s.practice_best_sprint) == (0, 0)  # a bool or text is no count
+
+
+def test_ac33_a_file_from_before_the_new_modes_still_reads_and_the_bests_stay_apart(tmp_path):
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps({"lang": "en", "practice_best": 6}), encoding="utf-8")
+    s = settings.load(old)
+    assert (s.lang, s.practice_best) == ("en", 6)
+    assert (s.practice_best_call, s.practice_best_sprint) == (0, 0)  # missing keys: the default
+
+
+def test_ac33_best_for_reads_the_best_of_the_mode_asked():
+    s = settings.Settings(practice_best=3, practice_best_call=5, practice_best_sprint=8)
+    assert [settings.best_for(s, m) for m in config.PRACTICE_MODES] == [3, 5, 8]
+    assert set(settings.PRACTICE_BEST_FIELD) == set(config.PRACTICE_MODES)
+    for field in settings.PRACTICE_BEST_FIELD.values():
+        assert hasattr(s, field)
+
+
 def test_changing_a_setting_applies_it_and_saves_it_at_once(app, tmp_path):
     app.change_settings(lang="en", volume=0.4, music=0.6, show_fps=True)
     assert i18n.get_lang() == "en" and app.audio.volume == pytest.approx(0.4)

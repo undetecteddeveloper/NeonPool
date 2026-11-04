@@ -150,9 +150,9 @@ class App:
         self.play.new_game()
         self._switch(self.play)
 
-    def go_practice(self) -> None:
-        """A new Practice run."""
-        self.practice.new_game()
+    def go_practice(self, mode: str = "ghost") -> None:
+        """A new Practice run of the given kind (config.PRACTICE_MODES)."""
+        self.practice.start(mode)
         self._switch(self.practice)
 
     def open_help(self) -> None:

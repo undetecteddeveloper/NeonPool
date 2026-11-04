@@ -681,7 +681,7 @@ def draw_practice_panel(
     v: View,
     *,
     streak: int,
-    lives: int,
+    lives: int | None,
     best: int,
     target: int | None,
     target_shown: bool,
@@ -701,6 +701,8 @@ def draw_practice_panel(
     blink_on: bool = False,
     cleared: bool = False,
     keys: tuple = PANEL_KEYS,
+    score_word: str = "practice.streak",
+    count_word: str = "practice.count",
 ) -> None:
     """The side panel for Practice "the Ghost": the logo, two rows of cells (the streak this run
     and the best ever; the ball to hit and the counter), the balls still on the table, what the
@@ -708,7 +710,10 @@ def draw_practice_panel(
     (amber, the ball to hit not yet shown) and then the seconds left for the shot (cyan, red and
     blinking in the last ones). Same chrome as `draw_panel` (Free play). `target` is also `None`
     during the opening break, before the first real one is picked (round 38): `cleared` is what
-    tells the two states apart, since only the run actually being won shows the cleared message."""
+    tells the two states apart, since only the run actually being won shows the cleared message.
+    The other drills change only words and the row of lives: `score_word` names the first cell
+    (Sprint counts balls), `count_word` the counter (Sprint: its seconds are the whole run's time),
+    and `lives` is None where there are none (Sprint draws no row of them)."""
     board = board or Scoreboard()
     pocket_times = pocket_times or {}
     blit_rrect(canvas, v, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 10, C.PANEL, 1.4, C.VIOLET, 0.5)
@@ -721,7 +726,7 @@ def draw_practice_panel(
 
     y += 18  # the run's score: the streak now and the best ever, one cell at each edge
     left, right = CELL_AXES
-    label_centered(canvas, v, t("practice.streak"), (left, y))
+    label_centered(canvas, v, t(score_word), (left, y))
     label_centered(canvas, v, t("practice.best"), (right, y))
     y += 14
     f_streak = board.flash("streak", streak, clock)
@@ -744,7 +749,7 @@ def draw_practice_panel(
                            (left, y + 16))  # fmt: skip
     else:  # an empty slot: the wait is not over, or (round 38) the break has not settled yet
         draw_ring(canvas, v, (left, y + 16), side / 2, (*C.PANEL_EDGE, 255), 1.5)
-    draw_practice_count(canvas, v, count, counting_down, warn, blink_on)
+    draw_practice_count(canvas, v, count, counting_down, warn, blink_on, word=count_word)
     y += 32 + 14
 
     y = _balls_grid(canvas, v, sprites, pocketed, pocket_times, clock, x0, y, x1 - x0)
@@ -755,7 +760,8 @@ def draw_practice_panel(
     label(canvas, v, t("hud.moving") if moving else t("hud.ready"), (x0 + 16, y), state_col, 12)
     y += 20
     label(canvas, v, t("hud.muted") if muted else t("hud.sound_on"), (x0 + 16, y), size=10.5)
-    draw_lives(canvas, v, lives)
+    if lives is not None:
+        draw_lives(canvas, v, lives)
     spin_dial(canvas, v, sprites, spin, spin_lit, spin_on)
 
     ky = PANEL_Y + PANEL_H - 18 - len(keys) * KEY_STEP
@@ -770,12 +776,13 @@ COUNT_Y = PANEL_Y + 140  # the top of the counter cell's label (the second row o
 
 
 def draw_practice_count(canvas: pg.Surface, v: View, count: int, counting_down: bool, warn: bool,
-                        blink_on: bool) -> None:  # fmt: skip
+                        blink_on: bool, word: str = "practice.count") -> None:  # fmt: skip
     """The counter cell of the Practice panel: its word and two digits, amber for the wait before a
-    run, cyan for the seconds of a shot, red and blinking in the last ones. Drawn on its own too:
-    it is the one thing left lit while the screen is dark for the wait."""
+    run, cyan for the seconds of a shot (or, in Sprint, of the whole run: `word` then says so),
+    red and blinking in the last ones. Drawn on its own too: it is the one thing left lit while
+    the screen is dark for the wait."""
     right = CELL_AXES[1]
-    label_centered(canvas, v, t("practice.count"), (right, COUNT_Y))
+    label_centered(canvas, v, t(word), (right, COUNT_Y))
     if counting_down:
         colour = C.AMBER
     elif warn:

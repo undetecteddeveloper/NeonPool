@@ -39,15 +39,72 @@ def parse_action(pg, action: str):
     raise SystemExit(f"unknown --do action: {action!r}")
 
 
+def _stage_practice(app, args) -> None:
+    """Put the Practice run in the state asked for (no waiting for it to come about)."""
+    from game.rules.eight_ball import WON
+    from game.rules.practice import ShotResult
+
+    scene, rules = app.practice, app.practice.rules
+    if args.skip_wait or args.end or args.broken:
+        scene._ready_left = 0.0
+        scene._dim_k = 0.0
+    if args.broken:
+        from game.physics import Shot
+
+        scene.fire(Shot(0.0, 0.9, 0.0))
+        for _ in range(60 * 60):  # (a minute at most: the balls come to rest)
+            app.update(1 / 60)
+            if not scene._live:
+                break
+    if args.time and args.mode == "sprint":
+        rules.time_left = args.time
+    if args.end == "won":
+        rules.pocketed, rules.streak, rules.phase = set(range(1, 16)), 15, WON
+        rules.last = ShotResult(True, (), None, WON)
+        scene._finish_run(rules.last)
+    elif args.end == "lost":
+        rules.streak, rules.lives, rules.shots = args.streak, 1, args.streak + 2
+        if args.mode == "sprint":
+            scene._finish_run(rules.tick(1e6))
+        else:
+            scene._finish_run(rules.timeout())
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--frames", type=int, default=60)
     parser.add_argument("--out", default="tools/_out/shot.png")
     parser.add_argument("--size", default="1280x720")
     parser.add_argument(
-        "--scene", choices=("menu", "play", "practice", "help", "splash", "intro"), default="play"
+        "--scene",
+        choices=("menu", "play", "practice", "practice-menu", "help", "splash", "intro"),
+        default="play",
+        help="practice-menu: the Play panel open on its Practice step",
+    )
+    parser.add_argument(
+        "--mode", choices=("ghost", "call", "sprint"), default="ghost", help="for --scene practice"
     )
     parser.add_argument("--page", type=int, default=0)
+    parser.add_argument(
+        "--skip-wait",
+        action="store_true",
+        help="--scene practice: end the 7 s dark countdown before the frames start",
+    )
+    parser.add_argument(
+        "--broken",
+        action="store_true",
+        help="--scene practice: play the opening break first (so a target is called)",
+    )
+    parser.add_argument(
+        "--time", type=float, default=0.0, help="--scene practice --mode sprint: seconds left"
+    )
+    parser.add_argument(
+        "--end",
+        choices=("won", "lost"),
+        default="",
+        help="--scene practice: end the run now (the result card; --streak sets the score)",
+    )
+    parser.add_argument("--streak", type=int, default=7)
     parser.add_argument("--lang", choices=("vi", "en"), default="")
     parser.add_argument(
         "--do",
@@ -72,7 +129,14 @@ def main() -> int:
     if args.scene == "play":
         app.go_play()
     if args.scene == "practice":
-        app.go_practice()
+        app.go_practice(args.mode)
+    if args.scene == "practice-menu":
+        from game.scenes import play_panel as pp
+
+        panel = app.menu.play_panel
+        panel.open()
+        panel._goto(pp.PRACTICE)
+        panel.k = 1.0  # (open, not opening)
     if args.scene == "intro":
         app.menu.start_intro()  # --frames N = N sixtieths of a second after the menu opened
     if args.scene == "splash":
@@ -82,6 +146,8 @@ def main() -> int:
         app.open_help()
         app.help.page = args.page
     app.skip_transition()  # photograph the scene itself, not the switch
+    if args.scene == "practice":
+        _stage_practice(app, args)
     if args.lang:
         from game import i18n
 

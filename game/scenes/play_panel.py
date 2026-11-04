@@ -1,7 +1,9 @@
-"""The Play panel: a lit panel over the menu with two big choices, Solo and Two players. Two
-players goes on in the same panel: your name, then Create a room (a four-letter code from the
-relay to give your friend, and a wait) or Join a room (type the code). Everything is one panel
-changing steps. On the same network the guest goes straight to the host (`net/relay.py`).
+"""The Play panel: a lit panel over the menu with two big choices, Solo and Two players. Solo goes
+on to Free play or Practice, and Practice to its three runs (Beat the Ghost, Call the Pocket,
+Sprint). Two players goes on in the same panel: your name, then Create a room (a four-letter
+code from the relay to give your friend, and a wait) or Join a room (type the code). Everything
+is one panel changing steps. On the same network the guest goes straight to the host
+(`net/relay.py`).
 
 Keys: up/down (or Tab) choose, Enter does it, Esc goes back a step (and closes at the first one).
 While a field has the keyboard, typed letters go into it (and M, W, S are just letters).
@@ -27,12 +29,13 @@ from game.render.view import View
 
 log = logging.getLogger("neonpool")
 
-CHOOSE, MODE, SETUP, HOSTING, JOINING, CONNECTING = (
-    "choose", "mode", "setup", "hosting", "joining", "connecting",
+CHOOSE, MODE, PRACTICE, SETUP, HOSTING, JOINING, CONNECTING = (
+    "choose", "mode", "practice", "setup", "hosting", "joining", "connecting",
 )  # fmt: skip
 ITEMS = {
     CHOOSE: ("solo", "duo", "back"),
     MODE: ("free", "practice", "back"),  # Solo, no game in progress: Free play / Practice
+    PRACTICE: (*config.PRACTICE_MODES, "back"),  # Practice: one button per kind of run
     SETUP: ("name", "create", "join", "back"),
     HOSTING: ("cancel",),
     JOINING: ("code", "go", "back"),
@@ -41,7 +44,15 @@ ITEMS = {
 PANEL = pg.Rect(400, 150, 480, 440)  # the column and the centre; the height is the step's
 X, W = PANEL.x + 44, PANEL.w - 88  # the column everything sits in
 # each step is only as tall as what it holds; the frame sits centred and glides between heights
-HEIGHT = {CHOOSE: 344, MODE: 344, SETUP: 412, HOSTING: 404, JOINING: 342, CONNECTING: 230}
+HEIGHT = {
+    CHOOSE: 344,
+    MODE: 344,
+    PRACTICE: 432,
+    SETUP: 412,
+    HOSTING: 404,
+    JOINING: 342,
+    CONNECTING: 230,
+}
 TOP = {step: PANEL.centery - h // 2 for step, h in HEIGHT.items()}  # where each step's frame starts
 
 
@@ -56,6 +67,12 @@ def _back(step: str) -> pg.Rect:
 RECTS = {
     CHOOSE: {"solo": _at(CHOOSE, 92, 76), "duo": _at(CHOOSE, 180, 76), "back": _back(CHOOSE)},
     MODE: {"free": _at(MODE, 92, 76), "practice": _at(MODE, 180, 76), "back": _back(MODE)},
+    PRACTICE: {
+        "ghost": _at(PRACTICE, 92, 76),
+        "call": _at(PRACTICE, 180, 76),
+        "sprint": _at(PRACTICE, 268, 76),
+        "back": _back(PRACTICE),
+    },
     SETUP: {
         "name": _at(SETUP, 122, 46),
         "create": _at(SETUP, 192, 50),
@@ -123,7 +140,7 @@ class PlayPanel(FloatPanel):
         self._clock = 0.0
 
     def title(self) -> str:
-        return t("play.title") if self.step in (CHOOSE, MODE) else t("net.title")
+        return t("play.title") if self.step in (CHOOSE, MODE, PRACTICE) else t("net.title")
 
     # --- what the rest of the game asks ---
     @property
@@ -215,8 +232,10 @@ class PlayPanel(FloatPanel):
             self.dismiss()
             self.app.go_play()
         elif item == "practice":
+            self._goto(PRACTICE)
+        elif item in config.PRACTICE_MODES:
             self.dismiss()
-            self.app.go_practice()
+            self.app.go_practice(item)
         elif item == "duo":
             self.error = None
             self._goto(SETUP)
@@ -225,6 +244,8 @@ class PlayPanel(FloatPanel):
                 self.close()
             elif self.step == MODE:
                 self._goto(CHOOSE)
+            elif self.step == PRACTICE:
+                self._goto(MODE, ITEMS[MODE].index("practice"))
             else:
                 self.error = None
                 self._goto(CHOOSE if self.step == SETUP else SETUP)
@@ -386,6 +407,10 @@ class PlayPanel(FloatPanel):
         elif step == MODE:
             button("free", t("play.free"), t("play.free_sub"))
             button("practice", t("play.practice"), t("play.practice_sub"))
+            button("back", t("play.back"))
+        elif step == PRACTICE:
+            for mode in config.PRACTICE_MODES:
+                button(mode, t(f"practice.mode.{mode}"), t(f"practice.mode.{mode}_sub"))
             button("back", t("play.back"))
         elif step == SETUP:
             hud.label(canvas, pv, t("net.name"), (X, top + 104), C.TEXT_DIM, 13)

@@ -9,7 +9,7 @@ import pytest
 from game import config, i18n
 from game.app import App
 from game.physics import BallPocketed
-from game.render import hud
+from game.render import draw, hud
 from game.render.layout import to_px
 from game.render.view import View
 from game.scenes import play_panel as pp
@@ -83,10 +83,15 @@ def test_ac15_the_ball_to_hit_is_shown_only_after_the_wait(app, monkeypatch):
     )  # ... then the clock
 
 
-def test_ac15_no_ring_is_drawn_round_the_ball_to_hit(app):
-    from game.scenes.practice import PracticeScene
-
-    assert "_draw_cues" not in vars(PracticeScene)  # the panel shows the ball; the table does not
+def test_ac15_no_ring_is_drawn_round_the_ball_to_hit(app, monkeypatch):
+    rings = []
+    monkeypatch.setattr(draw, "draw_pocket_call", lambda *a: rings.append(a))
+    monkeypatch.setattr(draw, "draw_ring", lambda *a, **kw: rings.append(a))
+    app.go_practice()
+    run(app, config.PRACTICE_READY_S + 0.5)
+    app.practice.rules.target = 6  # (a target is called: the panel shows the ball; the table
+    app.practice.draw(pg.display.get_surface())  # does not, and no pocket is called in this drill)
+    assert rings == []
 
 
 # --- AC16: every second of the count has its own sound, the start rings -----------------------
@@ -180,17 +185,99 @@ def test_ac19_a_centred_label_is_centred_on_its_axis(lang):
         assert abs(rect.centerx - 200) <= 1, (lang, name, rect)
 
 
-# --- AC20: the words of the Practice button keep clear of its arrow ---------------------------
+# --- AC20 / AC34 / AC39: the words of a play button keep clear of its arrow -------------------
+def _room(rect):
+    arrow_right, gap = 24, 16  # the arrow of a lit button sits at x + 18, 6 wide
+    return rect.w - 2 * (arrow_right + gap)  # the line is centred: the same room on both sides
+
+
 @pytest.mark.parametrize("lang", ["vi", "en"])
 def test_ac20_no_description_of_a_play_button_reaches_the_arrow(lang):
     i18n.set_lang(lang)
     rect = pp.RECTS[pp.MODE]["practice"]
-    arrow_right, gap = 24, 16  # the arrow of a lit button sits at x + 18, 6 wide
-    room = rect.w - 2 * (arrow_right + gap)  # the line is centred: the same room on both sides
     names = [n for n in i18n.table(lang) if n.startswith("play.") and n.endswith("_sub")]
     assert len(names) >= 4
     for name in names:
-        assert hud.text_width(V, i18n.t(name), 13) <= room, (lang, name)
+        assert hud.text_width(V, i18n.t(name), 13) <= _room(rect), (lang, name)
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+def test_ac34_the_words_of_the_three_runs_fit_their_buttons(lang):
+    i18n.set_lang(lang)
+    for mode in config.PRACTICE_MODES:
+        rect = pp.RECTS[pp.PRACTICE][mode]
+        name, sub = i18n.t(f"practice.mode.{mode}"), i18n.t(f"practice.mode.{mode}_sub")
+        assert not name.startswith("practice.mode"), (lang, mode)  # (a key shown is a bug)
+        assert not sub.startswith("practice.mode"), (lang, mode)
+        assert hud.text_width(V, sub, 13) <= _room(rect), (lang, mode)
+        assert hud.text_width(V, name, 20, True) <= _room(rect), (lang, mode)
+
+
+def open_practice_step(app):
+    panel = app.menu.play_panel
+    panel.open()
+    panel._goto(pp.MODE)
+    app.handle_event(key(pg.K_DOWN))  # Practice
+    app.handle_event(key(pg.K_RETURN))
+    return panel
+
+
+def test_ac34_practice_opens_a_step_with_three_runs_not_the_table(app):
+    panel = open_practice_step(app)
+    assert panel.step == pp.PRACTICE and app.scene is app.menu
+    assert pp.ITEMS[pp.PRACTICE] == ("ghost", "call", "sprint", "back")
+    assert panel.sel == 0 and panel.is_open
+
+
+@pytest.mark.parametrize("mode", config.PRACTICE_MODES)
+def test_ac34_each_button_starts_its_own_run(app, mode):
+    panel = open_practice_step(app)
+    panel._choose(pp.ITEMS[pp.PRACTICE].index(mode))
+    app.handle_event(key(pg.K_RETURN))
+    assert app.scene is app.practice and not panel.is_open
+    assert app.practice.mode == mode and app.practice.rules.mode == mode
+    assert app.practice.counting_down  # a fresh run
+
+
+@pytest.mark.parametrize("mode", config.PRACTICE_MODES)
+def test_ac34_a_click_on_a_run_button_starts_it(app, mode):
+    panel = open_practice_step(app)
+    panel.k = 1.0
+    app.handle_event(
+        pg.event.Event(pg.MOUSEBUTTONDOWN, pos=pp.RECTS[pp.PRACTICE][mode].center, button=1)
+    )
+    assert app.scene is app.practice and app.practice.mode == mode
+
+
+def test_ac34_back_and_esc_go_back_one_step_to_the_mode_step(app):
+    panel = open_practice_step(app)
+    panel._choose(pp.ITEMS[pp.PRACTICE].index("back"))
+    app.handle_event(key(pg.K_RETURN))
+    assert panel.step == pp.MODE and pp.ITEMS[pp.MODE][panel.sel] == "practice"
+    assert app.scene is app.menu
+    app.handle_event(key(pg.K_RETURN))  # Practice again
+    assert panel.step == pp.PRACTICE
+    app.handle_event(key(pg.K_ESCAPE))
+    assert panel.step == pp.MODE and panel.is_open and app.scene is app.menu
+
+
+def test_ac34_free_play_still_goes_straight_to_the_table(app):
+    panel = app.menu.play_panel
+    panel.open()
+    panel._goto(pp.MODE)
+    app.handle_event(key(pg.K_RETURN))  # Free play, the first button
+    assert app.scene is app.play and not panel.is_open
+
+
+def test_ac34_a_run_started_again_from_the_panel_keeps_no_old_mode(app):
+    open_practice_step(app)
+    app.handle_event(key(pg.K_DOWN))
+    app.handle_event(key(pg.K_RETURN))  # Call the Pocket
+    assert app.practice.mode == "call"
+    app.go_menu()
+    open_practice_step(app)
+    app.handle_event(key(pg.K_RETURN))  # Beat the Ghost
+    assert app.practice.mode == "ghost" and app.practice.rules.mode == "ghost"
 
 
 # --- AC21: three lives (round 4, GAME_DESIGN lần 33) ------------------------------------------
@@ -397,3 +484,425 @@ def test_ac22_the_leave_card_has_its_words_in_both_languages():
         i18n.set_lang(lang)
         words = [i18n.t(k) for k in ("leave.title", "leave.line", "leave.stay", "leave.leave")]
         assert all(w and not w.startswith("leave.") for w in words), lang
+
+
+# --- the drills (docs/plans/20261104-luyen-tap-da-che-do.md AC35-AC39) ----------------------------
+def start_mode(app, mode):
+    app.go_practice(mode)
+    run(app, config.PRACTICE_READY_S + 0.5)
+    return app.practice
+
+
+def ring_pixels(scene, pocket_index):
+    """How many pixels around a pocket differ from the same frame with no pocket called."""
+    canvas = pg.display.get_surface()
+    scene.draw(canvas)
+    with_ring = canvas.copy()
+    keep, scene.rules.pocket = scene.rules.pocket, None
+    scene.draw(canvas)
+    scene.rules.pocket = keep
+    x, y, r = config.POCKETS[pocket_index]
+    cx, cy = to_px(x, y)
+    reach = round(r * config.PX_PER_M) + 20
+    box = pg.Rect(round(cx) - reach, round(cy) - reach, 2 * reach, 2 * reach).clip(
+        canvas.get_rect()
+    )
+    return sum(
+        with_ring.get_at((px, py)) != canvas.get_at((px, py))
+        for px in range(box.left, box.right)
+        for py in range(box.top, box.bottom)
+    )
+
+
+# --- AC35: Call the Pocket -----------------------------------------------------------------------
+def test_ac35_the_called_pocket_has_a_ring_and_no_other_pocket_does(app):
+    scene = start_mode(app, "call")
+    scene.rules.target, scene.rules.pocket = 6, 3
+    assert ring_pixels(scene, 3) > 100  # a ring about the mouth of the pocket
+    assert ring_pixels(scene, 0) == 0 and ring_pixels(scene, 4) == 0  # ... and only there
+
+
+def test_ac35_the_ring_is_drawn_only_while_a_pocket_is_called_and_the_run_is_on(app, monkeypatch):
+    rings = []
+    monkeypatch.setattr(
+        draw, "draw_pocket_call", lambda canvas, v, pocket, clock: rings.append(pocket)
+    )
+    canvas = pg.display.get_surface()
+    app.go_practice("call")
+    app.practice.rules.pocket = 2
+    app.practice.draw(canvas)
+    assert rings == []  # the wait: nothing is shown yet
+    run(app, config.PRACTICE_READY_S + 0.5)
+    app.practice.rules.pocket = None
+    app.practice.draw(canvas)
+    assert rings == []  # no pocket is called (the break)
+    app.practice.rules.pocket = 2
+    app.practice.draw(canvas)
+    assert rings == [2]
+    app.practice.rules.phase = "lost"
+    app.practice.draw(canvas)
+    assert rings == [2]  # the run is over
+
+
+def test_ac35_the_ring_is_never_drawn_in_the_other_drills(app, monkeypatch):
+    rings = []
+    monkeypatch.setattr(draw, "draw_pocket_call", lambda *a: rings.append(a))
+    for mode in ("ghost", "sprint"):
+        scene = start_mode(app, mode)
+        scene.rules.target = 6
+        scene.draw(pg.display.get_surface())
+    assert rings == []
+
+
+def test_ac35_the_hint_under_the_table_says_which_pocket_counts(app):
+    scene = start_mode(app, "call")
+    assert scene._hint_words() == i18n.t("practice.breaking")  # (nothing is called yet)
+    scene.rules.target, scene.rules.pocket = 6, 3
+    assert scene._hint_words() == i18n.t("practice.call_hint")
+    scene._notice, scene._notice_left = ("foul", "practice.miss"), 3.0
+    assert scene._hint_words() is None  # a notice in the same strip wins
+    assert start_mode(app, "ghost")._hint_words() == i18n.t("practice.breaking")
+
+
+def aim_at(scene, *, target=6, pocket=2):
+    three_balls(scene)
+    scene.rules.target, scene.rules.pocket = target, pocket
+    scene.rules._ask = (False, config.PRACTICE_LINE_MARGIN_M)
+
+
+def pockets_told(monkeypatch, table):
+    monkeypatch.setattr(
+        "game.rules.practice.pot_pockets", lambda balls, n, **_: list(table.get(n, []))
+    )
+
+
+def test_ac35_the_target_in_another_pocket_is_a_miss_with_its_own_words(app, monkeypatch):
+    pockets_told(monkeypatch, {7: [1], 8: [1]})
+    scene = start_mode(app, "call")
+    aim_at(scene)
+    scene.rules.on_shot()
+    scene._live = True
+    scene.rules.on_events([BallPocketed(6, 5)])  # the 6 went down, but not in the pocket 2
+    scene._end_shot()
+    assert scene.rules.lives == config.PRACTICE_LIVES - 1 and scene.rules.streak == 0
+    assert scene._notice == ("foul", "practice.miss_pocket")
+
+
+def test_ac35_the_card_says_the_wrong_pocket_when_that_was_the_last_life(app, monkeypatch):
+    pockets_told(monkeypatch, {7: [1], 8: [1]})
+    scene = start_mode(app, "call")
+    aim_at(scene)
+    scene.rules.lives = 1
+    scene.rules.on_shot()
+    scene._live = True
+    scene.rules.on_events([BallPocketed(6, 5)])
+    scene._end_shot()
+    assert scene.rules.phase == "lost"
+    assert scene._lost_words() == i18n.t(
+        "practice.out_of_lives", why=i18n.t("practice.miss_pocket")
+    )
+
+
+def test_ac35_a_plain_miss_in_this_drill_keeps_the_usual_words(app, monkeypatch):
+    pockets_told(monkeypatch, {6: [2], 7: [1], 8: [1]})
+    scene = start_mode(app, "call")
+    aim_at(scene)
+    miss(scene)
+    assert scene._notice == ("foul", "practice.miss")
+
+
+def test_ac35_a_pocket_that_lost_its_line_says_pocket_changed_not_ball_changed(app, monkeypatch):
+    pockets_told(monkeypatch, {6: [3], 7: [1], 8: [1]})  # the 6 stays, its pocket 2 is blocked
+    scene = start_mode(app, "call")
+    aim_at(scene)
+    miss(scene)
+    assert scene.rules.target == 6 and scene.rules.pocket == 3 and scene.rules.target_swapped
+    assert [w for w, _ in scene._banner_lines()] == [
+        i18n.t("practice.miss"),
+        i18n.t("practice.pocket_swapped"),
+    ]
+
+
+def test_ac35_a_ball_that_lost_every_line_says_ball_changed(app, monkeypatch):
+    pockets_told(monkeypatch, {7: [1], 8: [1]})
+    scene = start_mode(app, "call")
+    aim_at(scene)
+    miss(scene)
+    assert scene.rules.target in (7, 8) and scene.rules.target_swapped
+    assert i18n.t("practice.target_swapped") in [w for w, _ in scene._banner_lines()]
+
+
+def test_ac35_the_called_ring_is_drawn_by_the_shared_component_at_the_pockets_place():
+    canvas = pg.Surface(config.LOGICAL_SIZE, pg.SRCALPHA)
+    draw.draw_pocket_call(canvas, V, 5, 0.0)
+    box = canvas.get_bounding_rect()
+    x, y, r = config.POCKETS[5]
+    cx, cy = to_px(x, y)
+    assert abs(box.centerx - cx) <= 1 and abs(box.centery - cy) <= 1
+    assert box.w >= 2 * r * config.PX_PER_M  # at least the size of the mouth
+
+
+# --- AC36: Sprint ------------------------------------------------------------
+def test_ac36_the_clock_runs_only_while_the_player_may_aim(app):
+    from game.physics import Shot
+
+    app.go_practice("sprint")
+    scene = app.practice
+    run(app, config.PRACTICE_READY_S - 0.5)
+    assert scene.rules.time_left == config.SPRINT_START_S  # the wait is not on the clock
+    run(app, 1.5)
+    assert config.SPRINT_START_S - 1.2 < scene.rules.time_left < config.SPRINT_START_S - 0.8
+    before = scene.rules.time_left
+    scene.fire(Shot(math.pi, 0.1, 0.0))
+    run(app, 0.5)
+    assert scene._live and scene.rules.time_left == before  # the balls rolling: stopped
+    for _ in range(60 * 30):
+        if not scene._live:
+            break
+        app.update(RUN_DT)
+    assert not scene._live and before - 2 * RUN_DT < scene.rules.time_left <= before
+    before = scene.rules.time_left
+    run(app, 1.0)
+    assert scene.rules.time_left < before  # aiming again: it runs
+
+
+def test_ac36_the_clock_stops_in_hand_and_behind_the_help_card(app):
+    scene = start_mode(app, "sprint")
+    scene.rules.cue_in_hand = True
+    left = scene.rules.time_left
+    run(app, 2.0)
+    assert scene.rules.time_left == left  # placing the cue ball: stopped
+    scene.rules.cue_in_hand = False
+    app.open_help()
+    run(app, 2.0)
+    assert scene.rules.time_left == left
+    app.help.close()
+    run(app, 1.0)
+    assert scene.rules.time_left < left
+
+
+def test_ac36_there_is_no_shot_clock_and_no_lives_in_sprint(app, monkeypatch):
+    seen = record_panel(monkeypatch)
+    lights = []
+    monkeypatch.setattr(hud, "draw_lives", lambda *a: lights.append(a))
+    scene = start_mode(app, "sprint")
+    run(app, config.PRACTICE_SHOT_S + 5.0)  # longer than a shot's clock in the other drills
+    assert scene.rules.phase == "playing" and scene.rules.lives == config.PRACTICE_LIVES
+    assert scene._shot_left == config.PRACTICE_SHOT_S and scene._notice is None
+    scene.draw(pg.display.get_surface())
+    assert seen[-1]["lives"] is None and lights == []
+
+
+def test_ac36_the_lives_row_is_still_drawn_in_the_other_drills(app, monkeypatch):
+    lights = []
+    monkeypatch.setattr(hud, "draw_lives", lambda *a: lights.append(a))
+    for mode in ("ghost", "call"):
+        start_mode(app, mode).draw(pg.display.get_surface())
+    assert len(lights) == 2
+
+
+def test_ac36_the_counter_shows_the_runs_time_rounded_up_with_its_own_word(app, monkeypatch):
+    seen = record_panel(monkeypatch)
+    app.go_practice("sprint")
+    app.practice.draw(pg.display.get_surface())
+    assert seen[-1]["count_word"] == "practice.count"  # the wait still counts the wait
+    assert seen[-1]["count"] == math.ceil(config.PRACTICE_READY_S)
+    run(app, config.PRACTICE_READY_S + 0.5)
+    scene = app.practice
+    scene.rules.time_left = 41.2
+    scene.draw(pg.display.get_surface())
+    assert seen[-1]["count"] == 42 and seen[-1]["count_word"] == "practice.time"
+    assert seen[-1]["score_word"] == "practice.potted"
+    assert not seen[-1]["warn"]
+
+
+def test_ac36_the_other_drills_keep_their_words(app, monkeypatch):
+    seen = record_panel(monkeypatch)
+    for mode in ("ghost", "call"):
+        start_mode(app, mode).draw(pg.display.get_surface())
+        assert seen[-1]["score_word"] == "practice.streak"
+        assert seen[-1]["count_word"] == "practice.count"
+        assert seen[-1]["count"] == config.PRACTICE_SHOT_S and seen[-1]["lives"] is not None
+
+
+def test_ac36_the_clock_is_red_and_ticks_in_its_last_seconds(app, monkeypatch):
+    seen = record_panel(monkeypatch)
+    warns = []
+    monkeypatch.setattr(app.audio, "play_clock_warn", lambda left: warns.append(left))
+    scene = start_mode(app, "sprint")
+    scene.rules.time_left = config.PRACTICE_WARN_S + 0.5
+    run(app, 2.2)
+    scene.draw(pg.display.get_surface())
+    assert seen[-1]["warn"] and warns[:2] == [config.PRACTICE_WARN_S, config.PRACTICE_WARN_S - 1]
+
+
+def test_ac36_the_clock_running_out_loses_the_run_with_its_own_words(app):
+    scene = start_mode(app, "sprint")
+    scene.rules.streak = 4
+    scene.rules.time_left = 0.5
+    run(app, 1.0)
+    assert scene.rules.phase == "lost" and scene._lost_words() == i18n.t("practice.time_up")
+    assert app.settings.practice_best_sprint == 4
+
+
+def test_ac36_the_seconds_a_shot_won_or_cost_are_told_in_the_card(app, monkeypatch):
+    pockets_told(monkeypatch, {7: [1], 8: [1]})
+    scene = start_mode(app, "sprint")
+    three_balls(scene)
+    scene.rules.target = 6
+    start_time = scene.rules.time_left
+    scene.rules.on_shot()
+    scene._live = True
+    scene.rules.on_events([BallPocketed(6, 2)])  # a pot: time is won
+    scene._end_shot()
+    assert scene.rules.time_left == start_time + config.SPRINT_POT_BONUS_S
+    words = [w for w, _ in scene._banner_lines()]
+    assert words == [i18n.t("practice.time_gain", s=int(config.SPRINT_POT_BONUS_S))]
+    scene.rules.target = 7
+    before = scene.rules.time_left
+    miss(scene)  # a miss: time is lost, said on the reason's own line
+    assert scene.rules.time_left == before - config.SPRINT_MISS_COST_S
+    words = [w for w, _ in scene._banner_lines()]
+    cost = i18n.t("practice.time_loss", s=int(config.SPRINT_MISS_COST_S))
+    assert words[0] == f"{i18n.t('practice.miss')} \u00b7 {cost}" and len(words) <= 2
+    run(app, config.NOTICE_S + 0.5)
+    assert scene._banner_lines() == []
+
+
+def test_ac36_a_scratch_in_sprint_tells_its_cost_and_still_has_room_for_the_how_to(app):
+    scene = start_mode(app, "sprint")
+    three_balls(scene)
+    scene.rules.target = 6
+    scene.rules.on_shot()
+    scene._live = True
+    scene.rules.on_events([BallPocketed(0, 0)])
+    scene._end_shot()
+    words = [w for w, _ in scene._banner_lines()]
+    cost = i18n.t("practice.time_loss", s=int(config.SPRINT_SCRATCH_COST_S))
+    assert words == [f"{i18n.t('foul.scratch')} \u00b7 {cost}", i18n.t("notice.hand_drag")]
+
+
+# --- AC37: the card and the best of each drill ------------------------------
+def lose(scene, streak):
+    scene.rules.streak = streak
+    scene.rules.lives = 1
+    scene.rules.time_left = 0.01
+    scene.update(RUN_DT)  # (the clock of Sprint)
+    if scene.rules.phase == "playing":
+        scene._timeout()
+    assert scene.rules.phase == "lost"
+
+
+@pytest.mark.parametrize("mode", ["ghost", "call", "sprint"])
+def test_ac37_the_best_is_kept_for_each_drill_apart_and_only_goes_up(app, mode):
+    scene = start_mode(app, mode)
+    lose(scene, 5)
+    fields = {
+        "ghost": "practice_best",
+        "call": "practice_best_call",
+        "sprint": "practice_best_sprint",
+    }
+    assert getattr(app.settings, fields[mode]) == 5
+    assert [getattr(app.settings, f) for m, f in fields.items() if m != mode] == [0, 0]
+    scene = start_mode(app, mode)
+    lose(scene, 3)
+    assert getattr(app.settings, fields[mode]) == 5  # a lower run does not lower it
+    scene = start_mode(app, mode)
+    lose(scene, 9)
+    assert getattr(app.settings, fields[mode]) == 9
+
+
+@pytest.mark.parametrize("mode", ["ghost", "call", "sprint"])
+def test_ac37_the_panel_and_the_card_read_the_best_of_their_own_drill(app, monkeypatch, mode):
+    app.change_settings(practice_best=2, practice_best_call=4, practice_best_sprint=6)
+    seen = record_panel(monkeypatch)
+    card = []
+    monkeypatch.setattr(hud, "draw_result", lambda canvas, v, **kw: card.append(kw))
+    scene = start_mode(app, mode)
+    scene.draw(pg.display.get_surface())
+    expected = {"ghost": 2, "call": 4, "sprint": 6}[mode]
+    assert seen[-1]["best"] == expected
+    lose(scene, 1)
+    run(app, 4.0)
+    scene.draw(pg.display.get_surface())
+    assert card[-1]["rows"][1] == (i18n.t("practice.best"), expected)
+    assert card[-1]["score_label"] == i18n.t(
+        "practice.potted" if mode == "sprint" else "practice.streak"
+    )
+
+
+def test_ac37_a_new_run_keeps_the_drill(app):
+    scene = start_mode(app, "sprint")
+    app.handle_event(key(pg.K_r))
+    assert scene.mode == "sprint" and type(scene.rules).__name__ == "SprintRun"
+    assert scene.rules.time_left == config.SPRINT_START_S and scene.counting_down
+    run(app, config.PRACTICE_READY_S + 0.5)
+    lose(scene, 2)
+    run(app, 4.0)
+    scene.new_game()  # what the card's "new game" does
+    assert scene.mode == "sprint" and type(scene.rules).__name__ == "SprintRun"
+    app.go_menu()
+    app.go_practice("call")
+    assert scene.mode == "call" and type(scene.rules).__name__ == "CallRun"
+    app.go_practice()
+    assert scene.mode == "ghost" and type(scene.rules).__name__ == "GhostRun"
+
+
+def test_ac37_the_card_of_a_run_lost_to_lives_in_the_other_drills_names_its_cause(app):
+    scene = start_mode(app, "call")
+    lose(scene, 2)
+    assert scene._lost_words() == i18n.t(
+        "practice.out_of_lives", why=i18n.t("practice.lost_timeout")
+    )
+
+
+# --- AC39: the words of the drills fit in both languages ------------------------------
+NEW_KEYS = (
+    "practice.call_hint",
+    "practice.pocket_swapped",
+    "practice.miss_pocket",
+    "practice.time",
+    "practice.potted",
+    "practice.time_up",
+    "practice.time_gain",
+    "practice.time_loss",
+)
+
+
+def test_ac39_every_new_word_has_both_languages():
+    for name in NEW_KEYS:
+        vi, en = i18n.table("vi")[name], i18n.table("en")[name]
+        assert vi and en and vi != name and en != name
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+def test_ac39_the_new_cell_words_fit_their_cells(lang):
+    i18n.set_lang(lang)
+    canvas = pg.Surface((400, 100))
+    for name in ("practice.time", "practice.potted"):
+        assert hud.label_centered(canvas, V, i18n.t(name), (200, 20)).w <= 2 * hud.CELL_INSET
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+def test_ac39_every_line_of_the_notice_fits_the_strip_under_the_table(lang):
+    i18n.set_lang(lang)
+    gain = i18n.t("practice.time_gain", s=8)
+    loss = i18n.t("practice.time_loss", s=10)
+    lines = [gain]
+    for name in ("practice.miss", "practice.miss_pocket", "foul.scratch", "practice.lost_timeout"):
+        lines.append(f"{i18n.t(name)} \u00b7 {loss}")
+    lines += [i18n.t("practice.pocket_swapped"), i18n.t("practice.target_swapped")]
+    for line in lines:
+        assert hud.text_width(V, line, 16, True) + 44 < 600, (lang, line)
+    assert hud.text_width(V, i18n.t("practice.call_hint"), 16) < 600
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+def test_ac39_the_reasons_on_the_result_card_fit_in_two_lines(lang):
+    i18n.set_lang(lang)
+    room = hud.RESULT_CARD.w - 60
+    for reason in (
+        i18n.t("practice.time_up"),
+        i18n.t("practice.out_of_lives", why=i18n.t("practice.miss_pocket")),
+    ):
+        assert len(hud.wrap(V, reason, 14, room)) <= 2, (lang, reason)

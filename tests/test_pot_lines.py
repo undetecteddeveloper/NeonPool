@@ -2,7 +2,7 @@
 straight into a pocket. Hand-built tables, table is 2.54 x 1.27 m, ball radius 0.0286 m."""
 
 from game.config import BALL_R, POCKETS
-from game.physics.pot_lines import pot_lines
+from game.physics.pot_lines import pot_lines, pot_pockets
 from game.physics.world import CUE, Ball
 
 
@@ -72,3 +72,40 @@ def test_a_ball_hugging_a_cushion_can_still_be_shot_along_it_into_the_corner():
 def test_the_count_does_not_depend_on_the_order_of_the_list():
     balls = table(CUE_AT, TARGET, (8, 0.9, 0.6), (9, 1.5, 0.3))
     assert pot_lines(balls, 6) == pot_lines(list(reversed(balls)), 6)
+
+
+# --- pot_pockets: which pockets, not only how many -------------------------------------------
+def test_pot_pockets_lists_the_pockets_with_a_line_and_pot_lines_counts_them():
+    for balls in (
+        table(CUE_AT, TARGET),
+        table(CUE_AT, TARGET, (9, 0.17, 0.17)),
+        table(CUE_AT, TARGET, (8, 0.9, 0.6), (9, 1.5, 0.3)),
+    ):
+        for hand in (False, True):
+            pockets = pot_pockets(balls, 6, cue_in_hand=hand)
+            assert pockets == sorted(set(pockets)) and all(0 <= i < len(POCKETS) for i in pockets)
+            assert pot_lines(balls, 6, cue_in_hand=hand) == len(pockets)
+
+
+def test_pot_pockets_names_the_corner_the_ball_is_near_and_loses_it_when_blocked():
+    corner = min(range(len(POCKETS)), key=lambda i: POCKETS[i][0] ** 2 + POCKETS[i][1] ** 2)
+    assert corner in pot_pockets(table(CUE_AT, TARGET), 6)
+    blocker = (9, 0.17, 0.17)  # between the 6 and that corner
+    assert corner not in pot_pockets(table(CUE_AT, TARGET, blocker), 6)
+
+
+def test_pot_pockets_with_a_tighter_cut_limit_is_a_subset():
+    balls = table(CUE_AT, TARGET)
+    loose = pot_pockets(balls, 6, max_cut_deg=75.0)
+    tight = pot_pockets(balls, 6, max_cut_deg=30.0)
+    assert set(tight) <= set(loose)
+    assert (
+        pot_pockets(balls, 6, max_cut_deg=89.0) != []
+        and pot_pockets(balls, 6, max_cut_deg=0.5) == []
+    )
+
+
+def test_pot_pockets_of_a_ball_off_the_table_or_with_no_cue_ball_is_empty():
+    assert pot_pockets([*table(CUE_AT), Ball(6, 0.3, 0.3, in_play=False)], 6) == []
+    assert pot_pockets(table(TARGET), 6) == []
+    assert pot_pockets(table(TARGET), 6, cue_in_hand=True) != []
