@@ -1,15 +1,17 @@
 """Practice "the Ghost": a solo pressure drill, brief docs/plans/20261102-luyen-tap.md.
 
 Pure (no pygame). One ball at a time is the TARGET, picked at random among the balls still on the
-table that the cue ball can draw a straight line to (docs/GAME_DESIGN.md round 37): a target
-another ball sits directly in front of is never picked, so no run can lose a life to a shot that
-was never possible in the first place. A shot succeeds when the target goes into a pocket
-(what the cue ball touches first does not matter, a bank or a combination is as good as a straight
-shot); the next target is then picked. A shot that does not pot the target, the cue ball going into
-a pocket (it is then in hand), or the shot's clock running out each cost one of the lives; with
-none left the run is lost; with no ball left on the table it is won. A target that survives a miss
-is kept for the next shot unless the balls that moved now block it, in which case it is swapped for
-an open one at no extra cost.
+table that have a pot line (physics/pot_lines.py, docs/GAME_DESIGN.md round 39): a straight shot
+into a pocket that no other ball blocks, from where the cue ball stands. So no run can lose a life
+to a shot that was never possible in the first place. A shot succeeds when the target goes into a
+pocket (what the cue ball touches first does not matter, a bank or a combination is as good as a
+straight shot); the next target is then picked. A shot that does not pot the target, the cue ball
+going into a pocket (it is then in hand), or the shot's clock running out each cost one of the
+lives; with none left the run is lost; with no ball left on the table it is won. A target that
+survives a miss is kept for the next shot unless it has lost every pot line, in which case it is
+swapped for a ball that has one, at no extra cost. If NO ball has a pot line from where the cue
+ball stands, it is given in hand (no life lost) and the lines are counted from wherever it could
+be put; only if even that finds none is a ball the cue ball can see picked, else any.
 
 The opening break is the exception (docs/GAME_DESIGN.md round 38): nothing is called while the
 balls still sit racked, so there is nothing to miss — the first real target is picked only once the
@@ -23,7 +25,8 @@ import random
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from game.config import PRACTICE_LIVES
+from game.config import PRACTICE_LINE_MARGIN_M, PRACTICE_LIVES
+from game.physics.pot_lines import pot_lines
 from game.physics.raycast import first_contact
 from game.physics.world import CUE, Ball, BallPocketed, Event
 from game.rules.eight_ball import FOUL_SCRATCH, LOST, PLAYING, WON
@@ -54,7 +57,8 @@ class GhostRun:
         self.phase = PLAYING
         self.cue_in_hand = False  # after the cue ball went into a pocket
         self.last: ShotResult | None = None
-        self.target_swapped = False  # the last target change was a swap away from a blocked ball
+        self.target_swapped = False  # the last target change was a swap away from a dead ball
+        self.hand_given = False  # the last judging found no pot line and gave the cue ball in hand
         self.target: int | None = None  # nothing is called while the break still sits racked
         self._begin_record()
 
@@ -63,12 +67,44 @@ class GhostRun:
     def balls_left(self) -> int:
         return 15 - len(self.pocketed)
 
-    def _pick(self, balls: Sequence[Ball] | None = None) -> int | None:
+    def _viable(self, balls: Sequence[Ball], in_hand: bool, margin: float) -> list[int]:
+        """The balls still on the table that could be shot straight into a pocket."""
         left = sorted(BALLS - self.pocketed)
-        if not left or balls is None:
-            return self._rng.choice(left) if left else None
-        open_left = [n for n in left if self._open(balls, n)]
-        return self._rng.choice(open_left or left)
+        return [n for n in left if pot_lines(balls, n, cue_in_hand=in_hand, margin=margin) > 0]
+
+    def _pick(self) -> int | None:
+        left = sorted(BALLS - self.pocketed)
+        return self._rng.choice(left) if left else None
+
+    def _retarget(self, balls: Sequence[Ball] | None, *, keep: bool) -> None:
+        """Choose a target now: a fresh one (`keep` False), or the held one unless it has lost
+        every pot line. Asking for the most from the table first, then less: lines from where the
+        cue ball stands; if none, from wherever it could be put (it is given in hand, no life
+        lost); if none, the same with the thinnest squeezes allowed (no gap to spare)."""
+        if balls is None:
+            if not keep:
+                self.target = self._pick()
+            return
+        left = sorted(BALLS - self.pocketed)
+        hand = self.cue_in_hand
+        good: list[int] = []
+        asks = [
+            (hand, PRACTICE_LINE_MARGIN_M),
+            (True, PRACTICE_LINE_MARGIN_M),
+            (hand, 0.0),
+            (True, 0.0),
+        ]
+        for in_hand, margin in asks:
+            good = self._viable(balls, in_hand, margin)
+            if good:
+                if in_hand and not hand:
+                    self.cue_in_hand = self.hand_given = True
+                break
+        pool = good or [n for n in left if self._open(balls, n)] or left
+        if keep and self.target in pool:
+            return
+        self.target_swapped = keep
+        self.target = self._rng.choice(pool)
 
     def _open(self, balls: Sequence[Ball], target_num: int) -> bool:
         """Can the cue ball draw a straight line to this ball before touching another?"""
@@ -155,15 +191,14 @@ class GhostRun:
             outcome = LOST
         elif not BALLS - self.pocketed:
             outcome = WON
-        self.target_swapped = False
+        self.target_swapped = self.hand_given = False
         if outcome:
             self.phase = outcome
             self.cue_in_hand = False
             self.target = None if outcome == WON else self.target
         elif target_gone or (self.target is None and shot_fired):
-            self.target = self._pick(balls)
-        elif balls is not None and self.target is not None and not self._open(balls, self.target):
-            self.target = self._pick(balls)
-            self.target_swapped = True
+            self._retarget(balls, keep=False)
+        elif self.target is not None:
+            self._retarget(balls, keep=True)
         self.last = ShotResult(res.hit, res.pocketed, res.lost_life, outcome)
         return self.last

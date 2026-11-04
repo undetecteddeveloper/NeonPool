@@ -42,7 +42,8 @@ class PracticeScene(PlayScene):
         self._ready_left = PRACTICE_READY_S  # the wait before a run: nothing may be touched
         self._warned = -1  # the last second of the shot's clock that was beeped
         self._dim_k = 1.0  # how dark the screen is: all dark for the wait, then it clears
-        self._swap_left = 0.0  # how long the "target swapped" hint under the table still shows
+        self._swap_left = 0.0  # how long the "target swapped" line of the notice still shows
+        self._hand_left = 0.0  # ... and the "no shot to a pocket, cue ball in hand" line
 
     def set_view(self, v: View) -> None:
         """The Free play table already made the sprites and the table picture for this size: share
@@ -62,7 +63,7 @@ class PracticeScene(PlayScene):
         self._ready_left = PRACTICE_READY_S
         self._warned = -1
         self._dim_k = 1.0
-        self._swap_left = 0.0
+        self._swap_left = self._hand_left = 0.0
 
     @property
     def counting_down(self) -> bool:
@@ -82,13 +83,25 @@ class PracticeScene(PlayScene):
         return self._can_aim()
 
     def _hint_words(self) -> str | None:
-        if self.counting_down:
-            return None  # (the wait has its own)
+        if self.counting_down or self._banner_lines():
+            return None  # (the wait has its own line; a notice hangs in the same strip: it wins)
         if self.rules.target is None and self.rules.phase == PLAYING:
             return t("practice.breaking")
-        if self._swap_left > 0.0:
-            return t("practice.target_swapped")
         return super()._hint_words()
+
+    def _banner_lines(self) -> list[tuple[str, tuple[int, int, int]]]:
+        """The one notice under the table, never more than two lines (a third would not fit in the
+        strip below the table): why a life went, then what the rules did about the target, then
+        the how-to-place line. The last to go is the first that can be guessed."""
+        base = super()._banner_lines()
+        drag = base[len(base) - 1 :] if self._holding() else []
+        lines = base[: len(base) - len(drag)]
+        if self._hand_left > 0.0:
+            lines.append((t("practice.hand_given"), C.ACCENT))
+            drag = []  # (that line already says what to do)
+        if self._swap_left > 0.0:
+            lines.append((t("practice.target_swapped"), C.ACCENT))
+        return (lines + drag)[:2]
 
     def fire(self, shot: Shot) -> None:
         self._shot_visuals(shot, self.drag.bar_length)
@@ -108,8 +121,13 @@ class PracticeScene(PlayScene):
             self._finish_run(res)
         elif res.lost_life:
             self._notify("foul", res.lost_life)
+        self._announce_retarget()
+
+    def _announce_retarget(self) -> None:
         if self.rules.target_swapped:
             self._swap_left = NOTICE_S
+        if self.rules.hand_given:
+            self._hand_left = NOTICE_S
 
     def _finish_run(self, res: ShotResult) -> None:
         self._ended_at = self._clock
@@ -127,6 +145,7 @@ class PracticeScene(PlayScene):
         if self._leave_open:
             return
         self._swap_left = max(0.0, self._swap_left - dt)
+        self._hand_left = max(0.0, self._hand_left - dt)
         self._dim_k = (
             1.0 if self.counting_down else max(0.0, self._dim_k - dt / PRACTICE_DIM_FADE_S)
         )
@@ -170,8 +189,7 @@ class PracticeScene(PlayScene):
         self._notice, self._notice_left = ("foul", res.lost_life), NOTICE_S
         self._callout = (t("callout.timeout"), C.AMBER, self._clock)
         self.app.audio.play_foul()
-        if self.rules.target_swapped:
-            self._swap_left = NOTICE_S
+        self._announce_retarget()
 
     # --- drawing ------------------------------------------------------------------------------
     def _draw_overlays(self, canvas: pg.Surface, v: View, over: bool) -> None:

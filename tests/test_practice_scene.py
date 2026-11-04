@@ -8,6 +8,7 @@ import pytest
 
 from game import config, i18n
 from game.app import App
+from game.physics import BallPocketed
 from game.render import hud
 from game.render.layout import to_px
 from game.render.view import View
@@ -256,24 +257,98 @@ def test_ac21_the_clock_running_out_costs_a_life_and_starts_a_fresh_clock(app):
     assert scene._notice == ("foul", "practice.lost_timeout")
 
 
-# --- AC24 (lần 37): a blocked target is swapped, and the table says so for a few seconds -------
-def test_ac24_a_target_blocked_by_a_moved_ball_is_swapped_with_a_hint_line(app):
-    scene = start(app)
+# --- AC24 / AC26 (lần 37, 39): the notice under the table is ONE card, never more than two lines
+def told(monkeypatch, lines, in_hand=None):
+    def stub(balls, n, *, cue_in_hand=False, **_):
+        return (in_hand if cue_in_hand and in_hand is not None else lines).get(n, 0)
+
+    monkeypatch.setattr("game.rules.practice.pot_lines", stub)
+
+
+def three_balls(scene):
     scene.rules.pocketed = set(range(1, 16)) - {6, 7, 8}
-    scene.rules.target = 6
     balls = scene.world.balls
-    balls[0].x, balls[0].y, balls[0].in_play = 0.3, 0.3, True  # the cue ball
-    balls[8].x, balls[8].y, balls[8].in_play = 0.6, 0.3, True  # sits between the cue and the 6
-    balls[6].x, balls[6].y, balls[6].in_play = 0.9, 0.3, True  # directly behind the 8
-    balls[7].x, balls[7].y, balls[7].in_play = 0.3, 0.9, True  # a clear line
+    for n in range(1, 16):
+        balls[n].in_play = n in (6, 7, 8)
+    for n, (x, y) in {0: (0.3, 0.3), 8: (0.6, 0.3), 6: (0.9, 0.3), 7: (0.3, 0.9)}.items():
+        balls[n].x, balls[n].y, balls[n].vx, balls[n].vy = x, y, 0.0, 0.0
+    balls[0].in_play = True
+
+
+def miss(scene):
     scene.rules.on_shot()
     scene._live = True
-    scene._end_shot()  # a miss: the 6 stayed down, now blocked by the 8
+    scene._end_shot()
+
+
+def test_ac24_a_swap_shares_the_notice_with_the_reason_and_never_overlaps_it(app, monkeypatch):
+    told(monkeypatch, {7: 1, 8: 1})  # the held 6 has lost every pot line
+    scene = start(app)
+    three_balls(scene)
+    scene.rules.target = 6
+    miss(scene)
     assert scene.rules.target_swapped and scene.rules.target in (7, 8)
-    assert scene._swap_left == config.NOTICE_S
-    assert scene._hint_words() == i18n.t("practice.target_swapped")
+    words = [w for w, _ in scene._banner_lines()]
+    assert words == [i18n.t("practice.miss"), i18n.t("practice.target_swapped")]
+    assert scene._hint_words() is None  # nothing else hangs in the strip under the table
     run(app, config.NOTICE_S + 0.5)
-    assert scene._swap_left == 0.0 and scene._hint_words() != i18n.t("practice.target_swapped")
+    assert scene._banner_lines() == [] and scene._swap_left == 0.0
+
+
+def test_ac26_no_line_from_here_gives_the_cue_ball_in_hand_and_says_so_in_the_same_card(
+    app, monkeypatch
+):
+    told(monkeypatch, {}, in_hand={6: 1})
+    scene = start(app)
+    three_balls(scene)
+    scene.rules.target = 6
+    miss(scene)
+    assert scene.rules.hand_given and scene.rules.target == 6
+    assert scene._holding() and not scene._can_aim()  # it can be picked up and put down
+    words = [w for w, _ in scene._banner_lines()]
+    assert words == [i18n.t("practice.miss"), i18n.t("practice.hand_given")]
+    assert i18n.t("notice.hand_drag") not in words  # (the given line says what to do)
+    assert scene.rules.lives == config.PRACTICE_LIVES - 1  # only the miss cost a life
+
+
+def test_ac24_the_card_never_has_more_than_two_lines_even_for_a_scratch_and_a_swap(
+    app, monkeypatch
+):
+    told(monkeypatch, {7: 1, 8: 1})
+    scene = start(app)
+    three_balls(scene)
+    scene.rules.target = 6
+    scene.rules.on_shot()
+    scene._live = True
+    scene.rules.on_events([BallPocketed(0, 0)])
+    scene._end_shot()  # the cue ball in a pocket AND the held 6 without a line
+    assert scene.rules.cue_in_hand and scene.rules.target_swapped
+    words = [w for w, _ in scene._banner_lines()]
+    assert words == [i18n.t("foul.scratch"), i18n.t("practice.target_swapped")]
+
+
+def test_ac24_the_card_fits_in_the_strip_under_the_table_at_the_smallest_window(app, monkeypatch):
+    told(monkeypatch, {}, in_hand={6: 1})
+    scene = start(app)
+    three_balls(scene)
+    scene.rules.target = 6
+    miss(scene)
+    for lang in ("vi", "en"):
+        i18n.set_lang(lang)
+        width = max(hud.text_width(V, w, 16, True) for w, _ in scene._banner_lines()) + 44
+        assert width < 600  # well inside the width of the table (about 970 px)
+    assert len(scene._banner_lines()) * 24 + hud.BANNER_PAD + 12 <= 98  # the free strip's height
+
+
+def test_ac25_the_breaking_line_gives_way_to_a_notice_hanging_in_the_same_strip(app):
+    app.go_practice()
+    run(app, config.PRACTICE_READY_S + 0.5)
+    scene = app.practice
+    assert scene._hint_words() == i18n.t("practice.breaking")
+    scene._timeout()  # stalled past the clock before the break: a life and a notice
+    assert scene._banner_lines() and scene._hint_words() is None  # one at a time
+    run(app, config.NOTICE_S + 0.5)
+    assert scene._hint_words() == i18n.t("practice.breaking")
 
 
 # --- AC22: the dark screen of the wait, the lives above the panel (round 5, lần 34) -----------

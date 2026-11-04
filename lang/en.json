@@ -125,6 +125,7 @@
   "practice.cleared": "CLEARED!",
   "practice.lost_timeout": "Out of time for this shot",
   "practice.target_swapped": "Target ball swapped: the old one was blocked",
+  "practice.hand_given": "No shot to a pocket: drag the cue ball elsewhere, then let go",
   "practice.breaking": "Breaking: the target appears once the balls open up",
   "net.title": "Two players",
   "net.name": "Your name",

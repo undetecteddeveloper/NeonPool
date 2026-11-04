@@ -217,6 +217,12 @@ PRACTICE_WARN_S = 10.0  # the clock blinks / beeps from here (same feel as NET_T
 PRACTICE_LIVES = 3  # a run is lost when this many shots (or clocks) have failed
 PRACTICE_DIM_FADE_S = 0.4  # the dark screen of the wait clears in this long
 PRACTICE_READY_S = 7.0  # a new run waits this long before anything may be touched (self-chosen)
+# A target ball must have a "pot line" (physics/pot_lines.py): a straight shot into a pocket. Both
+# numbers are self-chosen and unplayed: widen them to make more balls eligible (easier), narrow
+# them to make the choice pickier.
+PRACTICE_MAX_CUT_DEG = 75.0  # thinnest cut that still counts: the angle between the cue ball's
+# path and the line the target must take (0 = dead straight, 90 = a graze nobody can pot)
+PRACTICE_LINE_MARGIN_M = 0.5 * BALL_R  # a ball closer than 2 balls + this to a path blocks it
 
 # --- Rack: ball numbers in rack order (apex first). 8 in the middle of row 3,
 # the two back corners are one solid (6) and one stripe (15). ---

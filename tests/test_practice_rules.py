@@ -189,21 +189,39 @@ def test_ac6_finish_shot_without_on_shot_does_nothing():
     assert run.lives == PRACTICE_LIVES
 
 
-# --- AC24 (lần 37): the target is only ever a ball the cue ball can draw a straight line to ----
-# Table is 2.54 x 1.27 m (config.TABLE_L / TABLE_W); every position below stays well inside it.
+# --- AC24 (lần 37, lần 39): the target is only ever a ball that has a pot line ---------------
+# Geometry has its own tests (test_pot_lines.py): here the rules get a table whose lines are told.
 CUE_XY = (0.3, 0.3)
-NEAR_XY = (0.6, 0.3)  # straight ahead of the cue: open, and blocks whatever sits behind it
-FAR_XY = (0.9, 0.3)  # directly behind NEAR_XY, same line: blocked
-SIDE_XY = (0.3, 0.9)  # a different line, nothing in the way: open
+NEAR_XY = (0.6, 0.3)  # straight ahead of the cue: visible, and hides whatever sits behind it
+FAR_XY = (0.9, 0.3)  # directly behind NEAR_XY, same line: not visible
+SIDE_XY = (0.3, 0.9)  # a different line, nothing in the way: visible
 
 
-def test_ac24_the_next_target_after_a_pot_skips_a_ball_the_cue_cannot_see():
-    cue = Ball(CUE, *CUE_XY, in_play=True)
-    b5 = Ball(5, 1.5, 1.0, in_play=False)  # just potted, off the blocking line
-    b8 = Ball(8, *NEAR_XY, in_play=True)  # sits between the cue and the 6
-    b6 = Ball(6, *FAR_XY, in_play=True)  # directly behind the 8: not reachable
-    b7 = Ball(7, *SIDE_XY, in_play=True)  # a clear line: reachable
-    balls = [cue, b5, b6, b7, b8]
+def told(monkeypatch, lines: dict[int, int], in_hand: dict[int, int] | None = None) -> None:
+    """Pot lines per ball from where the cue ball stands, and (if given) with it in hand."""
+
+    def stub(balls, n, *, cue_in_hand=False, **_):
+        return (in_hand if cue_in_hand and in_hand is not None else lines).get(n, 0)
+
+    monkeypatch.setattr("game.rules.practice.pot_lines", stub)
+
+
+def table() -> list[Ball]:
+    return [
+        Ball(CUE, *CUE_XY, in_play=True),
+        Ball(8, *NEAR_XY, in_play=True),
+        Ball(6, *FAR_XY, in_play=True),
+        Ball(7, *SIDE_XY, in_play=True),
+    ]
+
+
+def three_left(run: GhostRun) -> GhostRun:
+    run.pocketed = set(range(1, 16)) - {6, 7, 8}
+    return run
+
+
+def test_ac24_the_next_target_after_a_pot_is_never_a_ball_without_a_pot_line(monkeypatch):
+    told(monkeypatch, {7: 2, 8: 1})  # the 6 has none
     seen = set()
     for seed in range(40):
         run = GhostRun(random.Random(seed))
@@ -211,64 +229,67 @@ def test_ac24_the_next_target_after_a_pot_skips_a_ball_the_cue_cannot_see():
         run.target = 5
         run.on_shot()
         run.on_events([down(5)])
-        run.finish_shot(balls)
+        run.finish_shot(table())
         seen.add(run.target)
-    assert 6 not in seen and seen == {7, 8}  # the 6 is never picked: the 8 blocks it
+    assert seen == {7, 8}
 
 
-def test_ac24_a_miss_that_leaves_the_target_blocked_swaps_it_for_an_open_one():
-    cue = Ball(CUE, *CUE_XY, in_play=True)
-    b8 = Ball(8, *NEAR_XY, in_play=True)  # ended up between the cue and the 6 after the miss
-    b6 = Ball(6, *FAR_XY, in_play=True)  # the target: now blocked by the 8
-    b7 = Ball(7, *SIDE_XY, in_play=True)  # open
-    balls = [cue, b6, b7, b8]
-    run = GhostRun(random.Random(0))
-    run.pocketed = set(range(1, 16)) - {6, 7, 8}
+def test_ac24_a_miss_that_leaves_the_target_without_a_line_swaps_it_for_one_with(monkeypatch):
+    told(monkeypatch, {7: 1, 8: 1})
+    run = three_left(GhostRun(random.Random(0)))
     run.target = 6
     run.on_shot()
-    res = run.finish_shot(balls)  # missed: the 6 stayed on the table, now blocked
+    res = run.finish_shot(table())  # missed, and the 6 has lost every line
     assert res.lost_life == MISS and run.lives == PRACTICE_LIVES - 1
-    assert run.target_swapped and run.target in {7, 8}  # swapped away from the blocked 6
+    assert run.target_swapped and run.target in {7, 8}
 
 
-def test_ac24_a_miss_that_leaves_the_target_open_does_not_swap_it():
-    cue = Ball(CUE, *CUE_XY, in_play=True)
-    b7 = Ball(7, *SIDE_XY, in_play=True)
-    balls = [cue, b7]
-    run = GhostRun(random.Random(0))
-    run.pocketed = set(range(1, 16)) - {7}
-    run.target = 7
-    run.target_swapped = True  # a swap from an earlier shot must not leak into this one
+def test_ac24_a_miss_that_leaves_the_target_a_line_does_not_swap_it(monkeypatch):
+    told(monkeypatch, {7: 1})
+    run = three_left(GhostRun(random.Random(0)))
+    run.target, run.target_swapped = 7, True  # a swap from an earlier shot must not leak
     run.on_shot()
-    run.finish_shot(balls)  # a miss, but the 7 is still open: no swap needed
+    run.finish_shot(table())
     assert not run.target_swapped and run.target == 7
 
 
-def test_ac24_with_no_cue_ball_in_the_list_the_pick_still_falls_back_to_any_ball():
-    b6 = Ball(6, *FAR_XY, in_play=True)
-    b9 = Ball(9, *SIDE_XY, in_play=True)
-    balls = [b6, b9]  # no cue ball: every "open" check fails, nothing to fall back from
-    run = GhostRun(random.Random(0))
-    run.pocketed = set(range(1, 16)) - {6, 9}
+def test_ac24_a_timeout_also_swaps_a_target_that_lost_its_lines(monkeypatch):
+    told(monkeypatch, {7: 1, 8: 1})
+    run = three_left(GhostRun(random.Random(0)))
     run.target = 6
-    run.on_shot()
-    res = run.finish_shot(balls)
-    assert res.lost_life == MISS
-    assert run.target in {6, 9}  # still a valid target, not None and not crashed
-
-
-def test_ac24_a_timeout_also_swaps_a_target_the_balls_now_block():
-    cue = Ball(CUE, *CUE_XY, in_play=True)
-    b8 = Ball(8, *NEAR_XY, in_play=True)
-    b6 = Ball(6, *FAR_XY, in_play=True)
-    b7 = Ball(7, *SIDE_XY, in_play=True)
-    balls = [cue, b6, b7, b8]
-    run = GhostRun(random.Random(0))
-    run.pocketed = set(range(1, 16)) - {6, 7, 8}
-    run.target = 6
-    res = run.timeout(balls)
+    res = run.timeout(table())
     assert res.lost_life == LOST_TIMEOUT
     assert run.target_swapped and run.target in {7, 8}
+
+
+def test_ac24_with_no_line_for_any_ball_even_in_hand_a_visible_ball_is_picked(monkeypatch):
+    told(monkeypatch, {})  # nothing can be potted from anywhere
+    seen = set()
+    for seed in range(40):
+        run = three_left(GhostRun(random.Random(seed)))
+        run.target = 6
+        run.on_shot()
+        run.finish_shot(table())
+        seen.add(run.target)
+        assert not run.hand_given  # no point giving the ball when it would not help
+    assert seen == {7, 8}  # the 6 is hidden behind the 8: only the visible balls are left
+
+
+def test_ac24_with_no_line_anywhere_a_target_that_is_still_in_the_pool_is_kept(monkeypatch):
+    told(monkeypatch, {})
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 7  # visible
+    run.on_shot()
+    run.finish_shot(table())
+    assert run.target == 7 and not run.target_swapped  # no flicker between equally bad balls
+
+
+def test_ac24_without_positions_nothing_is_swapped_and_the_pick_is_plain_random():
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    run.on_shot()
+    run.finish_shot()  # no ball list: the old behaviour, a miss keeps its target
+    assert run.target == 6 and not run.target_swapped and not run.hand_given
 
 
 # --- AC25 (lần 38): the opening break calls no target, so there is nothing to miss on it -------
@@ -285,20 +306,15 @@ def test_ac25_the_break_costs_no_life_and_picks_the_first_real_target():
     assert run.target in range(1, 16)
 
 
-def test_ac25_the_break_picks_among_balls_the_cue_can_see_when_given_positions():
-    cue = Ball(CUE, *CUE_XY, in_play=True)
-    b8 = Ball(8, *NEAR_XY, in_play=True)
-    b6 = Ball(6, *FAR_XY, in_play=True)  # directly behind the 8: not reachable
-    b7 = Ball(7, *SIDE_XY, in_play=True)
-    balls = [cue, b6, b7, b8]
+def test_ac25_the_break_picks_among_balls_with_a_pot_line_when_given_positions(monkeypatch):
+    told(monkeypatch, {7: 1, 8: 3})
     seen = set()
     for seed in range(40):
-        run = GhostRun(random.Random(seed))
-        run.pocketed = set(range(1, 16)) - {6, 7, 8}
+        run = three_left(GhostRun(random.Random(seed)))
         run.on_shot()
-        run.finish_shot(balls)
+        run.finish_shot(table())
         seen.add(run.target)
-    assert 6 not in seen and seen == {7, 8}
+    assert seen == {7, 8}
 
 
 def test_ac25_a_scratch_on_the_break_still_costs_a_life_and_still_picks_a_target():
@@ -321,3 +337,122 @@ def test_ac25_stalling_out_every_life_before_the_break_still_loses_the_run():
         assert run.timeout().outcome is None
     res = run.timeout()
     assert res.outcome == LOST and run.phase == LOST and run.target is None
+
+
+# --- AC26 (lần 39): no ball can be potted from here -> the cue ball is given in hand ---------
+def test_ac26_when_no_ball_has_a_line_the_cue_ball_is_given_in_hand_at_no_cost(monkeypatch):
+    told(monkeypatch, {}, in_hand={7: 1})
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    run.on_shot()
+    res = run.finish_shot(table())
+    assert res.lost_life == MISS and run.lives == PRACTICE_LIVES - 1  # only the miss costs
+    assert run.hand_given and run.cue_in_hand
+    assert run.target == 7 and run.target_swapped  # the 6 has no line even from a free spot
+
+
+def test_ac26_the_held_target_is_kept_when_it_has_a_line_from_the_free_spot(monkeypatch):
+    told(monkeypatch, {}, in_hand={6: 1, 7: 1})
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    run.on_shot()
+    run.finish_shot(table())
+    assert run.hand_given and run.cue_in_hand and run.target == 6 and not run.target_swapped
+
+
+def test_ac26_after_a_pot_with_no_line_left_the_next_target_comes_with_the_cue_in_hand(
+    monkeypatch,
+):
+    told(monkeypatch, {}, in_hand={7: 1, 8: 1})
+    run = GhostRun(random.Random(0))
+    run.pocketed = set(range(1, 16)) - {5, 7, 8}
+    run.target = 5
+    run.on_shot()
+    run.on_events([down(5)])
+    res = run.finish_shot(table())
+    assert res.hit and res.lost_life is None and run.lives == PRACTICE_LIVES  # nothing lost
+    assert run.hand_given and run.cue_in_hand and run.target in {7, 8}
+
+
+def test_ac26_the_break_can_give_the_cue_in_hand_too_and_costs_nothing(monkeypatch):
+    told(monkeypatch, {}, in_hand={7: 1})
+    run = three_left(GhostRun(random.Random(0)))
+    run.on_shot()
+    res = run.finish_shot(table())
+    assert res.lost_life is None and run.lives == PRACTICE_LIVES
+    assert run.hand_given and run.cue_in_hand and run.target == 7
+
+
+def test_ac26_a_ball_already_in_hand_is_not_given_again(monkeypatch):
+    told(monkeypatch, {7: 1})  # the same answer in hand or not
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    run.on_shot()
+    run.on_events([down(0)])  # a scratch: in hand already
+    run.finish_shot(table())
+    assert run.cue_in_hand and not run.hand_given and run.target == 7 and run.target_swapped
+
+
+def test_ac26_nothing_is_given_while_some_ball_has_a_line(monkeypatch):
+    told(monkeypatch, {7: 1}, in_hand={7: 1, 8: 1})
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    run.on_shot()
+    run.finish_shot(table())
+    assert not run.hand_given and not run.cue_in_hand and run.target == 7
+
+
+def test_ac26_a_timeout_can_give_the_cue_in_hand_and_the_flags_reset_on_the_next_judging(
+    monkeypatch,
+):
+    told(monkeypatch, {}, in_hand={7: 1})
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    res = run.timeout(table())
+    assert res.lost_life == LOST_TIMEOUT and run.hand_given and run.cue_in_hand
+    told(monkeypatch, {7: 1})
+    run.cue_placed()
+    run.on_shot()
+    run.finish_shot(table())
+    assert not run.hand_given and not run.target_swapped
+
+
+def test_ac26_the_run_ending_gives_nothing_and_picks_nothing(monkeypatch):
+    told(monkeypatch, {}, in_hand={7: 1})
+    run = three_left(GhostRun(random.Random(0)))
+    run.target, run.lives = 6, 1
+    run.on_shot()
+    res = run.finish_shot(table())
+    assert res.outcome == LOST and not run.hand_given and not run.cue_in_hand
+    assert run.target == 6
+
+
+def test_ac26_the_ladder_tries_the_roomy_lines_before_the_squeezes_and_here_before_in_hand(
+    monkeypatch,
+):
+    asked = []
+
+    def stub(balls, n, *, cue_in_hand=False, margin=None, **_):
+        asked.append((cue_in_hand, margin > 0.0))
+        return 1 if n == 7 and not margin and cue_in_hand else 0  # only a squeeze, in hand
+
+    monkeypatch.setattr("game.rules.practice.pot_lines", stub)
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    run.on_shot()
+    run.finish_shot(table())
+    order = list(dict.fromkeys(asked))
+    assert order == [(False, True), (True, True), (False, False), (True, False)]
+    assert run.hand_given and run.cue_in_hand and run.target == 7
+
+
+def test_ac26_a_squeeze_from_where_the_cue_ball_stands_needs_no_hand(monkeypatch):
+    def stub(balls, n, *, cue_in_hand=False, margin=None, **_):
+        return 1 if n == 7 and not margin and not cue_in_hand else 0
+
+    monkeypatch.setattr("game.rules.practice.pot_lines", stub)
+    run = three_left(GhostRun(random.Random(0)))
+    run.target = 6
+    run.on_shot()
+    run.finish_shot(table())
+    assert run.target == 7 and not run.hand_given and not run.cue_in_hand
