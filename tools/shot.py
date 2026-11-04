@@ -63,6 +63,7 @@ def _stage_practice(app, args) -> None:
         rules.last = ShotResult(True, (), None, WON)
         scene._finish_run(rules.last)
     elif args.end == "lost":
+        scene._miss_key = args.why or None  # (the last shot's cause the card names on its 2nd line)
         rules.streak, rules.lives, rules.shots = args.streak, 1, args.streak + 2
         if args.mode == "sprint":
             scene._finish_run(rules.tick(1e6))
@@ -83,6 +84,19 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode", choices=("ghost", "call", "sprint"), default="ghost", help="for --scene practice"
+    )
+    parser.add_argument(
+        "--pick",
+        choices=("ghost", "call", "sprint"),
+        default="",
+        help="--scene practice-menu: go on to the Level step of this run",
+    )
+    parser.add_argument(
+        "--level",
+        choices=("easy", "hard"),
+        default="",
+        help="--scene practice: the run's level; --pick: the level the Level step shows "
+        "(default: the settings' own, which starts as easy)",
     )
     parser.add_argument("--page", type=int, default=0)
     parser.add_argument(
@@ -105,6 +119,12 @@ def main() -> int:
         help="--scene practice: end the run now (the result card; --streak sets the score)",
     )
     parser.add_argument("--streak", type=int, default=7)
+    parser.add_argument(
+        "--why",
+        default="",
+        help="--end lost: the i18n key of the last shot's cause, e.g. practice.miss_pocket, "
+        "foul.scratch (default: the shot clock)",
+    )
     parser.add_argument("--lang", choices=("vi", "en"), default="")
     parser.add_argument(
         "--do",
@@ -129,13 +149,17 @@ def main() -> int:
     if args.scene == "play":
         app.go_play()
     if args.scene == "practice":
-        app.go_practice(args.mode)
+        app.go_practice(args.mode, args.level or None)
     if args.scene == "practice-menu":
         from game.scenes import play_panel as pp
 
         panel = app.menu.play_panel
         panel.open()
         panel._goto(pp.PRACTICE)
+        if args.pick:
+            panel.mode = args.pick
+            panel.level = args.level or panel.level
+            panel._goto(pp.LEVEL, pp.ITEMS[pp.LEVEL].index("start"))
         panel.k = 1.0  # (open, not opening)
     if args.scene == "intro":
         app.menu.start_intro()  # --frames N = N sixtieths of a second after the menu opened

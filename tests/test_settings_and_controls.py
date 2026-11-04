@@ -106,10 +106,101 @@ def test_ac33_a_file_from_before_the_new_modes_still_reads_and_the_bests_stay_ap
 
 def test_ac33_best_for_reads_the_best_of_the_mode_asked():
     s = settings.Settings(practice_best=3, practice_best_call=5, practice_best_sprint=8)
-    assert [settings.best_for(s, m) for m in config.PRACTICE_MODES] == [3, 5, 8]
-    assert set(settings.PRACTICE_BEST_FIELD) == set(config.PRACTICE_MODES)
+    assert [settings.best_for(s, m) for m in config.PRACTICE_MODES] == [3, 5, 8]  # (hard: no level)
+    assert set(settings.PRACTICE_BEST_FIELD) == {
+        (m, lv) for m in config.PRACTICE_MODES for lv in config.PRACTICE_LEVELS
+    }
     for field in settings.PRACTICE_BEST_FIELD.values():
         assert hasattr(s, field)
+
+
+# --- AC43: the level of Practice and the bests of each drill and level -------------------------
+def test_ac43_the_level_starts_easy_and_is_kept_between_runs_of_the_game(tmp_path):
+    assert settings.Settings().practice_level == "easy"
+    path = tmp_path / "s.json"
+    settings.save(settings.Settings(practice_level="hard"), path)
+    assert settings.load(path).practice_level == "hard"
+    settings.save(settings.Settings(practice_level="easy"), path)
+    assert settings.load(path).practice_level == "easy"
+
+
+def test_ac43_a_wrong_or_missing_level_falls_back_to_easy(tmp_path):
+    for i, bad in enumerate(("medium", "", 3, True, None, ["hard"], "HARD")):
+        path = tmp_path / f"bad{i}.json"
+        path.write_text(json.dumps({"practice_level": bad, "lang": "en"}), encoding="utf-8")
+        s = settings.load(path)
+        assert s.practice_level == "easy" and s.lang == "en", bad  # (the rest is read as usual)
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps({"practice_best": 6}), encoding="utf-8")
+    assert settings.load(old).practice_level == "easy"  # a file from before the levels
+
+
+def test_ac43_the_three_older_bests_are_the_hard_bests_and_none_is_lost(tmp_path):
+    old = tmp_path / "old.json"
+    old.write_text(
+        json.dumps({"practice_best": 6, "practice_best_call": 4, "practice_best_sprint": 9}),
+        encoding="utf-8",
+    )
+    s = settings.load(old)
+    assert [settings.best_for(s, m, "hard") for m in config.PRACTICE_MODES] == [6, 4, 9]
+    assert [settings.best_for(s, m, "easy") for m in config.PRACTICE_MODES] == [0, 0, 0]
+    assert settings.best_field("ghost", "hard") == "practice_best"
+    assert settings.best_field("call", "hard") == "practice_best_call"
+    assert settings.best_field("sprint", "hard") == "practice_best_sprint"
+
+
+def test_ac43_each_mode_and_level_has_a_best_of_its_own():
+    fields = [settings.best_field(m, lv) for m in config.PRACTICE_MODES for lv in ("easy", "hard")]
+    assert len(set(fields)) == 6 == len(config.PRACTICE_MODES) * len(config.PRACTICE_LEVELS)
+    assert settings.best_field("ghost", "easy") == "practice_best_easy"
+    assert settings.best_field("call", "easy") == "practice_best_call_easy"
+    assert settings.best_field("sprint", "easy") == "practice_best_sprint_easy"
+    s = settings.Settings()
+    for k, (mode, level) in enumerate(settings.PRACTICE_BEST_FIELD, start=1):
+        setattr(s, settings.best_field(mode, level), k)
+    assert [settings.best_for(s, m, lv) for (m, lv) in settings.PRACTICE_BEST_FIELD] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+    ]
+
+
+def test_ac43_the_easy_bests_survive_a_restart_and_are_clamped_like_the_hard_ones(tmp_path):
+    path = tmp_path / "s.json"
+    settings.save(
+        settings.Settings(
+            practice_best_easy=5, practice_best_call_easy=8, practice_best_sprint_easy=12
+        ),
+        path,
+    )
+    back = settings.load(path)
+    assert [settings.best_for(back, m, "easy") for m in config.PRACTICE_MODES] == [5, 8, 12]
+    odd = tmp_path / "odd.json"
+    odd.write_text(
+        json.dumps(
+            {
+                "practice_best_easy": 99,
+                "practice_best_call_easy": -4,
+                "practice_best_sprint_easy": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    s = settings.load(odd)
+    assert [settings.best_for(s, m, "easy") for m in config.PRACTICE_MODES] == [15, 0, 0]
+    text = tmp_path / "text.json"
+    text.write_text(json.dumps({"practice_best_easy": "7"}), encoding="utf-8")
+    assert settings.load(text).practice_best_easy == 0  # text is no count
+
+
+def test_ac43_a_hard_best_and_an_easy_best_do_not_touch_each_other(tmp_path):
+    path = tmp_path / "s.json"
+    settings.save(settings.Settings(practice_best=7, practice_best_easy=3), path)
+    s = settings.load(path)
+    assert (settings.best_for(s, "ghost", "hard"), settings.best_for(s, "ghost", "easy")) == (7, 3)
 
 
 def test_changing_a_setting_applies_it_and_saves_it_at_once(app, tmp_path):

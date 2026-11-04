@@ -13,7 +13,7 @@ from game.config import VOLUME_STEP
 from game.i18n import t
 from game.render import hud
 from game.render import palette as C
-from game.render.draw import Aa, blit_dot, blit_rrect
+from game.render.draw import blit_dot, blit_rrect
 from game.render.floating import FloatPanel
 from game.render.view import View
 
@@ -151,7 +151,8 @@ class SettingsPanel(FloatPanel):
             colour = C.lerp(C.TEXT_DIM, C.WHITE, lit)
             hud.text(canvas, pv, t(f"settings.{row}"), 17, colour, (r.x + 18, r.centery - 6))
             if row == "lang":
-                self._chooser(canvas, pv, r, t("lang.name"), lit)
+                cx = (TRACK[0] + r.right - 14) / 2
+                hud.chooser(canvas, pv, cx, r.centery, t("lang.name"), lit)
             elif row in BARS:
                 self._volume_bar(canvas, pv, r, getattr(s, row), lit)
             else:
@@ -159,16 +160,6 @@ class SettingsPanel(FloatPanel):
         hud.live_button(canvas, pv, DONE, t("settings.done"), self.fx, "done", self._clock)
         hud.text(canvas, pv, t("settings.hint"), 13, C.TEXT_DIM, (PANEL.centerx, DONE.bottom + 16),
                  center=True)  # fmt: skip
-
-    @staticmethod
-    def _chooser(canvas, v: View, r: pg.Rect, value: str, lit: float) -> None:
-        """< value >: the current choice between two small arrows."""
-        cx, cy = (TRACK[0] + r.right - 14) / 2, r.centery
-        hud.text(canvas, v, value, 17, C.WHITE, (cx, cy), bold=True, center=True)
-        colour = C.lerp(C.PANEL_EDGE, C.CYAN, 0.4 + 0.6 * lit)
-        half = 76
-        _triangle(canvas, v, (cx - half, cy), -1, colour)
-        _triangle(canvas, v, (cx + half, cy), 1, colour)
 
     @staticmethod
     def _volume_bar(canvas, v: View, r: pg.Rect, volume: float, lit: float) -> None:
@@ -200,12 +191,3 @@ class SettingsPanel(FloatPanel):
         word = t("settings.on") if on else t("settings.off")
         hud.text(canvas, v, word, 14, C.WHITE if on else C.TEXT_DIM, (x - 12, cy - 5), bold=True,
                  align="right")  # fmt: skip
-
-
-def _triangle(canvas, v: View, c, direction: int, colour, size: float = 6) -> None:
-    layer = Aa(canvas, v, v.rect(c[0] - size - 3, c[1] - size - 3, 2 * size + 6, 2 * size + 6), 3)
-    d = direction
-    pts = [(c[0] - d * size * 0.6, c[1] - size), (c[0] + d * size * 0.8, c[1]),
-           (c[0] - d * size * 0.6, c[1] + size)]  # fmt: skip
-    pg.draw.polygon(layer.surf, colour, [layer.pt(p) for p in pts])
-    layer.done()

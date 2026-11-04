@@ -29,13 +29,14 @@ from game.render.view import View
 
 log = logging.getLogger("neonpool")
 
-CHOOSE, MODE, PRACTICE, SETUP, HOSTING, JOINING, CONNECTING = (
-    "choose", "mode", "practice", "setup", "hosting", "joining", "connecting",
+CHOOSE, MODE, PRACTICE, LEVEL, SETUP, HOSTING, JOINING, CONNECTING = (
+    "choose", "mode", "practice", "level", "setup", "hosting", "joining", "connecting",
 )  # fmt: skip
 ITEMS = {
     CHOOSE: ("solo", "duo", "back"),
     MODE: ("free", "practice", "back"),  # Solo, no game in progress: Free play / Practice
     PRACTICE: (*config.PRACTICE_MODES, "back"),  # Practice: one button per kind of run
+    LEVEL: ("level", "start", "back"),  # after a run: its level, what that means, then Start
     SETUP: ("name", "create", "join", "back"),
     HOSTING: ("cancel",),
     JOINING: ("code", "go", "back"),
@@ -48,12 +49,19 @@ HEIGHT = {
     CHOOSE: 344,
     MODE: 344,
     PRACTICE: 432,
+    LEVEL: 326,  # with a one-line caption; the real height comes from the words (see `_level`)
     SETUP: 412,
     HOSTING: 404,
     JOINING: 342,
     CONNECTING: 230,
 }
 TOP = {step: PANEL.centery - h // 2 for step, h in HEIGHT.items()}  # where each step's frame starts
+
+
+# the Level step: the Level row, a caption under it saying what the level means, Start and Back
+LEVEL_ROW_Y, LEVEL_ROW_H = 92, 44
+CAPTION_SIZE, CAPTION_STEP, CAPTION_PAD = 14, 18, 16  # text size, line step, side room
+CAPTION_GAP, START_GAP, START_H = 14, 20, 50  # row -> caption, caption -> Start, Start's height
 
 
 def _at(step: str, y: int, h: int) -> pg.Rect:
@@ -84,6 +92,8 @@ RECTS = {
     CONNECTING: {"cancel": _back(CONNECTING)},
 }
 FIELDS = ("name", "code")
+BACK_BELOW = 26  # the space between the last choice and Back
+BACK_H, BACK_MARGIN = 44, 18  # Back is this tall, with this much frame under it
 # why a session ended -> the words shown (net.err.*)
 CLOSE_ERRORS = {
     net_session.CLOSE_VERSION: "net.err.version",
@@ -134,12 +144,17 @@ class PlayPanel(FloatPanel):
         self.name = ""
         self.code = ""  # the code being typed
         self.error: str | None = None  # an i18n key
+        self.mode = config.PRACTICE_MODES[0]  # the run chosen on the Practice step
+        self.level = app.settings.practice_level  # the level on the Level step (saved on Start)
+        self._level_cache: dict[tuple, tuple] = {}  # (view scale, caption) -> see `_level`
         self.room: relay.HostRoom | None = None
         self.join: relay.Join | None = None
         self.session: net_session.Session | None = None
         self._clock = 0.0
 
     def title(self) -> str:
+        if self.step == LEVEL:
+            return t(f"practice.mode.{self.mode}")  # the run just chosen
         return t("play.title") if self.step in (CHOOSE, MODE, PRACTICE) else t("net.title")
 
     # --- what the rest of the game asks ---
@@ -151,11 +166,37 @@ class PlayPanel(FloatPanel):
     def _item(self) -> str:
         return ITEMS[self.step][self.sel]
 
+    def _level(self, level: str | None = None) -> tuple[int, dict[str, pg.Rect], list[str], int]:
+        """The Level step made from its words, for `level` (default: the one shown): its caption
+        broken into lines that fit (at this window's scale, in this language), the frame as tall
+        as the row, those lines, Start and Back, and nothing left empty. Returns (frame height,
+        the rects, the caption lines, where they start)."""
+        v = self._v or View(1.0)
+        sub = t(f"practice.level.{level or self.level}_sub")
+        hit = self._level_cache.get((v.s, sub))
+        if hit is None:
+            lines = hud.wrap(v, sub, CAPTION_SIZE, W - 2 * CAPTION_PAD) or [sub]
+            caption_y = LEVEL_ROW_Y + LEVEL_ROW_H + CAPTION_GAP
+            start_y = caption_y + len(lines) * CAPTION_STEP + START_GAP
+            h = start_y + START_H + BACK_BELOW + BACK_H + BACK_MARGIN
+            top = PANEL.centery - h // 2
+            rects = {
+                "level": pg.Rect(X, top + LEVEL_ROW_Y, W, LEVEL_ROW_H),
+                "start": pg.Rect(X, top + start_y, W, START_H),
+                "back": pg.Rect(PANEL.centerx - 80, top + h - BACK_H - BACK_MARGIN, 160, BACK_H),
+            }
+            hit = (h, rects, lines, top + caption_y)
+            self._level_cache = {**self._level_cache, (v.s, sub): hit}
+        return hit
+
+    def _height(self, step: str) -> int:
+        return self._level()[0] if step == LEVEL else HEIGHT[step]
+
     def _rects(self) -> dict[str, pg.Rect]:
-        return RECTS[self.step]
+        return self._level()[1] if self.step == LEVEL else RECTS[self.step]
 
     def fit_h(self) -> float:
-        return HEIGHT[self.step]
+        return self._height(self.step)
 
     def prewarm(self, v: View) -> None:
         """Every step's sprites, not just the first one's: a step is then a plain change."""
@@ -190,7 +231,7 @@ class PlayPanel(FloatPanel):
         self._frozen.clear()
 
     def _goto(self, step: str, sel: int | None = None) -> None:
-        self._morph_begin(HEIGHT[step])  # (a picture of the step we leave, while it is still here)
+        self._morph_begin(self._height(step))  # (a picture of the step we leave, while it is here)
         self.step = step
         if sel is None:
             sel = 1 if step == SETUP and self.name.strip() else 0
@@ -234,8 +275,15 @@ class PlayPanel(FloatPanel):
         elif item == "practice":
             self._goto(PRACTICE)
         elif item in config.PRACTICE_MODES:
+            self.mode = item
+            self.level = self.app.settings.practice_level  # (the one played last is shown)
+            self._goto(LEVEL, ITEMS[LEVEL].index("start"))
+        elif item == "level":
+            self._step_level(1)  # (Enter on the row changes it, as on Settings' rows)
+        elif item == "start":
             self.dismiss()
-            self.app.go_practice(item)
+            self.app.change_settings(practice_level=self.level)
+            self.app.go_practice(self.mode, self.level)
         elif item == "duo":
             self.error = None
             self._goto(SETUP)
@@ -246,6 +294,8 @@ class PlayPanel(FloatPanel):
                 self._goto(CHOOSE)
             elif self.step == PRACTICE:
                 self._goto(MODE, ITEMS[MODE].index("practice"))
+            elif self.step == LEVEL:
+                self._goto(PRACTICE, ITEMS[PRACTICE].index(self.mode))
             else:
                 self.error = None
                 self._goto(CHOOSE if self.step == SETUP else SETUP)
@@ -264,6 +314,19 @@ class PlayPanel(FloatPanel):
             self._drop_connection()
             self.error = None
             self._goto(SETUP if self.step == HOSTING else JOINING)
+
+    def _step_level(self, direction: int) -> None:
+        """Easy <-> Hard. A caption of another length means another height: the frame glides."""
+        levels = config.PRACTICE_LEVELS
+        new = levels[(levels.index(self.level) + direction) % len(levels)]
+        if self._level(new)[0] != self.fit_h():
+            self._morph_begin(self._level(new)[0])  # (a picture of the step as it is, to fade out)
+        self.level = new
+
+    def _nudge_level(self, direction: int) -> None:
+        self.app.audio.play_click()
+        self.fx.press("level", self._clock)
+        self._step_level(direction)
 
     def display_name(self) -> str:
         return p.clean_name(self.name) or t("net.default_name")
@@ -334,9 +397,14 @@ class PlayPanel(FloatPanel):
                     self._choose(i)
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             for i, item in enumerate(ITEMS[self.step]):
-                if self._rects()[item].collidepoint(e.pos):
+                rect = self._rects()[item]
+                if rect.collidepoint(e.pos):
                     self._choose(i)
-                    self._activate(item)
+                    if item == "level":  # the arrow the player pressed: back or on
+                        left = e.pos[0] < rect.right - hud.CHOOSER_FROM_RIGHT
+                        self._nudge_level(-1 if left else 1)
+                    else:
+                        self._activate(item)
                     return
             if self.step == CHOOSE and not self.rect().collidepoint(e.pos):
                 self.close()  # a click outside the first step closes it, as in Settings
@@ -355,6 +423,8 @@ class PlayPanel(FloatPanel):
                 self.name = self.name[:-1]
             else:
                 self.code, self.error = self.code[:-1], None
+        elif self._item() == "level" and key in (pg.K_LEFT, pg.K_a, pg.K_RIGHT, pg.K_d):
+            self._nudge_level(1 if key in (pg.K_RIGHT, pg.K_d) else -1)
         elif key in (pg.K_RETURN, pg.K_KP_ENTER) or (key == pg.K_SPACE and not typing):
             self._activate(self._item())
 
@@ -364,6 +434,8 @@ class PlayPanel(FloatPanel):
         self._animate(dt)
         if not self.is_open:
             return
+        if self.step == LEVEL and self._morph is None:
+            self._h = None  # the height follows the words, whatever the window is now
         self.fx.update(dt, self._item(), self._rects(), self._clock)
         if self.room is not None and self.session is None:
             transport = self.room.accept()
@@ -394,7 +466,7 @@ class PlayPanel(FloatPanel):
     # --- drawing ---
     def _paint_live(self, canvas: pg.Surface, pv: View) -> None:
         step, rects = self.step, self._rects()
-        cx, top = PANEL.centerx, TOP[step]
+        cx, top = PANEL.centerx, TOP.get(step, 0)  # (the Level step is placed by `_level`)
         item = self._item()
 
         def button(key: str, label: str, sub: str | None = None) -> None:
@@ -411,6 +483,16 @@ class PlayPanel(FloatPanel):
         elif step == PRACTICE:
             for mode in config.PRACTICE_MODES:
                 button(mode, t(f"practice.mode.{mode}"), t(f"practice.mode.{mode}_sub"))
+            button("back", t("play.back"))
+        elif step == LEVEL:
+            _, _, lines, y = self._level()
+            word = t(f"practice.level.{self.level}")
+            hud.chooser_row(canvas, pv, rects["level"], t("practice.level"), word, self.fx,
+                            "level", self._clock)  # fmt: skip
+            for i, line in enumerate(lines):
+                hud.text(canvas, pv, line, CAPTION_SIZE, C.TEXT_DIM,
+                         (cx, y + CAPTION_STEP * (i + 0.5)), center=True)  # fmt: skip
+            button("start", t("practice.start"))
             button("back", t("play.back"))
         elif step == SETUP:
             hud.label(canvas, pv, t("net.name"), (X, top + 104), C.TEXT_DIM, 13)

@@ -234,6 +234,18 @@ PRACTICE_MODES = ("ghost", "call", "sprint")
 CALL_MAX_CUT_DEG = 45.0  # Call the Pocket: the pocket named must be one whose line cuts no thinner
 # than this (tighter than PRACTICE_MAX_CUT_DEG: the player may not pick an easier pocket, so the
 # game never names one that is all but impossible)
+# Practice levels: "hard" is the behaviour above, untouched; "easy" only picks a target (and, in
+# Call the Pocket, the pocket) from the easy-to-play lines: a gentle cut and a short run from the
+# target to the pocket. If the cue ball's place has none, it is put in hand (no life, no time
+# lost); if even that finds none, the hard rules pick as always. Self-chosen, nobody has played it
+# yet. The two numbers were set once against tools/practice_bot.py (a bot, not a feel): with 30
+# degrees and 1.2 m the cue ball had to be given in hand for about 3 picks in 10 (bot with 0.6
+# degrees of aiming noise; 4 in 10 with no noise), and the bot potted about 53% of the called
+# balls against 44% on hard. A longer run (1.5 m) stopped helping the pot rate; a shorter one
+# (0.8 m) gave a hand on every second pick.
+PRACTICE_LEVELS = ("easy", "hard")
+EASY_MAX_CUT_DEG = 30.0  # easy: the cut may be no thinner than this (hard: PRACTICE_MAX_CUT_DEG)
+EASY_MAX_POT_DIST_M = 1.2  # easy: the target is no further than this from the pocket (metres)
 SPRINT_START_S = 60.0  # Sprint: the one clock of the run starts here
 SPRINT_CAP_S = 90.0  # ... and never holds more than this
 SPRINT_POT_BONUS_S = 12.0  # the target potted: this much time is added

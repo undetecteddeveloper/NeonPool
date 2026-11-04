@@ -29,6 +29,11 @@ def app(tmp_path, monkeypatch):
     i18n.set_lang("vi")
 
 
+def lives_words(why_key):
+    """The card's why when the last life went: two lines, the headline and the last shot's cause."""
+    return f"{i18n.t('practice.out_of_lives')}\n{i18n.t('practice.last_one', why=i18n.t(why_key))}"
+
+
 def key(k):
     return pg.event.Event(pg.KEYDOWN, key=k)
 
@@ -233,7 +238,9 @@ def test_ac34_practice_opens_a_step_with_three_runs_not_the_table(app):
 def test_ac34_each_button_starts_its_own_run(app, mode):
     panel = open_practice_step(app)
     panel._choose(pp.ITEMS[pp.PRACTICE].index(mode))
-    app.handle_event(key(pg.K_RETURN))
+    app.handle_event(key(pg.K_RETURN))  # the run: its Level step opens, Start is chosen
+    assert panel.step == pp.LEVEL and panel._item() == "start" and app.scene is app.menu
+    app.handle_event(key(pg.K_RETURN))  # Start
     assert app.scene is app.practice and not panel.is_open
     assert app.practice.mode == mode and app.practice.rules.mode == mode
     assert app.practice.counting_down  # a fresh run
@@ -245,6 +252,10 @@ def test_ac34_a_click_on_a_run_button_starts_it(app, mode):
     panel.k = 1.0
     app.handle_event(
         pg.event.Event(pg.MOUSEBUTTONDOWN, pos=pp.RECTS[pp.PRACTICE][mode].center, button=1)
+    )
+    assert panel.step == pp.LEVEL and panel.mode == mode  # the Level step of that run
+    app.handle_event(
+        pg.event.Event(pg.MOUSEBUTTONDOWN, pos=panel._rects()["start"].center, button=1)
     )
     assert app.scene is app.practice and app.practice.mode == mode
 
@@ -273,11 +284,148 @@ def test_ac34_a_run_started_again_from_the_panel_keeps_no_old_mode(app):
     open_practice_step(app)
     app.handle_event(key(pg.K_DOWN))
     app.handle_event(key(pg.K_RETURN))  # Call the Pocket
+    app.handle_event(key(pg.K_RETURN))  # Start
     assert app.practice.mode == "call"
     app.go_menu()
     open_practice_step(app)
     app.handle_event(key(pg.K_RETURN))  # Beat the Ghost
+    app.handle_event(key(pg.K_RETURN))  # Start
     assert app.practice.mode == "ghost" and app.practice.rules.mode == "ghost"
+
+
+# --- AC45: the Level step (Easy / Hard) and the bests that follow the level ----------------------
+def open_level_step(app, mode="ghost"):
+    panel = open_practice_step(app)
+    panel._choose(pp.ITEMS[pp.PRACTICE].index(mode))
+    app.handle_event(key(pg.K_RETURN))
+    assert panel.step == pp.LEVEL
+    return panel
+
+
+def click(app, pos):
+    app.handle_event(pg.event.Event(pg.MOUSEBUTTONDOWN, pos=pos, button=1))
+
+
+def test_ac45_the_level_step_has_the_row_then_start_then_back(app):
+    panel = open_level_step(app, "call")
+    assert pp.ITEMS[pp.LEVEL] == ("level", "start", "back")
+    assert panel.title() == i18n.t("practice.mode.call") and panel.level == "easy"  # the first time
+    assert panel._item() == "start"  # Enter begins; the row is a setting, not what it starts
+    app.handle_event(key(pg.K_UP))
+    assert panel._item() == "level"
+
+
+@pytest.mark.parametrize("mode", config.PRACTICE_MODES)
+@pytest.mark.parametrize("level", config.PRACTICE_LEVELS)
+def test_ac45_start_begins_the_run_at_the_level_shown_and_remembers_it(app, mode, level):
+    panel = open_level_step(app, mode)
+    panel.level = "hard" if level == "easy" else "easy"
+    app.handle_event(key(pg.K_UP))  # the row
+    app.handle_event(key(pg.K_RIGHT if level == "hard" else pg.K_LEFT))
+    assert panel.level == level
+    click(app, panel._rects()["start"].center)
+    assert app.scene is app.practice and not panel.is_open
+    assert (app.practice.mode, app.practice.level) == (mode, level)
+    assert app.practice.rules.mode == mode and app.practice.rules.level == level
+    assert app.settings.practice_level == level  # kept for the next time
+    assert settings_file_level(app) == level
+
+
+def settings_file_level(app):
+    import json
+    import os
+
+    with open(os.environ["NEONPOOL_SETTINGS"], encoding="utf-8") as f:
+        return json.load(f)["practice_level"]
+
+
+def test_ac45_the_next_visit_shows_the_level_played_last(app):
+    app.change_settings(practice_level="hard")
+    panel = open_level_step(app)
+    assert panel.level == "hard"
+    app.handle_event(key(pg.K_RETURN))  # Start
+    app.go_menu()
+    app.menu.play_panel.dismiss()
+    assert open_level_step(app).level == "hard"
+
+
+def test_ac45_the_row_changes_by_arrows_keys_enter_and_clicks_but_never_starts(app):
+    panel = open_level_step(app)
+    app.handle_event(key(pg.K_UP))
+    assert panel.level == "easy"
+    app.handle_event(key(pg.K_RIGHT))
+    assert panel.level == "hard"
+    app.handle_event(key(pg.K_a))
+    assert panel.level == "easy"
+    app.handle_event(key(pg.K_d))
+    assert panel.level == "hard"
+    app.handle_event(key(pg.K_RETURN))  # Enter on the row changes it, as on Settings' rows
+    assert panel.level == "easy" and panel.step == pp.LEVEL and app.scene is app.menu
+    row = panel._rects()["level"]
+    click(app, (row.right - hud.CHOOSER_FROM_RIGHT + hud.CHOOSER_HALF, row.centery))  # the > arrow
+    assert panel.level == "hard"
+    click(app, (row.right - hud.CHOOSER_FROM_RIGHT - hud.CHOOSER_HALF, row.centery))  # the < arrow
+    assert panel.level == "easy" and app.scene is app.menu
+
+
+def test_ac45_back_and_esc_return_to_the_run_that_was_pressed_and_start_nothing(app):
+    panel = open_level_step(app, "sprint")
+    click(app, panel._rects()["back"].center)
+    assert panel.step == pp.PRACTICE and panel._item() == "sprint" and app.scene is app.menu
+    app.handle_event(key(pg.K_RETURN))
+    app.handle_event(key(pg.K_ESCAPE))
+    assert panel.step == pp.PRACTICE and panel._item() == "sprint" and panel.is_open
+    assert app.settings.practice_level == "easy"  # nothing was saved
+
+
+def test_ac45_a_new_run_from_the_card_or_r_keeps_mode_and_level(app):
+    scene = start_mode(app, "call", "easy")
+    app.handle_event(key(pg.K_r))
+    assert (scene.mode, scene.level, scene.rules.level) == ("call", "easy", "easy")
+    scene.new_game()
+    assert (scene.mode, scene.level, scene.rules.level) == ("call", "easy", "easy")
+    app.go_practice("sprint")  # no level given: the one last played (here the settings')
+    assert scene.level == app.settings.practice_level
+
+
+def test_ac45_a_run_with_no_level_given_takes_the_one_in_the_settings(app):
+    app.change_settings(practice_level="hard")
+    app.go_practice("ghost")
+    assert app.practice.level == "hard" and app.practice.rules.level == "hard"
+    app.go_practice("ghost", "easy")
+    assert app.practice.level == "easy" and app.practice.rules.level == "easy"
+
+
+@pytest.mark.parametrize("mode", config.PRACTICE_MODES)
+def test_ac45_the_best_follows_the_level_and_one_does_not_cover_the_other(app, mode):
+    from game import settings
+
+    scene = start_mode(app, mode, "hard")
+    lose(scene, 6)
+    scene = start_mode(app, mode, "easy")
+    lose(scene, 2)
+    assert settings.best_for(app.settings, mode, "hard") == 6  # Easy's 2 did not touch Hard's 6
+    assert settings.best_for(app.settings, mode, "easy") == 2
+    scene = start_mode(app, mode, "easy")
+    lose(scene, 9)
+    assert settings.best_for(app.settings, mode, "easy") == 9
+    assert settings.best_for(app.settings, mode, "hard") == 6
+
+
+@pytest.mark.parametrize("level", config.PRACTICE_LEVELS)
+def test_ac45_the_panel_and_the_card_read_the_best_of_their_level(app, monkeypatch, level):
+    app.change_settings(practice_best=3, practice_best_easy=8)
+    seen = record_panel(monkeypatch)
+    card = []
+    monkeypatch.setattr(hud, "draw_result", lambda canvas, v, **kw: card.append(kw))
+    scene = start_mode(app, "ghost", level)
+    scene.draw(pg.display.get_surface())
+    expected = {"hard": 3, "easy": 8}[level]
+    assert seen[-1]["best"] == expected
+    lose(scene, 1)
+    run(app, 4.0)
+    scene.draw(pg.display.get_surface())
+    assert card[-1]["rows"][1] == (i18n.t("practice.best"), expected)
 
 
 # --- AC21: three lives (round 4, GAME_DESIGN lần 33) ------------------------------------------
@@ -331,9 +479,7 @@ def test_ac21_three_misses_lose_the_run_and_the_card_says_why(app):
     for _ in range(config.PRACTICE_LIVES):
         assert scene.rules.phase == "playing"
         whiff(app, scene)
-    assert scene.rules.phase == "lost" and scene._lost_words() == i18n.t(
-        "practice.out_of_lives", why=i18n.t("practice.miss")
-    )
+    assert scene.rules.phase == "lost" and scene._lost_words() == lives_words("practice.miss")
 
 
 def test_ac21_the_clock_running_out_costs_a_life_and_starts_a_fresh_clock(app):
@@ -487,8 +633,8 @@ def test_ac22_the_leave_card_has_its_words_in_both_languages():
 
 
 # --- the drills (docs/plans/20261104-luyen-tap-da-che-do.md AC35-AC39) ----------------------------
-def start_mode(app, mode):
-    app.go_practice(mode)
+def start_mode(app, mode, level="hard"):
+    app.go_practice(mode, level)
     run(app, config.PRACTICE_READY_S + 0.5)
     return app.practice
 
@@ -598,9 +744,7 @@ def test_ac35_the_card_says_the_wrong_pocket_when_that_was_the_last_life(app, mo
     scene.rules.on_events([BallPocketed(6, 5)])
     scene._end_shot()
     assert scene.rules.phase == "lost"
-    assert scene._lost_words() == i18n.t(
-        "practice.out_of_lives", why=i18n.t("practice.miss_pocket")
-    )
+    assert scene._lost_words() == lives_words("practice.miss_pocket")
 
 
 def test_ac35_a_plain_miss_in_this_drill_keeps_the_usual_words(app, monkeypatch):
@@ -851,9 +995,7 @@ def test_ac37_a_new_run_keeps_the_drill(app):
 def test_ac37_the_card_of_a_run_lost_to_lives_in_the_other_drills_names_its_cause(app):
     scene = start_mode(app, "call")
     lose(scene, 2)
-    assert scene._lost_words() == i18n.t(
-        "practice.out_of_lives", why=i18n.t("practice.lost_timeout")
-    )
+    assert scene._lost_words() == lives_words("practice.lost_timeout")
 
 
 # --- AC39: the words of the drills fit in both languages ------------------------------
@@ -901,8 +1043,74 @@ def test_ac39_every_line_of_the_notice_fits_the_strip_under_the_table(lang):
 def test_ac39_the_reasons_on_the_result_card_fit_in_two_lines(lang):
     i18n.set_lang(lang)
     room = hud.RESULT_CARD.w - 60
-    for reason in (
-        i18n.t("practice.time_up"),
-        i18n.t("practice.out_of_lives", why=i18n.t("practice.miss_pocket")),
-    ):
-        assert len(hud.wrap(V, reason, 14, room)) <= 2, (lang, reason)
+    for reason in (i18n.t("practice.time_up"), lives_words("practice.miss_pocket")):
+        assert len(hud.reason_lines(V, reason, room)) <= 2, (lang, reason)
+
+
+# --- AC44: the card of a run lost to lives says it in two lines of its own ---------------
+LAST_CAUSES = ("practice.miss", "practice.miss_pocket", "foul.scratch", "practice.lost_timeout")
+MIN_VIEW = View.for_window((1050, 590))  # the smallest window the game allows
+
+
+def card_ink(view, reason):
+    """(the lines drawn for `reason`, the pixels only the reason put on the card's frame)."""
+    c = hud.RESULT_CARD
+    size = view.canvas
+    with_reason, without = pg.Surface(size), pg.Surface(size)
+    for surf, why in ((with_reason, reason), (without, None)):
+        hud.draw_result_frame(surf, view, won=False, reason=why, row_names=["a", "b"])
+    rect = pg.Rect(0, 0, 0, 0)
+    px_w, px_wo = pg.PixelArray(with_reason), pg.PixelArray(without)
+    band_h = hud.RESULT_SCORE_Y - 60  # (from under the title down to the score line)
+    inner = view.rect(c.x + 8, c.y + 80, c.w - 16, band_h)
+    xs, ys = [], []
+    for y in range(inner.top, inner.bottom):
+        for x in range(inner.left, inner.right):
+            if px_w[x, y] != px_wo[x, y]:
+                xs.append(x)
+                ys.append(y)
+    del px_w, px_wo
+    if xs:
+        rect = pg.Rect(min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1)
+    return hud.reason_lines(view, reason, c.w - 60), rect
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+def test_ac44_the_card_of_a_run_lost_to_lives_has_two_lines_of_its_own(app, lang):
+    i18n.set_lang(lang)
+    scene = start_mode(app, "ghost")
+    for cause in LAST_CAUSES:
+        scene._miss_key = None
+        scene.rules.phase, scene.rules.last = "lost", type("R", (), {"lost_life": cause})()
+        words = scene._lost_words()
+        assert words == lives_words(cause)
+        head, last = words.split("\n")
+        assert head == i18n.t("practice.out_of_lives") and "{" not in last
+        assert last == i18n.t("practice.last_one", why=i18n.t(cause))
+        assert hud.reason_lines(V, words, hud.RESULT_CARD.w - 60) == [head, last]
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+@pytest.mark.parametrize("view", [V, MIN_VIEW], ids=["1280x720", "1050x590"])
+def test_ac44_both_lines_fit_the_card_and_stay_above_the_score_line(lang, view):
+    i18n.set_lang(lang)
+    c = hud.RESULT_CARD
+    for cause in LAST_CAUSES:
+        lines, ink = card_ink(view, lives_words(cause))
+        assert len(lines) == 2, (lang, cause, lines)
+        assert ink.w > 0
+        left, right = view.pt((c.x + 30, 0))[0], view.pt((c.right - 30, 0))[0]
+        assert left <= ink.left and ink.right <= right, (lang, cause, ink)
+        assert ink.bottom <= view.pt((0, c.y + hud.RESULT_SCORE_Y))[1], (lang, cause, ink)
+        # two bands of ink, not one run-on line and not three
+        one_line = card_ink(view, lines[0])[1]
+        assert ink.height > one_line.height, (lang, cause)
+
+
+def test_ac44_the_clock_in_sprint_stays_one_line_and_free_play_is_not_split():
+    for lang in ("vi", "en"):
+        i18n.set_lang(lang)
+        assert hud.reason_lines(V, i18n.t("practice.time_up"), 340) == [i18n.t("practice.time_up")]
+    long = "word " * 40
+    assert len(hud.reason_lines(V, long, 340)) == 2  # (still wraps, still capped)
+    i18n.set_lang("vi")

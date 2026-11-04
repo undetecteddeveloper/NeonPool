@@ -356,19 +356,20 @@ class Harness:
         self.app.play.fire(Shot(math.pi, 0.1, 0.0))
 
     # ------------------------------------------------------------------ practice (three runs)
-    def practice_new(self, mode: str = "ghost") -> None:
-        """A new run of that kind, in the middle of its countdown (nothing may be touched yet)."""
+    def practice_new(self, mode: str = "ghost", level: str = "hard") -> None:
+        """A new run of that kind and level, in the middle of its countdown (nothing may be
+        touched yet)."""
         self.reset()
-        self.app.go_practice(mode)
+        self.app.go_practice(mode, level)
         self.app.skip_transition()
 
-    def practice_ready(self, mode: str = "ghost") -> None:
+    def practice_ready(self, mode: str = "ghost", level: str = "hard") -> None:
         """A new run whose countdown is over: the ball to hit is shown, the shot clock runs."""
-        self.practice_new(mode)
+        self.practice_new(mode, level)
         self.app.practice._ready_left = 0.0
 
-    def practice_break(self, mode: str = "ghost") -> None:
-        self.practice_new(mode)
+    def practice_break(self, mode: str = "ghost", level: str = "hard") -> None:
+        self.practice_new(mode, level)
         self.app.practice.fire(Shot(0.0, 0.95, 0.0))
 
     def _call_pocket(self, target: int) -> None:
@@ -378,9 +379,9 @@ class Harness:
             pockets = pot_pockets(scene.world.balls, target, max_cut_deg=config.CALL_MAX_CUT_DEG)
             scene.rules.pocket = pockets[0] if pockets else None
 
-    def practice_streak(self, n: int, mode: str = "ghost") -> None:
+    def practice_streak(self, n: int, mode: str = "ghost", level: str = "hard") -> None:
         """A run that has already potted balls 1..n in order; ball n+1 is the next target."""
-        self.practice_ready(mode)
+        self.practice_ready(mode, level)
         scene = self.app.practice
         for b in scene.world.balls:
             if 1 <= b.number <= n:
@@ -391,9 +392,9 @@ class Harness:
         scene.rules.target = n + 1
         self._call_pocket(n + 1)
 
-    def practice_lost(self, mode: str = "ghost") -> None:
+    def practice_lost(self, mode: str = "ghost", level: str = "hard") -> None:
         """A shot that misses with the last chance left (last life; Sprint: 1 s on the clock)."""
-        self.practice_ready(mode)
+        self.practice_ready(mode, level)
         rules = self.app.practice.rules
         rules.target = 1  # as if the break had already picked one
         self._call_pocket(1)
@@ -402,9 +403,9 @@ class Harness:
             rules.time_left = 1.0
         self.app.practice.fire(Shot(math.pi, 0.1, 0.0))
 
-    def practice_won(self, mode: str = "ghost") -> None:
+    def practice_won(self, mode: str = "ghost", level: str = "hard") -> None:
         """One shot from clearing the whole rack: only the 15 (and the cue ball) are left."""
-        self.practice_streak(14, mode)
+        self.practice_streak(14, mode, level)
         scene = self.app.practice
         scene.world.place(0, 0.6, 0.6)  # same geometry as solo_finish: a straight shot into
         scene.world.place(15, 0.2, 0.2)  # the corner pocket at (0, 0)

@@ -11,7 +11,11 @@ Bot "hiệu chỉnh" (calibrate) chỉ để tách nguyên nhân ở sigma 0: n�
 và chỉnh góc cho tới khi bi mục tiêu đi đúng đường tới lỗ, tức là bù cả độ lệch do vật lý (xem
 báo cáo). Người chơi thật không làm được, nên bảng chính dùng bot thường.
 
+Mức độ (--level easy|hard, mặc định hard): bot đánh theo đúng tập đường mà luật của mức đó đã
+dùng để chọn bi (`rules._ask_easy`), nên mức Dễ được đo bằng cách bot ngắm các đường Dễ.
+
 Chạy: .venv/bin/python tools/practice_bot.py [--runs N] [--seed S] [--min-shots M] [--jobs J]
+      [--level easy|hard]
 """
 
 from __future__ import annotations
@@ -33,6 +37,8 @@ if str(ROOT) not in sys.path:
 from game.config import (  # noqa: E402
     BALL_R,
     CALL_MAX_CUT_DEG,
+    EASY_MAX_CUT_DEG,
+    EASY_MAX_POT_DIST_M,
     FOOT_SPOT,
     HEAD_SPOT,
     POCKETS,
@@ -126,17 +132,36 @@ def _cut_deg(cue, ghost, dx: float, dy: float) -> float:
     return math.degrees(math.acos(max(-1.0, min(1.0, (ux * dx + uy * dy) / run))))
 
 
-def _lines(world: World, target: int, in_hand: bool, max_cut: float) -> list[int]:
+def limits(mode: str, easy: bool) -> tuple[float, float | None]:
+    """(thinnest cut in degrees, furthest target-to-pocket in metres or None) of the lines."""
+    hard = CALL_MAX_CUT_DEG if mode == "call" else PRACTICE_MAX_CUT_DEG
+    return (min(EASY_MAX_CUT_DEG, hard), EASY_MAX_POT_DIST_M) if easy else (hard, None)
+
+
+def _lines(
+    world: World, target: int, in_hand: bool, max_cut: float, max_dist: float | None = None
+) -> list[int]:
     for margin in (PRACTICE_LINE_MARGIN_M, 0.0):
         got = pot_pockets(
-            world.balls, target, cue_in_hand=in_hand, max_cut_deg=max_cut, margin=margin
+            world.balls,
+            target,
+            cue_in_hand=in_hand,
+            max_cut_deg=max_cut,
+            margin=margin,
+            max_pot_dist=max_dist,
         )
         if got:
             return got
     return []
 
 
-def place_cue(world: World, target: int, pockets: list[int], max_cut: float) -> None:
+def place_cue(
+    world: World,
+    target: int,
+    pockets: list[int],
+    max_cut: float,
+    max_dist: float | None = None,
+) -> None:
     """Cue ball in hand: put it behind the target for the best pocket on offer (the nearest one):
     straight behind if that is free with a clear path, else a little to the side (never a cut
     thinner than `max_cut` less a margin). None fits: it stays where it is."""
@@ -158,7 +183,9 @@ def place_cue(world: World, target: int, pockets: list[int], max_cut: float) -> 
                     continue
                 old = (cue.x, cue.y)
                 world.place(CUE, x, y)
-                ok = index in pot_pockets(world.balls, target, max_cut_deg=max_cut, margin=0.0)
+                ok = index in pot_pockets(
+                    world.balls, target, max_cut_deg=max_cut, margin=0.0, max_pot_dist=max_dist
+                )
                 world.place(CUE, *old)
                 if ok:
                     found = (dist, x, y)
@@ -189,7 +216,8 @@ def choose_pocket(world: World, rules: GhostRun, mode: str) -> tuple[int | None,
     called = getattr(rules, "pocket", None)
     if mode == "call" and called is not None:
         return called, True
-    got = pot_pockets(world.balls, rules.target, max_cut_deg=PRACTICE_MAX_CUT_DEG, margin=0.0)
+    cut, dist_max = limits("ghost", rules._ask_easy)
+    got = pot_pockets(world.balls, rules.target, max_cut_deg=cut, margin=0.0, max_pot_dist=dist_max)
     best = None
     for index in got or range(len(POCKETS)):
         _dx, _dy, dist, ghost = _line(target, index)
@@ -329,14 +357,14 @@ def play_run(
     t_aim: float | None = None,
     calibrated: bool = False,
     max_shots: int = MAX_SHOTS_PER_RUN,
+    level: str = "hard",
 ) -> RunStats:
-    """One whole run of `mode` by the bot. `t_aim` (Sprint only): seconds the clock loses
-    before every shot (the break included); the balls rolling cost nothing."""
+    """One whole run of `mode` at `level` by the bot. `t_aim` (Sprint only): seconds the clock
+    loses before every shot (the break included); the balls rolling cost nothing."""
     world = World(seed=seed)
-    rules = make_run(mode, world.rng)
+    rules = make_run(mode, world.rng, level)
     rng = random.Random(seed * 7919 + 17)  # the bot's own stream: noise and the break
     stats = RunStats(mode)
-    max_cut = CALL_MAX_CUT_DEG if mode == "call" else PRACTICE_MAX_CUT_DEG
     while rules.phase == PLAYING and rules.shots < max_shots:
         if t_aim is not None and rules.tick(t_aim):  # type: ignore[attr-defined]
             stats.timed_out = True
@@ -348,10 +376,13 @@ def play_run(
         else:
             if rules.cue_in_hand:
                 called = getattr(rules, "pocket", None) if mode == "call" else None
+                max_cut, max_dist = limits(mode, rules._ask_easy)  # (as the rules chose the ball)
                 pockets = (
-                    [called] if called is not None else _lines(world, rules.target, True, max_cut)
+                    [called]
+                    if called is not None
+                    else _lines(world, rules.target, True, max_cut, max_dist)
                 )
-                place_cue(world, rules.target, pockets, max_cut)
+                place_cue(world, rules.target, pockets, max_cut, max_dist)
                 rules.cue_placed()
             shot, rec = plan_shot(world, rules, mode, rng, sigma, calibrated=calibrated)
         world.apply(shot)
@@ -384,20 +415,20 @@ def _why(rec: ShotRec, fell_in: dict[int, int]) -> str:
 
 
 # --- cells and the report ---------------------------------------------------------------------
-Cell = tuple  # (mode, sigma, t_aim or None, calibrated)
+Cell = tuple  # (mode, sigma, t_aim or None, calibrated, level)
 
 
 def run_cell(args: tuple) -> list[RunStats]:
     """All the runs of one table cell. Ghost/Call: until `runs` runs AND `min_shots` shots are
     done; Sprint: exactly `runs` runs. A run's seed does not depend on sigma: the same tables are
     dealt to every cell of a mode."""
-    (mode, sigma, t_aim, calibrated), runs, min_shots, seed = args
+    (mode, sigma, t_aim, calibrated, level), runs, min_shots, seed = args
     out: list[RunStats] = []
     shots = 0
     i = 0
     while i < runs or (t_aim is None and shots < min_shots):
         run_seed = seed * 1_000_003 + {"ghost": 1, "call": 2, "sprint": 3}[mode] * 100_000 + i
-        out.append(play_run(mode, sigma, run_seed, t_aim=t_aim, calibrated=calibrated))
+        out.append(play_run(mode, sigma, run_seed, t_aim=t_aim, calibrated=calibrated, level=level))
         shots += len(out[-1].shots)
         i += 1
     return out
@@ -522,24 +553,26 @@ def main() -> int:
     ap.add_argument("--runs", type=int, default=60, help="ván tối thiểu mỗi ô (mặc định 60)")
     ap.add_argument("--min-shots", type=int, default=300, help="cú tối thiểu mỗi ô Đấu Ma/Gọi Lỗ")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--level", choices=("easy", "hard"), default="hard", help="mức (mặc định hard)")
     ap.add_argument("--jobs", type=int, default=0, help="số tiến trình (0 = số lõi, tối đa 8)")
     args = ap.parse_args()
 
-    cells: list[Cell] = [(m, s, None, False) for s in SIGMAS for m in ("ghost", "call")]
-    cells += [(m, 0.0, None, True) for m in ("ghost", "call")]
-    cells += [("sprint", s, t, False) for s in SPRINT_SIGMAS for t in SPRINT_T_AIMS]
+    lv = args.level
+    cells: list[Cell] = [(m, s, None, False, lv) for s in SIGMAS for m in ("ghost", "call")]
+    cells += [(m, 0.0, None, True, lv) for m in ("ghost", "call")]
+    cells += [("sprint", s, t, False, lv) for s in SPRINT_SIGMAS for t in SPRINT_T_AIMS]
     jobs = [(cell, args.runs, args.min_shots, args.seed) for cell in cells]
     workers = args.jobs or min(8, os.cpu_count() or 1)
     print(
         "ƯỚC LƯỢNG THÔ bằng bot (ngắm kiểu bi ma, xoáy 0, không đánh băng) — "
-        "KHÔNG phải cảm giác người chơi."
+        f"KHÔNG phải cảm giác người chơi. Mức: {lv}."
     )
     if workers > 1:
         with ProcessPoolExecutor(workers) as pool:
             done = list(pool.map(run_cell, jobs))
     else:
         done = [run_cell(j) for j in jobs]
-    results = dict(zip(cells, done, strict=True))
+    results = {c[:4]: r for c, r in zip(cells, done, strict=True)}  # (the level is one for all)
     report_basic(results)
     feasibility(results)
     report_sprint(results)

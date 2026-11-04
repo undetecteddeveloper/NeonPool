@@ -5,7 +5,8 @@ A line to one pocket exists when all of these hold (ball centres, metres):
   without touching another ball;
 - the cue ball can travel straight to the "ghost" spot one ball behind the target on that line
   without touching another ball, and cuts it no thinner than `max_cut_deg`;
-- the ghost spot itself lies inside the cushions.
+- the ghost spot itself lies inside the cushions;
+- if `max_pot_dist` is given, the target is no further than that from the pocket's aim point.
 With the cue ball in hand it will be put wherever suits, so only the ghost spot has to be free.
 Bank shots and combinations are not counted: this is "is there an honest shot", not "is there any".
 """
@@ -49,6 +50,7 @@ def pot_pockets(
     cue_in_hand: bool = False,
     max_cut_deg: float = PRACTICE_MAX_CUT_DEG,
     margin: float = PRACTICE_LINE_MARGIN_M,
+    max_pot_dist: float | None = None,
 ) -> list[int]:
     """The pockets (indices into `POCKETS`, ascending) `target` could be shot into straight, see
     the module docstring."""
@@ -65,6 +67,8 @@ def pot_pockets(
         aim = (min(max(px, BALL_R), TABLE_L - BALL_R), min(max(py, BALL_R), TABLE_W - BALL_R))
         vx, vy = aim[0] - ball.x, aim[1] - ball.y
         dist = math.hypot(vx, vy)
+        if max_pot_dist is not None and dist > max_pot_dist:
+            continue
         if dist == 0.0:
             pockets.append(index)
             continue
@@ -95,8 +99,16 @@ def pot_lines(
     cue_in_hand: bool = False,
     max_cut_deg: float = PRACTICE_MAX_CUT_DEG,
     margin: float = PRACTICE_LINE_MARGIN_M,
+    max_pot_dist: float | None = None,
 ) -> int:
     """How many pockets `target` could be shot into straight (0..6): `len(pot_pockets(...))`."""
     return len(
-        pot_pockets(balls, target, cue_in_hand=cue_in_hand, max_cut_deg=max_cut_deg, margin=margin)
+        pot_pockets(
+            balls,
+            target,
+            cue_in_hand=cue_in_hand,
+            max_cut_deg=max_cut_deg,
+            margin=margin,
+            max_pot_dist=max_pot_dist,
+        )
     )

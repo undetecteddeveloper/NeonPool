@@ -868,16 +868,45 @@ def button(
     text(canvas, v, label_s, size, color, rect.center, bold=True, center=True)
 
 
-def arrow(canvas: pg.Surface, v: View, c: tuple[float, float], color, size: float = 6) -> None:
-    """A small lit triangle pointing right, centred on `c`."""
+def arrow(
+    canvas: pg.Surface, v: View, c: tuple[float, float], color, size: float = 6, direction: int = 1
+) -> None:
+    """A small lit triangle pointing right (`direction` -1: left), centred on `c`."""
     layer = Aa(canvas, v, v.rect(c[0] - size - 4, c[1] - size - 4, 2 * size + 8, 2 * size + 8), 3)
+    d = direction
     pts = [
-        (c[0] - size * 0.6, c[1] - size),
-        (c[0] + size * 0.8, c[1]),
-        (c[0] - size * 0.6, c[1] + size),
+        (c[0] - d * size * 0.6, c[1] - size),
+        (c[0] + d * size * 0.8, c[1]),
+        (c[0] - d * size * 0.6, c[1] + size),
     ]
     pg.draw.polygon(layer.surf, color, [layer.pt(p) for p in pts])
     layer.done()
+
+
+CHOOSER_HALF = 76  # the arrows of a `chooser` sit this far either side of its value
+CHOOSER_FROM_RIGHT = 104  # a `chooser_row` puts the value this far in from the row's right edge
+
+
+def chooser(canvas: pg.Surface, v: View, cx: float, cy: float, value: str, lit: float) -> None:
+    """The one "pick a value" control: `< value >`, the current choice between two small arrows
+    (`lit`: how lit the row it sits in is, 0..1). Settings' language row and Practice's level."""
+    text(canvas, v, value, 17, C.WHITE, (cx, cy), bold=True, center=True)
+    colour = C.lerp(C.PANEL_EDGE, C.CYAN, 0.4 + 0.6 * lit)
+    arrow(canvas, v, (cx - CHOOSER_HALF, cy), colour, direction=-1)
+    arrow(canvas, v, (cx + CHOOSER_HALF, cy), colour)
+
+
+def chooser_row(canvas: pg.Surface, v: View, rect: pg.Rect, label_s: str, value_s: str,
+                fx: ButtonFx, key, clock: float, *, size: float = 17) -> None:  # fmt: skip
+    """A button-shaped row `label ... < value >` that lights, grows and runs its light like every
+    `live_button`; the value is drawn by `chooser`."""
+    live_button(canvas, v, rect, "", fx, key, clock)
+    lit = fx.lit.get(key, 0.0)
+    x = rect.x + 40  # (clear of the arrow that slides in on the left)
+    text(canvas, v, label_s, size, C.lerp(C.TEXT, C.WHITE, lit),
+         (x + text_width(v, label_s, size, bold=True) / 2, rect.centery), bold=True,
+         center=True)  # fmt: skip
+    chooser(canvas, v, rect.right - CHOOSER_FROM_RIGHT, rect.centery, value_s, lit)
 
 
 def banner(
@@ -971,7 +1000,19 @@ RESULT_BUTTONS = {
 RESULT_SCORE_Y, RESULT_SCORE_H = 140, 44  # the score line under the title (and the reason)
 RESULT_ROWS_Y, RESULT_ROW_STEP = 218, 46  # shots and fouls under the hairline below it
 RESULT_IN_S = 0.3  # the card grows in
+RESULT_REASON_SIZE, RESULT_REASON_STEP = 14, 19  # the why under the title: text size, line step
+RESULT_REASON_LINES = 2  # at most this many lines fit between the title and the score line
 RESULT_DIM_ALPHA = 185  # how dark the table behind the card goes
+
+
+def reason_lines(v: View, reason: str | None, width: float) -> list[str]:
+    """The lines a result card's why is drawn in: each '\n' starts a new line (Practice gives a
+    headline and a second line), a line longer than `width` wraps, and no more than
+    RESULT_REASON_LINES are kept (the card has no room for a third)."""
+    lines = [
+        w for part in (reason or "").split("\n") for w in wrap(v, part, RESULT_REASON_SIZE, width)
+    ]
+    return lines[:RESULT_REASON_LINES]
 
 
 def draw_result_frame(
@@ -984,7 +1025,8 @@ def draw_result_frame(
     score_label: str | None = None,
 ) -> None:
     """The card's parts that never move: frame, title, why, the labels and the hairline.
-    `score_label` names the big number (defaults to the usual "Score"; Practice passes "Streak")."""
+    `score_label` names the big number (defaults to the usual "Score"; Practice passes "Streak").
+    `reason` may hold several lines, separated by '\n' (see `reason_lines`)."""
     c = RESULT_CARD
     mood = C.OK if won else C.ERROR
     blit_rrect(canvas, v, c.x, c.y, c.w, c.h, 10, C.PANEL, 1.8, mood, 1.0)
@@ -992,9 +1034,9 @@ def draw_result_frame(
     glow_text(
         canvas, v, title, 46, C.WHITE, mood, (c.centerx, c.y + 54), strength=1.3, face="display"
     )
-    if reason:
-        for i, line in enumerate(wrap(v, reason, 14, c.w - 60)[:2]):
-            text(canvas, v, line, 14, C.TEXT_DIM, (c.centerx, c.y + 98 + i * 19), center=True)
+    for i, line in enumerate(reason_lines(v, reason, c.w - 60)):
+        text(canvas, v, line, RESULT_REASON_SIZE, C.TEXT_DIM,
+             (c.centerx, c.y + 98 + i * RESULT_REASON_STEP), center=True)  # fmt: skip
     top = c.y + RESULT_SCORE_Y
     label(canvas, v, score_label or t("result.score"), (c.x + 44, top + RESULT_SCORE_H / 2 - 5),
          C.TEXT, 14)  # fmt: skip
@@ -1455,9 +1497,9 @@ def draw_net_result_frame(canvas: pg.Surface, v: View, *, won: bool, reason: str
     glow_text(
         canvas, v, title, 46, C.WHITE, mood, (c.centerx, c.y + 50), strength=1.3, face="display"
     )
-    if reason:
-        for i, line in enumerate(wrap(v, reason, 14, c.w - 60)[:2]):
-            text(canvas, v, line, 14, C.TEXT_DIM, (c.centerx, c.y + 90 + i * 19), center=True)
+    for i, line in enumerate(reason_lines(v, reason, c.w - 60)):
+        text(canvas, v, line, RESULT_REASON_SIZE, C.TEXT_DIM,
+             (c.centerx, c.y + 90 + i * RESULT_REASON_STEP), center=True)  # fmt: skip
     for x, name, win in zip(NET_COLS, names, won_by, strict=True):
         cx = x - 52
         text(canvas, v, name, 16, C.OK if win else C.TEXT_DIM, (cx, c.y + 124), bold=True,

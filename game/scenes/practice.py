@@ -22,6 +22,7 @@ import pygame as pg
 from game.config import (
     NOTICE_S,
     PRACTICE_DIM_FADE_S,
+    PRACTICE_LEVELS,
     PRACTICE_READY_S,
     PRACTICE_SHOT_S,
     PRACTICE_WARN_S,
@@ -34,7 +35,7 @@ from game.render.view import View
 from game.rules.eight_ball import LOST, PLAYING, WON
 from game.rules.practice import MISS, GhostRun, ShotResult, make_run
 from game.scenes.play import CALLOUT_AT, PlayScene
-from game.settings import PRACTICE_BEST_FIELD, best_for
+from game.settings import best_field, best_for
 from game.tally import Tally
 
 BLINK_HZ = 2.0  # the shot clock blinks this often in its last seconds (same feel as the net game)
@@ -43,7 +44,7 @@ BLINK_HZ = 2.0  # the shot clock blinks this often in its last seconds (same fee
 class PracticeScene(PlayScene):
     def __init__(self, app) -> None:
         super().__init__(app)
-        self.mode = "ghost"
+        self.mode, self.level = "ghost", "hard"
         self.rules = GhostRun(self.world.rng)
         self._shot_left = PRACTICE_SHOT_S
         self._ready_left = PRACTICE_READY_S  # the wait before a run: nothing may be touched
@@ -67,11 +68,13 @@ class PracticeScene(PlayScene):
             super().set_view(v)
 
     # --- game flow -------------------------------------------------------------------
-    def start(self, mode: str) -> None:
-        """A new run of the given kind (config.PRACTICE_MODES). Every later new run (R, the result
-        card) keeps it."""
+    def start(self, mode: str, level: str | None = None) -> None:
+        """A new run of the given kind (config.PRACTICE_MODES) at the given level
+        (config.PRACTICE_LEVELS; None: the one last played, in the settings). Every later new run
+        (R, the result card) keeps both."""
         self.mode = mode
-        self.rules = make_run(mode, self.world.rng)
+        self.level = level if level in PRACTICE_LEVELS else self.app.settings.practice_level
+        self.rules = make_run(mode, self.world.rng, self.level)
         self.new_game()
 
     def new_game(self) -> None:
@@ -172,10 +175,10 @@ class PracticeScene(PlayScene):
         self._ended_at = self._clock
         won = res.outcome == WON
         (self.app.audio.play_win if won else self.app.audio.play_lose)()
-        old_best = best_for(self.app.settings, self.mode)
+        old_best = best_for(self.app.settings, self.mode, self.level)
         best = max(old_best, self.rules.streak)
         if best > old_best:
-            self.app.change_settings(**{PRACTICE_BEST_FIELD[self.mode]: best})
+            self.app.change_settings(**{best_field(self.mode, self.level): best})
         self._tally = Tally({"score": self.rules.streak, "shots": self.rules.shots, "fouls": best})
         self._ticks, self._tinged = dict.fromkeys(self._tally.targets, 0), set()
 
@@ -290,7 +293,7 @@ class PracticeScene(PlayScene):
             v,
             streak=self.rules.streak,
             lives=None if sprint else self.rules.lives,
-            best=best_for(self.app.settings, self.mode),
+            best=best_for(self.app.settings, self.mode, self.level),
             target=self.rules.target,
             target_shown=not counting,
             cleared=self.rules.phase == WON,
@@ -323,20 +326,22 @@ class PracticeScene(PlayScene):
             whole = {
                 "score": self.rules.streak,
                 "shots": self.rules.shots,
-                "fouls": best_for(self.app.settings, self.mode),
+                "fouls": best_for(self.app.settings, self.mode, self.level),
             }
             return whole, (0.0, 0.0, 0.0)
         shown = {name: tally.value(name, age) for name in tally.targets}
         return shown, tuple(tally.flash(name, age) for name in tally.targets)
 
     def _lost_words(self) -> str | None:
-        """Why the run was lost (the last life; in Sprint, the clock), or nothing for a win."""
+        """Why the run was lost, or nothing for a win: two lines (out of lives, then the last
+        shot's cause) joined by '\n'; in Sprint, the clock alone."""
         res = self.rules.last
         if self.rules.phase == WON or res is None or res.lost_life is None:
             return None
         if self.mode == "sprint":
             return t("practice.time_up")
-        return t("practice.out_of_lives", why=t(self._miss_key or res.lost_life))
+        why = t("practice.last_one", why=t(self._miss_key or res.lost_life))
+        return f"{t('practice.out_of_lives')}\n{why}"
 
     def _draw_result_frame(self, canvas: pg.Surface, v: View) -> None:
         hud.draw_result_frame(

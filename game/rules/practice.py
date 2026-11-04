@@ -26,6 +26,13 @@ gives the one asked for:
   ball too, if it has no other).
 - `SprintRun` "Sprint": no lives, one shared clock instead (the scene feeds `tick`): a pot adds
   time, a miss or a scratch takes it away; no time left loses the run, no ball left wins it.
+
+Every drill has two levels (`make_run(mode, rng, level)`, config.PRACTICE_LEVELS). "hard" is all of
+the above. "easy" first asks the same scale of the easy lines only (cut no thinner than
+EASY_MAX_CUT_DEG, target no further than EASY_MAX_POT_DIST_M from the pocket; in Call the Pocket
+the pocket named is one of those too): from where the cue ball stands, then in hand (no life or
+time lost), margin first and then the squeezes. Only when even that finds no ball does it go on
+with the hard scale, so a run is never stuck.
 """
 
 from __future__ import annotations
@@ -36,8 +43,12 @@ from dataclasses import dataclass
 
 from game.config import (
     CALL_MAX_CUT_DEG,
+    EASY_MAX_CUT_DEG,
+    EASY_MAX_POT_DIST_M,
+    PRACTICE_LEVELS,
     PRACTICE_LINE_MARGIN_M,
     PRACTICE_LIVES,
+    PRACTICE_MAX_CUT_DEG,
     SPRINT_CAP_S,
     SPRINT_MISS_COST_S,
     SPRINT_POT_BONUS_S,
@@ -67,7 +78,10 @@ class ShotResult:
 class GhostRun:
     mode = "ghost"
 
-    def __init__(self, rng: random.Random | None = None) -> None:
+    def __init__(self, rng: random.Random | None = None, level: str = "hard") -> None:
+        if level not in PRACTICE_LEVELS:
+            raise ValueError(f"unknown practice level: {level!r}")
+        self.level = level  # "hard" (as it always was) or "easy" (only the easy lines)
         self._rng = rng or random.Random(0)  # the world's, in the game: nothing else is random
         self.reset()
 
@@ -83,6 +97,7 @@ class GhostRun:
         self.hand_given = False  # the last judging found no pot line and gave the cue ball in hand
         self.target: int | None = None  # nothing is called while the break still sits racked
         self._ask: tuple[bool, float] | None = None  # the (in hand, margin) the lines were found at
+        self._ask_easy = False  # ... and whether that was one of the easy asks
         self._begin_record()
 
     # --- state the screen shows ------------------------------------------------------------
@@ -90,15 +105,28 @@ class GhostRun:
     def balls_left(self) -> int:
         return 15 - len(self.pocketed)
 
-    def _lines(self, balls: Sequence[Ball], n: int, in_hand: bool, margin: float) -> int:
+    def _lines(
+        self, balls: Sequence[Ball], n: int, in_hand: bool, margin: float, easy: bool = False
+    ) -> int:
         """In how many ways could ball `n` be shot straight into a pocket (what counts as one is
-        up to the mode)."""
+        up to the mode); `easy`: only the easy lines."""
+        if easy:
+            return pot_lines(
+                balls,
+                n,
+                cue_in_hand=in_hand,
+                max_cut_deg=min(EASY_MAX_CUT_DEG, PRACTICE_MAX_CUT_DEG),
+                margin=margin,
+                max_pot_dist=EASY_MAX_POT_DIST_M,
+            )
         return pot_lines(balls, n, cue_in_hand=in_hand, margin=margin)
 
-    def _viable(self, balls: Sequence[Ball], in_hand: bool, margin: float) -> list[int]:
+    def _viable(
+        self, balls: Sequence[Ball], in_hand: bool, margin: float, easy: bool = False
+    ) -> list[int]:
         """The balls still on the table that could be shot straight into a pocket."""
         left = sorted(BALLS - self.pocketed)
-        return [n for n in left if self._lines(balls, n, in_hand, margin) > 0]
+        return [n for n in left if self._lines(balls, n, in_hand, margin, easy) > 0]
 
     def _pick_pocket(self, balls: Sequence[Ball] | None) -> None:
         """Called once a target has just been picked: a mode that names a pocket names it here."""
@@ -125,18 +153,24 @@ class GhostRun:
         hand = self.cue_in_hand
         good: list[int] = []
         self._ask = None
+        self._ask_easy = False
         asks = [
             (hand, PRACTICE_LINE_MARGIN_M),
             (True, PRACTICE_LINE_MARGIN_M),
             (hand, 0.0),
             (True, 0.0),
         ]
-        for in_hand, margin in asks:
-            good = self._viable(balls, in_hand, margin)
+        # the easy level goes through the scale on the easy lines first, then as the hard one does
+        steps = [(a, False) for a in asks]
+        if self.level == "easy":
+            steps = [(a, True) for a in asks] + steps
+        for (in_hand, margin), easy in steps:
+            good = self._viable(balls, in_hand, margin, easy)
             if good:
                 if in_hand and not hand:
                     self.cue_in_hand = self.hand_given = True
                 self._ask = (in_hand, margin)
+                self._ask_easy = easy
                 break
         pool = good or [n for n in left if self._open(balls, n)] or left
         if keep and self.target in pool:
@@ -266,11 +300,24 @@ class CallRun(GhostRun):
         super().reset()
         self.pocket: int | None = None  # index into POCKETS; None while no target is called
 
-    def _lines(self, balls: Sequence[Ball], n: int, in_hand: bool, margin: float) -> int:
-        return len(self._pockets(balls, n, in_hand, margin))
+    def _lines(
+        self, balls: Sequence[Ball], n: int, in_hand: bool, margin: float, easy: bool = False
+    ) -> int:
+        return len(self._pockets(balls, n, in_hand, margin, easy))
 
     @staticmethod
-    def _pockets(balls: Sequence[Ball], n: int, in_hand: bool, margin: float) -> list[int]:
+    def _pockets(
+        balls: Sequence[Ball], n: int, in_hand: bool, margin: float, easy: bool = False
+    ) -> list[int]:
+        if easy:
+            return pot_pockets(
+                balls,
+                n,
+                cue_in_hand=in_hand,
+                max_cut_deg=min(EASY_MAX_CUT_DEG, CALL_MAX_CUT_DEG),
+                margin=margin,
+                max_pot_dist=EASY_MAX_POT_DIST_M,
+            )
         return pot_pockets(
             balls, n, cue_in_hand=in_hand, max_cut_deg=CALL_MAX_CUT_DEG, margin=margin
         )
@@ -279,7 +326,7 @@ class CallRun(GhostRun):
         """The pockets the target may be called into, at the same ask its ball was found at."""
         if balls is None or self.target is None or self._ask is None:
             return []
-        return self._pockets(balls, self.target, *self._ask)
+        return self._pockets(balls, self.target, *self._ask, self._ask_easy)
 
     def _pick_pocket(self, balls: Sequence[Ball] | None) -> None:
         # (with no pot line anywhere, or no positions to look at, no pocket is named: any will do)
@@ -309,6 +356,7 @@ class CallRun(GhostRun):
         shot_fired: bool = True,
     ) -> ShotResult:
         self._ask = None  # (what the lines were found at is only known after the next picking)
+        self._ask_easy = False
         out = super()._settle(res, target_gone=target_gone, balls=balls, shot_fired=shot_fired)
         if self.target is None or self.phase != PLAYING:
             self.pocket = None  # nothing is called once the run is over
@@ -357,6 +405,6 @@ class SprintRun(GhostRun):
 _MODES = {"ghost": GhostRun, "call": CallRun, "sprint": SprintRun}
 
 
-def make_run(mode: str, rng: random.Random) -> GhostRun:
-    """The run for a practice mode (config.PRACTICE_MODES)."""
-    return _MODES[mode](rng)
+def make_run(mode: str, rng: random.Random, level: str = "hard") -> GhostRun:
+    """The run for a practice mode (config.PRACTICE_MODES) at a level (config.PRACTICE_LEVELS)."""
+    return _MODES[mode](rng, level)

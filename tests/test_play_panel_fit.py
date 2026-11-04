@@ -62,6 +62,85 @@ def test_the_practice_step_has_three_big_buttons_and_back_under_them(app):
     assert len({r.x for r in big}) == 1 and len({r.w for r in big}) == 1
 
 
+@pytest.mark.parametrize("lang", ["vi", "en"])
+@pytest.mark.parametrize("scale", [0.5, 0.82, 1.0, 1.5])
+@pytest.mark.parametrize("level", config.PRACTICE_LEVELS)
+def test_the_level_step_is_as_tall_as_its_caption_and_leaves_nothing_empty(app, lang, scale, level):
+    from game import i18n
+    from game.render import hud
+
+    i18n.set_lang(lang)
+    try:
+        panel = app.menu.play_panel
+        panel.step, panel.level, panel._v = pp.LEVEL, level, View(scale)
+        frame, rects = panel.rect(), panel._rects()
+        _, _, lines, caption_y = panel._level()
+        assert frame.h == panel.fit_h() and abs(frame.centery - pp.PANEL.centery) <= 1
+        assert frame.bottom - rects["back"].bottom == 18  # the same margin as every other step
+        assert all(frame.contains(r) for r in rects.values())
+        # the caption is broken to fit under the row, and the frame holds exactly its lines
+        assert lines == hud.wrap(
+            panel._v, i18n.t(f"practice.level.{level}_sub"), pp.CAPTION_SIZE, pp.W - 32
+        )
+        assert all(hud.text_width(panel._v, ln, pp.CAPTION_SIZE) <= pp.W - 32 for ln in lines)
+        assert caption_y == rects["level"].bottom + pp.CAPTION_GAP
+        assert rects["start"].top == caption_y + len(lines) * pp.CAPTION_STEP + pp.START_GAP
+        assert rects["back"].top - rects["start"].bottom == pp.BACK_BELOW
+        assert frame.h % 2 == 0  # (an odd height would leave the frame half a pixel off centre)
+    finally:
+        i18n.set_lang("vi")
+
+
+def test_a_longer_caption_makes_a_taller_frame_and_a_shorter_one_a_shorter_frame(app):
+    from game import i18n
+
+    panel = app.menu.play_panel
+    panel.step, panel._v = pp.LEVEL, View(1.0)
+    table = i18n.table(i18n.get_lang())
+    old = table["practice.level.easy_sub"]
+    one = panel._level("easy")[0]
+    try:
+        table["practice.level.easy_sub"] = (old + " ") * 4
+        four_lines = len(panel._level("easy")[2])
+        assert (
+            four_lines > 1 and panel._level("easy")[0] == one + (four_lines - 1) * pp.CAPTION_STEP
+        )
+        assert panel._level("hard")[0] != panel._level("easy")[0]  # each level: its own height
+    finally:
+        table["practice.level.easy_sub"] = old
+    assert panel._level("easy")[0] == one
+
+
+def test_changing_the_level_glides_the_frame_when_the_caption_changes_height(app):
+    from game import i18n
+
+    panel = open_panel(app)
+    panel._goto(pp.PRACTICE)
+    frames(app, 30)
+    panel.mode, panel.level = "ghost", "easy"
+    panel._goto(pp.LEVEL, pp.ITEMS[pp.LEVEL].index("level"))
+    frames(app, 40)
+    table = i18n.table(i18n.get_lang())
+    old = table["practice.level.hard_sub"]
+    try:
+        table["practice.level.hard_sub"] = (old + " ") * 3  # a caption of more lines
+        before = panel.rect().h
+        key(app, pg.K_RIGHT)
+        assert panel.level == "hard" and panel._morph is not None
+        assert panel._morph.to_h == panel._level("hard")[0] > before
+        heights = []
+        for _ in range(30):
+            frames(app, 1)
+            heights.append(panel.rect().h)
+        assert before < heights[3] < heights[-1] == panel.fit_h()  # it glided, it did not jump
+        # a change that keeps the height does not move the frame at all
+        table["practice.level.hard_sub"] = table["practice.level.easy_sub"]
+        key(app, pg.K_LEFT)
+        assert panel.level == "easy" and panel._morph is None
+    finally:
+        table["practice.level.hard_sub"] = old
+
+
 def test_the_frame_is_centred_whatever_its_height(app):
     panel = app.menu.play_panel
     for step in pp.ITEMS:

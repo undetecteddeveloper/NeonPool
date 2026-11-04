@@ -68,12 +68,15 @@ class _ShownRoom:
 
 
 def _panel(h: Harness, step: str, *, name: str = "", code: str = "", error: str | None = None,
-           room: str = "KXQM"):  # fmt: skip
+           room: str = "KXQM", mode: str = "ghost", level: str = "easy"):  # fmt: skip
     h.reset()
     panel = h.app.menu.play_panel
     panel.open()
     panel.name = name
-    if step != pp.CHOOSE:
+    panel.mode, panel.level = mode, level  # (the Level step shows these)
+    if step == pp.LEVEL:
+        panel._goto(step, pp.ITEMS[step].index("start"))
+    elif step != pp.CHOOSE:
         panel._goto(step)
     panel.code = code
     panel.error = error
@@ -188,6 +191,16 @@ def _play_practice(h: Harness) -> None:
     _panel(h, pp.PRACTICE)
 
 
+@state(MENU, "Bảng Chơi: bước Mức độ, Dễ (Đấu Ma)")
+def _play_level_easy(h: Harness) -> None:
+    _panel(h, pp.LEVEL, level="easy")
+
+
+@state(MENU, "Bảng Chơi: bước Mức độ, Khó (Gọi Lỗ)")
+def _play_level_hard(h: Harness) -> None:
+    _panel(h, pp.LEVEL, mode="call", level="hard")
+
+
 # ---------------------------------------------------------------------------- solo: practice
 # One group of states per run. The first (Beat the Ghost) keeps its old names.
 PRACTICE = "Luyện tập: Đấu Ma"
@@ -225,6 +238,16 @@ def _practice_won(h: Harness) -> None:
     h.practice_won()
 
 
+@state(PRACTICE, "Đấu Ma: mức Dễ, tới lượt đánh")
+def _practice_easy_ready(h: Harness) -> None:
+    h.practice_ready("ghost", "easy")
+
+
+@state(PRACTICE, "Đấu Ma: mức Dễ, giữa chuỗi (đã qua 5 bi)")
+def _practice_easy_streak(h: Harness) -> None:
+    h.practice_streak(5, "ghost", "easy")
+
+
 def _mode_states(group: str, mode: str, name: str, lost: str) -> None:
     """The same six states for Call the Pocket and Sprint (`lost`: how a run of that kind ends)."""
 
@@ -250,7 +273,15 @@ def _mode_states(group: str, mode: str, name: str, lost: str) -> None:
 
     @state(group, f"{name}: thắng (chạy hết 15 bi, đếm số)")
     def _won(h: Harness) -> None:
-        h.practice_won(mode)
+        h.practice_won(mode, "hard")
+
+    @state(group, f"{name}: mức Dễ, tới lượt đánh")
+    def _easy_ready(h: Harness) -> None:
+        h.practice_ready(mode, "easy")
+
+    @state(group, f"{name}: mức Dễ, giữa chuỗi (đã qua 5 bi)")
+    def _easy_streak(h: Harness) -> None:
+        h.practice_streak(5, mode, "easy")
 
 
 _mode_states(PRACTICE_CALL, "call", "Gọi Lỗ", "hết mạng")

@@ -17,7 +17,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from game.config import NET_NAME_MAX
+from game.config import NET_NAME_MAX, PRACTICE_LEVELS, PRACTICE_MODES
 
 log = logging.getLogger("neonpool")
 LANGS = ("vi", "en")
@@ -31,24 +31,37 @@ class Settings:
     shake: bool = True  # the screen shakes on the break and on very hard hits
     show_fps: bool = False  # frames per second in the top-left corner
     player_name: str = ""  # shown to the other player; empty: the game uses a default word
-    practice_best: int = 0  # best streak ever reached in Practice "the Ghost" (0..15), never drops
-    practice_best_call: int = 0  # the same for Practice "Call the Pocket"
-    practice_best_sprint: int = (
-        0  # the same for Practice "Sprint" (balls potted before time ran out)
-    )
+    practice_level: str = "easy"  # the level last played in Practice (config.PRACTICE_LEVELS)
+    # The best of each practice drill and level (0..15), never drops. The three older fields are
+    # the HARD bests (kept, so no record already made is lost); the easy ones are apart.
+    practice_best: int = 0  # "the Ghost", hard: best streak
+    practice_best_call: int = 0  # "Call the Pocket", hard
+    practice_best_sprint: int = 0  # "Sprint", hard (balls potted before time ran out)
+    practice_best_easy: int = 0  # "the Ghost", easy
+    practice_best_call_easy: int = 0
+    practice_best_sprint_easy: int = 0
 
 
-# Which setting holds the best of each practice mode (config.PRACTICE_MODES).
+# Which setting holds the best of each practice mode and level (config.PRACTICE_MODES, _LEVELS).
 PRACTICE_BEST_FIELD = {
-    "ghost": "practice_best",
-    "call": "practice_best_call",
-    "sprint": "practice_best_sprint",
+    ("ghost", "hard"): "practice_best",
+    ("call", "hard"): "practice_best_call",
+    ("sprint", "hard"): "practice_best_sprint",
+    ("ghost", "easy"): "practice_best_easy",
+    ("call", "easy"): "practice_best_call_easy",
+    ("sprint", "easy"): "practice_best_sprint_easy",
 }
+assert set(PRACTICE_BEST_FIELD) == {(m, lv) for m in PRACTICE_MODES for lv in PRACTICE_LEVELS}
 
 
-def best_for(settings: Settings, mode: str) -> int:
-    """The best result kept for this practice mode."""
-    return getattr(settings, PRACTICE_BEST_FIELD[mode])
+def best_field(mode: str, level: str) -> str:
+    """The name of the setting that keeps the best of this practice mode and level."""
+    return PRACTICE_BEST_FIELD[(mode, level)]
+
+
+def best_for(settings: Settings, mode: str, level: str = "hard") -> int:
+    """The best result kept for this practice mode and level."""
+    return getattr(settings, best_field(mode, level))
 
 
 def settings_path() -> Path:
@@ -77,6 +90,8 @@ def _clean(raw: dict) -> Settings:
         s.player_name = "".join(c for c in raw["player_name"] if c.isprintable()).strip()[
             :NET_NAME_MAX
         ]
+    if raw.get("practice_level") in PRACTICE_LEVELS:
+        s.practice_level = raw["practice_level"]
     for name in PRACTICE_BEST_FIELD.values():
         best = raw.get(name)
         if isinstance(best, int) and not isinstance(best, bool):

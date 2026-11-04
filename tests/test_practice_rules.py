@@ -6,10 +6,16 @@ import random
 
 import pytest
 
+import game.rules.practice as practice_module
 from game.config import (
+    BALL_R,
     CALL_MAX_CUT_DEG,
+    EASY_MAX_CUT_DEG,
+    EASY_MAX_POT_DIST_M,
     POCKETS,
+    PRACTICE_LEVELS,
     PRACTICE_LIVES,
+    PRACTICE_MAX_CUT_DEG,
     SPRINT_CAP_S,
     SPRINT_MISS_COST_S,
     SPRINT_POT_BONUS_S,
@@ -954,3 +960,305 @@ def test_ac32_sprint_a_run_lost_by_a_miss_is_not_lost_again_by_tick():
     res = shoot(run)
     assert res.outcome == LOST
     assert run.tick(1.0) is None and run.last == res
+
+
+# --- AC40-AC42 (mức Dễ / Khó): the levels of every drill ---------------------------------------
+LEVEL_MODES = ("ghost", "call", "sprint")
+
+
+def easy_limits(mode: str) -> tuple[float, float]:
+    hard_cut = CALL_MAX_CUT_DEG if mode == "call" else PRACTICE_MAX_CUT_DEG
+    return min(EASY_MAX_CUT_DEG, hard_cut), EASY_MAX_POT_DIST_M
+
+
+def easy_pockets(balls, n: int, mode: str, *, in_hand: bool) -> list[int]:
+    cut, dist = easy_limits(mode)
+    return pot_pockets(
+        balls, n, cue_in_hand=in_hand, max_cut_deg=cut, margin=0.0, max_pot_dist=dist
+    )
+
+
+def any_easy(balls, on_table: set[int], mode: str) -> bool:
+    """Is there ANY ball with an easy line, the cue ball put wherever suits?"""
+    return any(easy_pockets(balls, n, mode, in_hand=True) for n in on_table)
+
+
+def geometry(balls, ball_n: int, pocket: int) -> tuple[float, float]:
+    """(cut in degrees from the cue ball's place, target to the pocket's aim point in metres),
+    worked out here by hand, not by pot_lines."""
+    cue = next(b for b in balls if b.number == CUE)
+    ball = next(b for b in balls if b.number == ball_n)
+    px, py, _r = POCKETS[pocket]
+    ax, ay = min(max(px, BALL_R), TABLE_L - BALL_R), min(max(py, BALL_R), TABLE_W - BALL_R)
+    dist = math.hypot(ax - ball.x, ay - ball.y)
+    dx, dy = (ax - ball.x) / dist, (ay - ball.y) / dist
+    gx, gy = ball.x - 2 * BALL_R * dx, ball.y - 2 * BALL_R * dy
+    ux, uy = gx - cue.x, gy - cue.y
+    cos = (ux * dx + uy * dy) / math.hypot(ux, uy)
+    return math.degrees(math.acos(max(-1.0, min(1.0, cos)))), dist
+
+
+def first_call(mode: str, seed: int, level: str):
+    """A run of `mode` at `level` after the break on the scattered table `seed`."""
+    world, on_table = random_table(seed)
+    run = make_run(mode, random.Random(seed), level)
+    run.pocketed = set(range(1, 16)) - on_table
+    run.on_shot()
+    run.finish_shot(world.balls)
+    return run, world, on_table
+
+
+def test_ac40_every_mode_has_a_level_and_hard_is_the_one_nothing_says():
+    for mode in LEVEL_MODES:
+        assert make_run(mode, random.Random(0)).level == "hard"
+        assert make_run(mode, random.Random(0), "hard").level == "hard"
+        assert make_run(mode, random.Random(0), "easy").level == "easy"
+    assert GhostRun(random.Random(0), "easy").level == "easy"  # (the second place is the level)
+    assert GhostRun(random.Random(0)).level == "hard" and GhostRun().level == "hard"
+    assert set(PRACTICE_LEVELS) == {"easy", "hard"}
+    with pytest.raises(ValueError):
+        make_run("ghost", random.Random(0), "medium")
+
+
+def test_ac40_the_easy_numbers_are_a_gentle_cut_and_a_short_pot():
+    assert 0.0 < EASY_MAX_CUT_DEG < min(CALL_MAX_CUT_DEG, PRACTICE_MAX_CUT_DEG)
+    assert 0.0 < EASY_MAX_POT_DIST_M < TABLE_L  # (shorter than the table: it does cut something)
+
+
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac40_easy_picks_a_ball_with_an_easy_line_whenever_the_table_has_one(mode):
+    judged = 0
+    for seed in range(200):
+        run, world, on_table = first_call(mode, seed, "easy")
+        assert run.target in on_table
+        if not any_easy(world.balls, on_table, mode):
+            continue
+        judged += 1
+        # the cue ball stays where it is, or (found none from there) it was given in hand
+        assert easy_pockets(world.balls, run.target, mode, in_hand=run.cue_in_hand), seed
+    assert judged > 60  # (the check above is not an empty one)
+
+
+@pytest.mark.parametrize("mode", ("ghost", "call"))
+def test_ac40_easy_with_the_cue_ball_where_it_stands_the_cut_and_the_run_are_within_the_limits(
+    mode,
+):
+    stands = 0
+    cut_limit, dist_limit = easy_limits(mode)
+    for seed in range(300):
+        run, world, on_table = first_call(mode, seed, "easy")
+        if run.cue_in_hand or not any_easy(world.balls, on_table, mode):
+            continue
+        stands += 1
+        pockets = (
+            [run.pocket]
+            if mode == "call" and run.pocket is not None
+            else easy_pockets(world.balls, run.target, mode, in_hand=False)
+        )
+        assert pockets, seed
+        cuts = [geometry(world.balls, run.target, p) for p in pockets]
+        assert all(cut <= cut_limit + 1e-6 and dist <= dist_limit + 1e-6 for cut, dist in cuts)
+    assert stands > 40  # (some tables do have an easy ball without any hand)
+
+
+def test_ac40_call_the_pocket_named_is_an_easy_one_of_the_ball_named_when_there_is_one():
+    named = 0
+    cut_limit, dist_limit = easy_limits("call")
+    for seed in range(300):
+        run, world, on_table = first_call("call", seed, "easy")
+        if not any_easy(world.balls, on_table, "call"):
+            continue
+        assert run.pocket is not None
+        named += 1
+        assert run.pocket in easy_pockets(world.balls, run.target, "call", in_hand=run.cue_in_hand)
+        _cut, dist = geometry(world.balls, run.target, run.pocket)
+        assert dist <= dist_limit + 1e-6
+        if not run.cue_in_hand:  # (in hand it is put wherever the cut is gentle)
+            assert geometry(world.balls, run.target, run.pocket)[0] <= cut_limit + 1e-6
+    assert named > 100
+
+
+def test_ac40_easy_is_pickier_than_hard_over_the_same_tables():
+    pickier = 0
+    for seed in range(150):
+        easy, world, on_table = first_call("ghost", seed, "easy")
+        hard = first_call("ghost", seed, "hard")[0]
+        if easy.target != hard.target:
+            pickier += 1
+        assert hard.target in on_table
+    assert pickier > 30  # the two levels do choose differently
+
+
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac40_easy_real_games_keep_calling_easy_balls_after_every_shot(mode):
+    """Real breaks and real shots; after each judging the ball called (and, in Call the Pocket,
+    the pocket) is an easy one whenever the table has an easy one."""
+    judged = 0
+    for seed in range(25):
+        world = World(seed=seed)
+        run = make_run(mode, world.rng, "easy")
+        for _ in play_real(run, world, 12):
+            if run.target is None or run.phase != PLAYING:
+                continue
+            on_table = set(range(1, 16)) - run.pocketed
+            if not any_easy(world.balls, on_table, mode):
+                continue
+            judged += 1
+            assert easy_pockets(world.balls, run.target, mode, in_hand=run.cue_in_hand), seed
+            if mode == "call" and run.pocket is not None:
+                assert run.pocket in easy_pockets(
+                    world.balls, run.target, mode, in_hand=run.cue_in_hand
+                )
+    assert judged > 40
+
+
+# --- AC41: no easy ball from where the cue ball stands: it is given in hand, free ---------------
+def hand_case() -> tuple[list[Ball], int]:
+    """A table with one ball (the 6) on it whose easy lines exist only with the cue ball in hand:
+    the first such place of the cue ball in a scan (so the case is found, not guessed)."""
+    for cx in (x / 10 for x in range(2, 25)):
+        for cy in (y / 10 for y in range(2, 12)):
+            balls = [Ball(CUE, cx, cy, in_play=True), Ball(6, 0.6, 0.5, in_play=True)]
+            if (
+                not easy_pockets(balls, 6, "ghost", in_hand=False)
+                and easy_pockets(balls, 6, "ghost", in_hand=True)
+                and math.hypot(cx - 0.6, cy - 0.5) > 4 * BALL_R
+            ):
+                return balls, 6
+    raise AssertionError("no such place found")
+
+
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac41_no_easy_ball_from_where_the_cue_ball_stands_it_is_given_in_hand_for_free(mode):
+    balls, last = hand_case()
+    run = make_run(mode, random.Random(0), "easy")
+    run.pocketed = set(range(1, 16)) - {last}
+    lives, time_left = run.lives, getattr(run, "time_left", None)
+    run.on_shot()  # the break: nothing is called, nothing to miss
+    res = run.finish_shot(balls)
+    assert run.target == last and run.hand_given and run.cue_in_hand
+    assert res.lost_life is None and run.lives == lives  # no life
+    assert getattr(run, "time_left", None) == time_left  # no time
+    assert run.phase == PLAYING
+    if mode == "call":
+        assert run.pocket in easy_pockets(balls, last, "call", in_hand=True)
+
+
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac41_the_hard_level_does_not_give_a_hand_for_a_gentle_cut_only(mode):
+    """The same table at the hard level: a line from where the cue ball stands is enough, so no
+    hand is given (the hand is a thing of the easy level)."""
+    balls, last = hand_case()
+    run = make_run(mode, random.Random(0), "hard")
+    run.pocketed = set(range(1, 16)) - {last}
+    run.on_shot()
+    run.finish_shot(balls)
+    assert run.target == last
+    assert run.hand_given == (not pot_pockets(balls, last, max_cut_deg=run_cut(mode), margin=0.0))
+
+
+def run_cut(mode: str) -> float:
+    return CALL_MAX_CUT_DEG if mode == "call" else PRACTICE_MAX_CUT_DEG
+
+
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac41_with_no_easy_ball_even_in_hand_the_hard_scale_picks_and_the_run_is_never_stuck(
+    monkeypatch, mode
+):
+    monkeypatch.setattr("game.rules.practice.EASY_MAX_POT_DIST_M", 0.0)  # nothing is easy now
+    for seed in range(60):
+        easy, world, on_table = first_call(mode, seed, "easy")
+        hard = first_call(mode, seed, "hard")[0]
+        assert easy.target in on_table and easy.phase == PLAYING
+        assert (easy.target, easy.hand_given, easy.cue_in_hand) == (
+            hard.target,
+            hard.hand_given,
+            hard.cue_in_hand,
+        )  # (the very same pick the hard level makes)
+        if mode == "call":
+            assert easy.pocket == hard.pocket
+
+
+def test_ac41_a_scratch_in_easy_gives_the_hand_as_usual_and_costs_the_one_life():
+    balls, last = hand_case()
+    run = GhostRun(random.Random(0), "easy")
+    run.pocketed = set(range(1, 16)) - {last}
+    run.target = last
+    shoot(run, down(0))
+    assert run.lives == PRACTICE_LIVES - 1 and run.cue_in_hand and run.target == last
+
+
+# --- AC42: the hard level is exactly what it was ----------------------------------------------
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac42_hard_picks_the_same_balls_and_pockets_as_a_run_asked_for_no_level(mode):
+    for seed in range(80):
+        world, on_table = random_table(seed)
+        runs = [
+            make_run(mode, random.Random(seed)),
+            make_run(mode, random.Random(seed), "hard"),
+            _MODES_BY_NAME[mode](random.Random(seed)),
+        ]
+        seen = []
+        for run in runs:
+            run.pocketed = set(range(1, 16)) - on_table
+            run.on_shot()
+            run.finish_shot(world.balls)
+            trail = [(run.target, getattr(run, "pocket", None), run.hand_given)]
+            while run.phase == PLAYING and len(trail) < 40:
+                run.on_shot()
+                run.on_events([into(run.target, getattr(run, "pocket", None) or 0)])
+                run.finish_shot(world.balls)
+                trail.append((run.target, getattr(run, "pocket", None), run.hand_given))
+            seen.append(trail)
+        assert seen[0] == seen[1] == seen[2]
+
+
+_MODES_BY_NAME = {"ghost": GhostRun, "call": CallRun, "sprint": SprintRun}
+
+
+@pytest.mark.parametrize("mode", ("ghost", "call"))
+def test_ac42_hard_asks_pot_lines_exactly_as_it_always_did_with_no_distance_limit(
+    monkeypatch, mode
+):
+    asked: list[dict] = []
+    real = {"ghost": "pot_lines", "call": "pot_pockets"}[mode]
+    orig = getattr(practice_module, real)
+
+    def spy(*args, **kw):
+        asked.append(kw)
+        return orig(*args, **kw)
+
+    monkeypatch.setattr(f"game.rules.practice.{real}", spy)
+    for seed in range(20):
+        first_call(mode, seed, "hard")
+    assert asked and all("max_pot_dist" not in kw for kw in asked)
+    cuts = {kw.get("max_cut_deg", PRACTICE_MAX_CUT_DEG) for kw in asked}
+    assert cuts == {CALL_MAX_CUT_DEG if mode == "call" else PRACTICE_MAX_CUT_DEG}
+
+
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac42_hard_real_games_play_out_as_a_run_with_no_level(mode):
+    def trail(level: str | None, seed: int):
+        world = World(seed=seed)
+        run = make_run(mode, world.rng) if level is None else make_run(mode, world.rng, level)
+        return [
+            (r.pocketed, run.target, getattr(run, "pocket", None), run.lives, run.hand_given)
+            for r in play_real(run, world, 8)
+        ]
+
+    for seed in (2, 5, 9):
+        assert trail("hard", seed) == trail(None, seed)
+
+
+# --- the easy level is determined by the seed, like everything -----------------------------------
+@pytest.mark.parametrize("mode", LEVEL_MODES)
+def test_ac40_easy_the_same_seed_gives_the_same_calls_and_another_seed_others(mode):
+    def calls(seed: int):
+        world = World(seed=seed)
+        run = make_run(mode, world.rng, "easy")
+        return [(run.target, getattr(run, "pocket", None), run.cue_in_hand)] + [
+            (run.target, getattr(run, "pocket", None), run.cue_in_hand, r.hit)
+            for r in play_real(run, world, 8)
+        ]
+
+    assert calls(4) == calls(4) and calls(4) != calls(5)

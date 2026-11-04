@@ -1,7 +1,9 @@
 """Pot lines (docs/plans/20261102-luyen-tap.md AC26): in how many ways could a ball be shot
 straight into a pocket. Hand-built tables, table is 2.54 x 1.27 m, ball radius 0.0286 m."""
 
-from game.config import BALL_R, POCKETS
+import math
+
+from game.config import BALL_R, POCKETS, TABLE_L, TABLE_W
 from game.physics.pot_lines import pot_lines, pot_pockets
 from game.physics.world import CUE, Ball
 
@@ -109,3 +111,39 @@ def test_pot_pockets_of_a_ball_off_the_table_or_with_no_cue_ball_is_empty():
     assert pot_pockets([*table(CUE_AT), Ball(6, 0.3, 0.3, in_play=False)], 6) == []
     assert pot_pockets(table(TARGET), 6) == []
     assert pot_pockets(table(TARGET), 6, cue_in_hand=True) != []
+
+
+# --- AC40: the furthest a target may be from the pocket (the easy level of Practice) ----------
+def aim_distance(ball_xy: tuple[float, float], index: int) -> float:
+    """Ball centre to the spot a centre must be at to drop into pocket `index`."""
+    px, py, _r = POCKETS[index]
+    ax = min(max(px, BALL_R), TABLE_L - BALL_R)
+    ay = min(max(py, BALL_R), TABLE_W - BALL_R)
+    return math.hypot(ax - ball_xy[0], ay - ball_xy[1])
+
+
+def test_ac40_no_distance_limit_is_the_same_as_a_limit_nothing_reaches():
+    balls = table(CUE_AT, TARGET, (8, 0.9, 0.6))
+    for hand in (False, True):
+        plain = pot_pockets(balls, 6, cue_in_hand=hand)
+        assert pot_pockets(balls, 6, cue_in_hand=hand, max_pot_dist=None) == plain
+        assert pot_pockets(balls, 6, cue_in_hand=hand, max_pot_dist=10.0) == plain
+        assert pot_lines(balls, 6, cue_in_hand=hand, max_pot_dist=10.0) == len(plain)
+
+
+def test_ac40_a_distance_limit_keeps_only_the_pockets_within_reach_and_drops_the_rest():
+    balls = table(CUE_AT, (6, 0.8, 0.4))
+    everything = pot_pockets(balls, 6, cue_in_hand=True)
+    assert len(everything) >= 3  # (the test below would prove nothing otherwise)
+    for limit in (0.3, 0.6, 0.9, 1.2, 1.6):
+        kept = pot_pockets(balls, 6, cue_in_hand=True, max_pot_dist=limit)
+        assert kept == [i for i in everything if aim_distance((0.8, 0.4), i) <= limit]
+        assert pot_lines(balls, 6, cue_in_hand=True, max_pot_dist=limit) == len(kept)
+    assert pot_pockets(balls, 6, cue_in_hand=True, max_pot_dist=0.01) == []
+
+
+def test_ac40_the_distance_limit_is_to_the_aim_point_of_the_nearest_pocket():
+    far = table(CUE_AT, (6, 1.2, 0.6))  # about the middle: every pocket is far
+    nearest = min(aim_distance((1.2, 0.6), i) for i in range(len(POCKETS)))
+    assert pot_pockets(far, 6, cue_in_hand=True, max_pot_dist=nearest - 0.01) == []
+    assert pot_pockets(far, 6, cue_in_hand=True, max_pot_dist=nearest + 0.01) != []
