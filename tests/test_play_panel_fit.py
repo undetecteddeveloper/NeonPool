@@ -85,7 +85,14 @@ def test_the_level_step_is_as_tall_as_its_caption_and_leaves_nothing_empty(app, 
         assert all(hud.text_width(panel._v, ln, pp.CAPTION_SIZE) <= pp.W - 32 for ln in lines)
         assert caption_y == rects["level"].bottom + pp.CAPTION_GAP
         assert rects["start"].top == caption_y + len(lines) * pp.CAPTION_STEP + pp.START_GAP
-        assert rects["back"].top - rects["start"].bottom == pp.BACK_BELOW
+        # Back (left) and Start (right) share one row as wide as the column: the gap comes out of
+        # it and Start takes 60% of what is left, Back 40%
+        back, start = rects["back"], rects["start"]
+        assert back.top == start.top and back.h == start.h == pp.START_H
+        assert (back.left, start.right) == (pp.X, pp.X + pp.W)
+        assert start.left - back.right == pp.ACTION_GAP
+        assert start.w == round((pp.W - pp.ACTION_GAP) * 0.6)
+        assert back.w + start.w + pp.ACTION_GAP == pp.W and back.w < start.w
         assert frame.h % 2 == 0  # (an odd height would leave the frame half a pixel off centre)
     finally:
         i18n.set_lang("vi")

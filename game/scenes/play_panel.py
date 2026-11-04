@@ -49,7 +49,7 @@ HEIGHT = {
     CHOOSE: 344,
     MODE: 344,
     PRACTICE: 432,
-    LEVEL: 326,  # with a one-line caption; the real height comes from the words (see `_level`)
+    LEVEL: 256,  # with a one-line caption; the real height comes from the words (see `_level`)
     SETUP: 412,
     HOSTING: 404,
     JOINING: 342,
@@ -62,6 +62,9 @@ TOP = {step: PANEL.centery - h // 2 for step, h in HEIGHT.items()}  # where each
 LEVEL_ROW_Y, LEVEL_ROW_H = 92, 44
 CAPTION_SIZE, CAPTION_STEP, CAPTION_PAD = 14, 18, 16  # text size, line step, side room
 CAPTION_GAP, START_GAP, START_H = 14, 20, 50  # row -> caption, caption -> Start, Start's height
+# Back and Start share the last row, Back on the left: the row is as wide as the column, the gap
+# comes out of it, and Start takes this share of what is left (Back the rest)
+ACTION_GAP, START_SHARE = 12, 0.6
 
 
 def _at(step: str, y: int, h: int) -> pg.Rect:
@@ -92,8 +95,7 @@ RECTS = {
     CONNECTING: {"cancel": _back(CONNECTING)},
 }
 FIELDS = ("name", "code")
-BACK_BELOW = 26  # the space between the last choice and Back
-BACK_H, BACK_MARGIN = 44, 18  # Back is this tall, with this much frame under it
+BACK_MARGIN = 18  # the frame under the last button
 # why a session ended -> the words shown (net.err.*)
 CLOSE_ERRORS = {
     net_session.CLOSE_VERSION: "net.err.version",
@@ -169,8 +171,8 @@ class PlayPanel(FloatPanel):
     def _level(self, level: str | None = None) -> tuple[int, dict[str, pg.Rect], list[str], int]:
         """The Level step made from its words, for `level` (default: the one shown): its caption
         broken into lines that fit (at this window's scale, in this language), the frame as tall
-        as the row, those lines, Start and Back, and nothing left empty. Returns (frame height,
-        the rects, the caption lines, where they start)."""
+        as the row, those lines, and Back and Start side by side, and nothing left empty. Returns
+        (frame height, the rects, the caption lines, where they start)."""
         v = self._v or View(1.0)
         sub = t(f"practice.level.{level or self.level}_sub")
         hit = self._level_cache.get((v.s, sub))
@@ -178,12 +180,14 @@ class PlayPanel(FloatPanel):
             lines = hud.wrap(v, sub, CAPTION_SIZE, W - 2 * CAPTION_PAD) or [sub]
             caption_y = LEVEL_ROW_Y + LEVEL_ROW_H + CAPTION_GAP
             start_y = caption_y + len(lines) * CAPTION_STEP + START_GAP
-            h = start_y + START_H + BACK_BELOW + BACK_H + BACK_MARGIN
+            h = start_y + START_H + BACK_MARGIN
             top = PANEL.centery - h // 2
+            start_w = round((W - ACTION_GAP) * START_SHARE)
+            back_w = W - ACTION_GAP - start_w
             rects = {
                 "level": pg.Rect(X, top + LEVEL_ROW_Y, W, LEVEL_ROW_H),
-                "start": pg.Rect(X, top + start_y, W, START_H),
-                "back": pg.Rect(PANEL.centerx - 80, top + h - BACK_H - BACK_MARGIN, 160, BACK_H),
+                "back": pg.Rect(X, top + start_y, back_w, START_H),
+                "start": pg.Rect(X + back_w + ACTION_GAP, top + start_y, start_w, START_H),
             }
             hit = (h, rects, lines, top + caption_y)
             self._level_cache = {**self._level_cache, (v.s, sub): hit}
