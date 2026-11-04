@@ -59,7 +59,7 @@ def draw_free(canvas, v, sprites, keys=hud.PANEL_KEYS) -> None:
     )
 
 
-def draw_practice(canvas, v, sprites, keys=hud.PANEL_KEYS) -> None:
+def draw_practice(canvas, v, sprites, keys=hud.PANEL_KEYS, **words) -> None:
     hud.draw_practice_panel(
         canvas,
         v,
@@ -79,6 +79,7 @@ def draw_practice(canvas, v, sprites, keys=hud.PANEL_KEYS) -> None:
         count=22,
         counting_down=False,
         keys=keys,
+        **words,
     )
 
 
@@ -222,3 +223,23 @@ def test_another_scale_on_the_same_canvas_repaints_the_panel(draw):
     after = picture(size, draw, behind, v=small, sprites=BallSprites(small))
     hud._chrome_cache.clear()
     assert picture(size, draw, behind, v=small, sprites=BallSprites(small)) == after
+
+
+def test_another_drill_names_the_first_cell_with_its_own_word():
+    """Sprint counts balls where the other drills count a streak: the word is part of what is
+    kept, so a drill after another must not show the first one's word."""
+    size = SIZES[0]
+    v = View.for_window(size)
+    sprites = BallSprites(v)
+    behind = noise(size, 10)
+
+    def sprint():
+        return picture(
+            size, draw_practice, behind, v=v, sprites=sprites, score_word="practice.count"
+        )
+
+    streak = picture(size, draw_practice, behind, v=v, sprites=sprites)
+    first = sprint()
+    assert streak != first
+    hud._chrome_cache.clear()
+    assert sprint() == first
