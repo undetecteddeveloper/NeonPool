@@ -22,7 +22,7 @@ Kéo từ bi trắng ra sau để ngắm và lấy lực rồi thả để đán
 .venv\Scripts\python.exe tools\build_exe.py
 ```
 
-Ra `dist\NeonPool.exe` (một file, đã gói sẵn font và chữ). Thêm `--folder` nếu muốn thư mục khởi động nhanh hơn. Icon vẽ từ code: `tools\make_icon.py` (ra `assets/icon.ico` và `assets/icon.png`).
+Ra `dist\NeonPool.exe` (một file, đã gói sẵn font và chữ; `dist\` không nằm trong git). Bản dựng sẵn để tải: trang **Releases** của repo (https://github.com/undetecteddeveloper/NeonPool/releases). Thêm `--folder` nếu muốn thư mục khởi động nhanh hơn. Icon vẽ từ code: `tools\make_icon.py` (ra `assets/icon.ico` và `assets/icon.png`).
 
 ## Kiểm tra code
 

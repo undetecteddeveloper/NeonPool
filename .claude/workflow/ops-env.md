@@ -5,7 +5,7 @@
 - Dựng lại venv nếu mất: `py -3.13 -m venv .venv` rồi `.venv\Scripts\python.exe -m pip install -r requirements.txt`.
 - Không có cửa sổ: `SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy` (tools/tests tự đặt). Chạy game thật thì KHÔNG đặt hai biến này.
 - Đọc/ghi file chữ (lang/*.json, tiến độ) luôn `encoding="utf-8"`.
-- Đóng gói .exe (PyInstaller) chưa cài; cài khi người dùng yêu cầu phát hành.
+- Đóng gói .exe: `tools\build_exe.py` (PyInstaller 6.22.3 đã cài trong venv) ra `dist\NeonPool.exe`; `dist\` KHÔNG vào git. Phát hành = GitHub Release (người dùng chốt 2026-11-05; v1.0.0): Composio `GITHUB_CREATE_A_RELEASE` (draft) → `COMPOSIO_REMOTE_WORKBENCH`: `upload_local_file(đường dẫn trong sandbox)` rồi `run_composio_tool("GITHUB_UPLOAD_RELEASE_ASSET", asset={name, mimetype, s3key})` → `GITHUB_UPDATE_A_RELEASE` draft=false. Công cụ upload KHÔNG nhận đường dẫn trên máy người dùng và máy này không có `gh`: lần sau exe chỉ lên được bằng cách kéo thả vào trang Release trên web, hoặc cài `gh` (`winget install GitHub.cli`, người dùng đăng nhập). Mỗi lần phát hành đối chiếu mã băm: `sha256sum dist/NeonPool.exe` phải bằng `digest` của asset.
 
 ## Shell
 - PowerShell 5.1: không có `&&`/`||`; nối bằng `;` hoặc dùng Bash tool. Đường dẫn có dấu cách phải bọc nháy (`E:\pygame projects\NeonPool`).
