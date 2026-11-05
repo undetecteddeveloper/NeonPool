@@ -552,7 +552,7 @@ class PlayScene:
             fouls=self.rules.fouls,
             pocketed=self.rules.pocketed,
             group=self.rules.group,
-            eight_next=self.rules.eight_is_next(),
+            eight_next=self.rules.eight_is_next() and self.world.at_rest(),  # not while rolling
             muted=self.app.audio.muted,
             moving=not self.world.at_rest(),
             sprites=self.sprites,

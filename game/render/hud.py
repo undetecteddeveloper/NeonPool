@@ -139,6 +139,15 @@ def _ink_x(s: str, dev: int, name: str, track: int) -> tuple[int, int]:
     return r.x, r.w
 
 
+@cache
+def _ink_mass_x(s: str, dev: int, name: str, track: int) -> float:
+    """x of the centre of mass of the ink of `s` inside its rendered surface. A "1" has its stem
+    on the right and its flag on the left, so its box centre and its visual centre differ."""
+    surf = _render(s, dev, name, (255, 255, 255), track)[0]
+    cover = pg.surfarray.array_alpha(surf).sum(axis=1).astype(float)  # ink per column
+    return float((cover * (np.arange(len(cover)) + 0.5)).sum() / max(cover.sum(), 1.0))
+
+
 def text(
     canvas: pg.Surface,
     v: View,
@@ -152,11 +161,14 @@ def text(
     align: str = "left",
     face: str | None = None,
     track: float = 0.0,
+    optical: bool = False,
 ) -> pg.Rect:
     """Draw text. `size`, `pos` and `track` (extra space between letters) are logical.
 
     `pos` is (x, top of the capitals); `align` is "left", "right" or "center" on x. With
-    `center` the capitals are centred on `pos` both ways (the ink, not the advance, on x).
+    `center` the capitals are centred on `pos` both ways (the ink, not the advance, on x). With
+    `optical` as well, x is the centre of mass of the ink, not the middle of its box (a lone
+    digit that is heavier on one side, like "1", then looks centred).
     """
     name = face or ("bold" if bold else "body")
     dev = max(6, v.i(size))
@@ -166,7 +178,7 @@ def text(
     x, y = v.pt(pos)
     if center:
         ink_left, ink_w = _ink_x(s, dev, name, tr)
-        left = x - ink_left - ink_w / 2
+        left = x - (_ink_mass_x(s, dev, name, tr) if optical else ink_left + ink_w / 2)
         top = y + cap / 2 - base
     else:
         w = surf.get_width()

@@ -73,8 +73,12 @@ class Annot:
         tx, ty = self._t((x, y))
         blit_rrect(self.surf, self.v, tx, ty, w, h, radius, fill, 1.2, C.CYAN_DIM)
 
-    def text(self, s: str, pos: Point, size: int = 14, color=C.TEXT, bold=False, center=False):
-        text(self.surf, self.v, s, size, color, self._t(pos), bold=bold, center=center)
+    def text(
+        self, s: str, pos: Point, size: int = 14, color=C.TEXT, bold=False, center=False,
+        optical=False,
+    ):  # fmt: skip
+        text(self.surf, self.v, s, size, color, self._t(pos), bold=bold, center=center,
+             optical=optical)  # fmt: skip
 
     # --- marks -----------------------------------------------------------------------------
     def arrow(self, a: Point, b: Point, fill=C.ACCENT, dashed: bool = False) -> None:
@@ -124,7 +128,7 @@ class Annot:
         """A numbered marker; the same number stands in front of the matching sentence."""
         self.disc(c, 13, (*C.ACCENT, 80))
         self.disc(c, 10, C.ACCENT)
-        self.text(str(n), c, 15, C.OUTLINE, bold=True, center=True)
+        self.text(str(n), c, 15, C.OUTLINE, bold=True, center=True, optical=True)
 
     def mark(self, c: Point, ok: bool, r: float = 11) -> None:
         """A mint tick (right) or a red cross (wrong), each in a soft halo."""
