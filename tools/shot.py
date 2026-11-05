@@ -78,7 +78,16 @@ def main() -> int:
     parser.add_argument("--size", default="1280x720")
     parser.add_argument(
         "--scene",
-        choices=("menu", "play", "practice", "practice-menu", "help", "splash", "intro"),
+        choices=(
+            "menu",
+            "play",
+            "practice",
+            "practice-menu",
+            "help",
+            "splash",
+            "intro",
+            "achievements",
+        ),
         default="play",
         help="practice-menu: the Play panel open on its Practice step",
     )
@@ -125,6 +134,15 @@ def main() -> int:
         help="--end lost: the i18n key of the last shot's cause, e.g. practice.miss_pocket, "
         "foul.scratch (default: the shot clock)",
     )
+    parser.add_argument(
+        "--unlock",
+        default="",
+        help='achievements to show as earned (not saved): ids separated by commas, or "all", '
+        'or "some" (a spread across the groups)',
+    )
+    parser.add_argument(
+        "--toast", default="", help="achievement ids (commas) whose card slides in; use --frames"
+    )
     parser.add_argument("--lang", choices=("vi", "en"), default="")
     parser.add_argument(
         "--do",
@@ -161,6 +179,24 @@ def main() -> int:
             panel.level = args.level or panel.level
             panel._goto(pp.LEVEL, pp.ITEMS[pp.LEVEL].index("start"))
         panel.k = 1.0  # (open, not opening)
+    if args.unlock:
+        from game import achievements as ach
+
+        ids = [a.id for a in ach.CATALOGUE]
+        some = ids[0:3] + ids[4:5] + ids[8:9] + ids[11:13] + ids[17:18]
+        app.settings.achievements = (
+            ids
+            if args.unlock == "all"
+            else some
+            if args.unlock == "some"
+            else args.unlock.split(",")
+        )
+    if args.scene == "achievements":
+        app.menu.achievements.open()
+        app.menu.achievements.k = 1.0  # (open, not opening)
+    if args.toast:
+        for ach_id in args.toast.split(","):
+            app._announce(ach_id)
     if args.scene == "intro":
         app.menu.start_intro()  # --frames N = N sixtieths of a second after the menu opened
     if args.scene == "splash":

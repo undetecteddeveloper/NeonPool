@@ -180,6 +180,7 @@ class PlayScene:
         """Every ball has stopped: let the rules judge the shot and show what happened."""
         self._live = False
         res = self.rules.finish_shot()
+        self.app.achievements.free_shot(res, self.rules.shots, self.rules.fouls)
         if res.outcome == RERACK:
             self.world.rack()
             self.fx.clear()

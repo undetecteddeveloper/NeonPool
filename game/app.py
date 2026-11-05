@@ -17,12 +17,13 @@ from pathlib import Path
 
 import pygame as pg
 
-from game import i18n, settings
+from game import achievements, i18n, settings
 from game.audio import Audio
 from game.config import LOGICAL_SIZE
 from game.i18n import t
 from game.render import crt, hud
 from game.render import palette as C
+from game.render.achieve import Toasts
 from game.render.view import View
 from game.render.viewport import window_to_logical
 from game.rules.eight_ball import PLAYING
@@ -64,6 +65,12 @@ class App:
         self.splash = SplashScene(self)  # the real game opens on it (start_splash); tools do not
         self.net: NetPlayScene | None = None  # a two-player game, while there is one
         self.help = HelpPanel(self)  # a card over the menu or the table, not a scene
+        # Achievements: the tracker keeps the progress in the settings; a new one slides a card
+        # into the corner, over whatever scene is up (and the "ting" is heard as it starts)
+        self.toasts = Toasts(on_start=lambda _id: self.audio.play_tally_ting(True, True))
+        self.achievements = achievements.Tracker(
+            self.settings, save=lambda: settings.save(self.settings), announce=self._announce
+        )
         self.scene = self.menu
         self.running = True
         self.fps = 60.0
@@ -72,6 +79,10 @@ class App:
         self._old_frame: pg.Surface | None = None  # the picture that is switching off
         self._tube = TUBE_OFF_S  # time into the switch; past TUBE_OFF_S + TUBE_ON_S: done
         self._warmed: tuple | None = None  # what the pictures made ahead are for (_warm_key)
+
+    def _announce(self, ach_id: str) -> None:
+        group = next(a.group for a in achievements.CATALOGUE if a.id == ach_id)
+        self.toasts.push(ach_id, group)
 
     # --- scenes ----------------------------------------------------------------------------
     def _switch(self, scene) -> None:
@@ -116,6 +127,7 @@ class App:
     def _warm_panels(self) -> None:
         self.menu.settings.prewarm(self.view)
         self.menu.play_panel.prewarm(self.view)
+        self.menu.achievements.prewarm(self.view)
 
     def _warm_cards(self) -> None:
         hud.prewarm_result(self.view)
@@ -207,6 +219,7 @@ class App:
         if dt > 0:
             self.fps += (1.0 / dt - self.fps) * FPS_SMOOTH
         self._tube = min(TUBE_OFF_S + TUBE_ON_S, self._tube + dt)
+        self.toasts.update(dt)
         self.help.update(dt)
         if (  # the menu has settled: after a language or size change, make the pictures again
             self.help.prefetch
@@ -274,6 +287,7 @@ class App:
             else:
                 screen.fill(C.BG)
                 screen.blit(frame, (round(shake_x * target.s), round(shake_y * target.s)))
+        self.toasts.draw(screen, target)
         if self.settings.show_fps:
             self._draw_fps(screen, target)
         crt.scanlines(screen, target.s, getattr(self.scene, "SCAN_DARK", crt.SCANLINE_DARK))

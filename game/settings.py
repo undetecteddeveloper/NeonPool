@@ -14,9 +14,10 @@ import json
 import logging
 import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from game.achievements import IDS as ACHIEVEMENT_IDS
 from game.config import NET_NAME_MAX, PRACTICE_LEVELS, PRACTICE_MODES
 
 log = logging.getLogger("neonpool")
@@ -40,6 +41,12 @@ class Settings:
     practice_best_easy: int = 0  # "the Ghost", easy
     practice_best_call_easy: int = 0
     practice_best_sprint_easy: int = 0
+    # Achievements (game/achievements.py): the ones earned, in the order they were, and the three
+    # counters the others are worked out from. Never reset by the game.
+    achievements: list[str] = field(default_factory=list)
+    ach_wins: int = 0  # Free-play games won
+    ach_clean_streak: int = 0  # Free-play wins in a row with no foul (a loss or a foul ends it)
+    ach_duo_wins: int = 0  # two-player games won
 
 
 # Which setting holds the best of each practice mode and level (config.PRACTICE_MODES, _LEVELS).
@@ -96,6 +103,13 @@ def _clean(raw: dict) -> Settings:
         best = raw.get(name)
         if isinstance(best, int) and not isinstance(best, bool):
             setattr(s, name, max(0, min(15, best)))
+    earned = raw.get("achievements")
+    if isinstance(earned, list):  # only known ones, each once, in order
+        s.achievements = list(dict.fromkeys(a for a in earned if a in ACHIEVEMENT_IDS))
+    for name in ("ach_wins", "ach_clean_streak", "ach_duo_wins"):
+        n = raw.get(name)
+        if isinstance(n, int) and not isinstance(n, bool):
+            setattr(s, name, max(0, min(1_000_000, n)))
     return s
 
 

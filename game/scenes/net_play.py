@@ -531,6 +531,8 @@ class NetPlayScene(PlayScene):
         self._ended_at = self._clock
         won = m.winner == self._me
         (self.app.audio.play_win if won else self.app.audio.play_lose)()
+        if won and not (m.last and m.last.reason == LOST_DROPPED):  # (a room left empty is no win)
+            self.app.achievements.duo_won()
         self._tallies = [
             Tally({"score": m.score(i), "shots": m.shots[i], "fouls": m.fouls[i]})
             for i in (self._me, self._them)

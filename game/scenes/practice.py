@@ -151,6 +151,7 @@ class PracticeScene(PlayScene):
             self.world.respawn_cue()  # back on the table, ready to be placed
         old_target, time_before = self.rules.target, getattr(self.rules, "time_left", 0.0)
         res = self.rules.finish_shot(self.world.balls)
+        self.app.achievements.practice_shot(self.mode, self.level, self.rules.streak, res.outcome)
         # Call the Pocket: the target went down, but not into the called pocket
         wrong = self.mode == "call" and res.lost_life == MISS and old_target in res.pocketed
         self._miss_key = "practice.miss_pocket" if wrong else None

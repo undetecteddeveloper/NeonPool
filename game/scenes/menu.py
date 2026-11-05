@@ -28,10 +28,12 @@ from game.config import (
 from game.i18n import t
 from game.render import hud
 from game.render import palette as C
+from game.render.achieve import trophy
 from game.render.draw import blit_rrect
 from game.render.synth import Synthwave
 from game.render.tube import Fringe
 from game.render.view import View
+from game.scenes.achievements import AchievementsPanel
 from game.scenes.credits import CreditsRoll
 from game.scenes.play_panel import PlayPanel
 from game.scenes.settings import SettingsPanel
@@ -49,6 +51,8 @@ BREATH_S = 4.0  # afterwards the halo swells and fades once in this many seconds
 UI_BOX = (300, 70, 680, 650)
 CREDIT_LINK_RIGHT = LOGICAL_SIZE[0] - 24  # the "Credit" link: its right edge, on the hint's line
 LINK_Y, LINK_H, LINK_PAD = LOGICAL_SIZE[1] - 36, 26, 36
+TROPHY_BOX = pg.Rect(LOGICAL_SIZE[0] - 24 - 44, 22, 44, 44)  # the cup that opens the achievements
+TROPHY_SIZE = 26  # ... and how tall the cup in it is
 # the beam that draws the menu: the parts of it (logical rects), top to bottom
 INTRO_TITLE = pg.Rect(LOGICAL_SIZE[0] // 2 - 300, 82, 600, 175)  # the title and the line under it
 INTRO_HINT = pg.Rect(LOGICAL_SIZE[0] // 2 - 250, LOGICAL_SIZE[1] - 40, 500, 40)
@@ -79,10 +83,12 @@ class MenuScene:
         self.mode = "menu"  # "menu"; for the credits: "out" (words dim), "roll", "in" (come back)
         self._mode_t = 0.0
         self._credit_hot = False
+        self._trophy_hot = False
         self._swept = False  # the sound of the beam has been played
         self._layer: pg.Surface | None = None  # the night behind the words, kept while they fade
         self.settings = SettingsPanel(app)
         self.play_panel = PlayPanel(app)  # Play: Solo / Two players, then a room
+        self.achievements = AchievementsPanel(app)  # the cup in the top-right corner (or T)
         self.set_view(app.view)
 
     def set_view(self, v: View) -> None:
@@ -116,6 +122,13 @@ class MenuScene:
             pg.Rect(cx - BTN_W // 2, FIRST_Y + i * (BTN_H + BTN_GAP), BTN_W, BTN_H)
             for i in range(len(ITEMS))
         ]
+
+    def _trophy_rect(self) -> pg.Rect:
+        return TROPHY_BOX
+
+    def open_achievements(self) -> None:
+        self._trophy_hot = False
+        self.achievements.open()
 
     def _credit_rect(self) -> pg.Rect:
         w = hud.text_width(self.view, t("credits.link"), 14) + LINK_PAD
@@ -196,6 +209,9 @@ class MenuScene:
         if self.play_panel.is_open:
             self.play_panel.handle_event(e)
             return
+        if self.achievements.is_open:
+            self.achievements.handle_event(e)
+            return
         if self.mode == "intro":  # the beam is drawing the menu: a key or a click shows it at once
             if e.type in (pg.KEYDOWN, pg.MOUSEBUTTONDOWN):
                 self.mode = "menu"
@@ -212,9 +228,16 @@ class MenuScene:
             if hot and not self._credit_hot:
                 self.app.audio.play_hover()
             self._credit_hot = hot
+            cup = self._trophy_rect().collidepoint(e.pos)
+            if cup and not self._trophy_hot:
+                self.app.audio.play_hover()
+            self._trophy_hot = cup
         elif e.type == pg.MOUSEBUTTONDOWN and e.button == 1:
             if self._credit_rect().inflate(8, 8).collidepoint(e.pos):
                 self.open_credits()
+                return
+            if self._trophy_rect().collidepoint(e.pos):
+                self.open_achievements()
                 return
             for i, r in enumerate(self._rects()):
                 if r.collidepoint(e.pos):
@@ -223,6 +246,9 @@ class MenuScene:
         elif e.type == pg.KEYDOWN:
             if e.key == pg.K_c:
                 self.open_credits()
+                return
+            if e.key == pg.K_t:
+                self.open_achievements()
                 return
             if e.key in (pg.K_UP, pg.K_w):
                 self._choose((self.sel - 1) % len(ITEMS))
@@ -254,10 +280,11 @@ class MenuScene:
         self.fx.update(dt, ITEMS[self.sel], rects, self._clock)
         self.settings.update(dt)
         self.play_panel.update(dt)
+        self.achievements.update(dt)
 
     def draw(self, canvas: pg.Surface) -> None:
         v = self.view
-        for panel in (self.settings, self.play_panel):
+        for panel in (self.settings, self.play_panel, self.achievements):
             if panel.covers_scene(canvas.get_size()):  # the panel holds a picture of the menu
                 panel.draw(canvas, v)
                 return
@@ -274,6 +301,7 @@ class MenuScene:
             self._paint_link(canvas, v, k)
         self.settings.draw(canvas, v)
         self.play_panel.draw(canvas, v)
+        self.achievements.draw(canvas, v)
 
     def _draw_words(self, canvas: pg.Surface, v: View, k: float) -> None:
         """The title, the buttons and the hint, `k` lit (1 whole). Dimmed ones are painted as
@@ -328,12 +356,13 @@ class MenuScene:
         that no sprite has to be made while it is on show. Leaves the menu as it was."""
         v = self.view
         was = self.mode, self._mode_t, self._opened, self._clock, self._credit_hot
+        cup_was = self._trophy_hot
         try:
             self.mode = "menu"
             for since in (*(at for at, _ in FLICKER), *(1.0 + 0.25 * i for i in range(17))):
                 self._clock, self._opened = since, 0.0
                 self._paint_words(canvas, v)
-            self._credit_hot = True
+            self._credit_hot = self._trophy_hot = True
             self._paint_link(canvas, v, 1.0)
             self.mode, self._clock, self._opened = "intro", 0.0, 0.0
             for age in (0.05, 0.2, 0.45, 0.7, 0.95, 1.2, 1.5):
@@ -342,6 +371,7 @@ class MenuScene:
                 self._paint_link(canvas, v, self._draw_intro(canvas, v))
         finally:
             self.mode, self._mode_t, self._opened, self._clock, self._credit_hot = was
+            self._trophy_hot = cup_was
 
     def _cover(self, canvas: pg.Surface, box: pg.Rect, area: pg.Rect, alpha: float) -> None:
         """Put the night as it was (kept for `box`) back over `area`, `alpha` opaque."""
@@ -369,15 +399,27 @@ class MenuScene:
                         special_flags=pg.BLEND_RGB_ADD)  # fmt: skip
 
     def _paint_link(self, canvas: pg.Surface, v: View, k: float) -> None:
-        """The small "Credit" link in the corner, on a dark strip like the hint; lit when hot."""
+        """The small "Credit" link in the corner, on a dark strip like the hint; lit when hot.
+        The cup of the achievements in the other corner is painted with it."""
         if k <= 0.0:
             return
+        self._paint_trophy(canvas, v, k)
         r, hot = self._credit_rect(), self._credit_hot and k >= 1.0
         if k >= 1.0:  # (while it fades the strip would show as a box: text only)
             line = (1.2, C.CYAN, 0.5) if hot else (0,)
             blit_rrect(canvas, v, r.x, r.y, r.w, r.h, 13, C.BG, *line)
         colour = C.scale(C.CYAN if hot else C.TEXT_DIM, k)
         hud.text(canvas, v, t("credits.link"), 14, colour, r.center, center=True)
+
+    def _paint_trophy(self, canvas: pg.Surface, v: View, k: float) -> None:
+        """The cup button in the top-right corner: a dark round button with a line-art cup; the
+        cup lights up cyan when the pointer is on it."""
+        r, hot = self._trophy_rect(), self._trophy_hot and k >= 1.0
+        if k >= 1.0:
+            line = (1.2, C.CYAN, 0.5) if hot else (1.0, C.PANEL_EDGE, 0.0)
+            blit_rrect(canvas, v, r.x, r.y, r.w, r.h, r.w / 2, C.BG, *line)
+        colour = C.scale(C.CYAN if hot else C.TEXT_DIM, k)
+        trophy(canvas, v, r.center, TROPHY_SIZE, colour, filled=False, glow=0.5 if hot else 0.0)
 
     def _paint_words(self, canvas: pg.Surface, v: View) -> None:
         cx = LOGICAL_SIZE[0] // 2
